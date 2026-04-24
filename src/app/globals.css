@@ -1,0 +1,144 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-50: #fdf4ff;
+  --color-brand-100: #fae8ff;
+  --color-brand-200: #f5d0fe;
+  --color-brand-300: #f0abfc;
+  --color-brand-400: #e879f9;
+  --color-brand-500: #d946ef;
+  --color-brand-600: #c026d3;
+  --color-brand-700: #a21caf;
+  --color-brand-800: #86198f;
+  --color-brand-900: #701a75;
+  --color-brand-950: #4a044e;
+
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+
+  --animate-fade-in: fadeIn 0.5s ease-in-out;
+  --animate-slide-up: slideUp 0.3s ease-out;
+  --animate-slide-down: slideDown 0.3s ease-out;
+  --animate-shimmer: shimmer 2s linear infinite;
+
+  @keyframes fadeIn {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+  @keyframes slideUp {
+    0% { transform: translateY(10px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+  @keyframes slideDown {
+    0% { transform: translateY(-10px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  @keyframes marquee {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-100%); }
+  }
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: white;
+    color: #111827;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+  }
+  .bg-purple-600{
+    background-color: #c39c41 !important;
+  }
+  .text-purple-600,.text-purple-400,.text-purple-700{
+    color: #c39c41 !important;
+  }
+  .bg-purple-50{
+    background-color: rgba(195, 156, 65, 0.1) !important;
+  }
+  .to-pink-600{
+    --tw-gradient-to: #565656 !important;
+  }
+  .from-purple-600{
+    /* background-color: #c39c41 !important; */
+    --tw-gradient-from: #c39c41 !important;
+  }
+  .focus\:ring-purple-500:focus{
+    --tw-ring-color: #c39c41 !important;
+  }
+  .focus-visible\:ring-purple-500:focus-visible,.focus-visible\:ring-2:focus-visible,.focus-visible\:ring-purple-500:focus-visible{
+    --tw-ring-color: #c39c41 !important;
+  }
+  .border-purple-600{
+    border-color: #c39c41 !important;
+  }
+  .bg-purple-100{
+    background-color: rgba(195, 156, 65, 0.2) !important;
+  }
+  .bg-primary{
+    background-color: #c39c41 !important;
+  }
+  .bg-dark{
+    background-color: #000 !important;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background-color: #f3f4f6;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: #d1d5db;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: #9ca3af;
+  }
+}
+.accent-primary-600{
+  accent-color: #c39c41 !important;
+}
+@supports (color: color-mix(in lab, red, red)) {
+    .from-purple-900\/30 {
+        --tw-gradient-from: 
+        color-mix(in oklab, #c39c41 30%, transparent) !important;
+    }
+}
+@media (hover: hover) {
+  .hover\:border-purple-400:hover { border-color: #c39c41 !important; }
+  .hover\:bg-purple-600:hover,.hover\:bg-purple-700:hover{
+    background-color: #c39c41 !important;
+  }
+  .hover\:text-purple-600:hover,.group-hover\:text-purple-600:is(:where(.group):hover *){
+    color: #c39c41 !important;
+  }
+  .hover\:border-purple-300:hover{
+    border-color: rgba(195, 156, 65, 0.2) !important;
+  }
+  /* .hover\:bg-purple-700:hover{
+    background-color: #c39c41 !important;
+  } */
+}
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .shimmer {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+}

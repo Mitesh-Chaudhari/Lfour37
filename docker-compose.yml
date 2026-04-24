@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME}
+        NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID}
+        NEXT_PUBLIC_MERCHANT_WALLET: ${NEXT_PUBLIC_MERCHANT_WALLET}
+        NEXT_PUBLIC_USDT_ETHEREUM: ${NEXT_PUBLIC_USDT_ETHEREUM}
+        NEXT_PUBLIC_USDC_ETHEREUM: ${NEXT_PUBLIC_USDC_ETHEREUM}
+        NEXT_PUBLIC_USDT_POLYGON: ${NEXT_PUBLIC_USDT_POLYGON}
+        NEXT_PUBLIC_USDC_POLYGON: ${NEXT_PUBLIC_USDC_POLYGON}
+        NEXT_PUBLIC_USDT_BSC: ${NEXT_PUBLIC_USDT_BSC}
+        NEXT_PUBLIC_USDC_BSC: ${NEXT_PUBLIC_USDC_BSC}
+        NEXT_PUBLIC_USDT_BASE: ${NEXT_PUBLIC_USDT_BASE}
+        NEXT_PUBLIC_USDC_BASE: ${NEXT_PUBLIC_USDC_BASE}
+    env_file:
+      - .env.production
+    ports:
+      - "3000:3000"
+    restart: always
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - app
+    restart: always
