@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     await supabaseAdmin
       .from('hero_slides')
       .delete()
-      .not('id', 'in', `(${incomingIds.map(id => `"${id}"`).join(',')})`)
+      .not('id', 'in', `(${incomingIds.map((id: any) => `"${id}"`).join(',')})`)
   } else {
     // if all removed → delete all
     await supabaseAdmin.from('hero_slides').delete().neq('id', '')
