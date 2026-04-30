@@ -16,6 +16,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import Image from 'next/image'
 
 interface AdminSidebarProps {
   user: { full_name: string | null; email: string; role: string }
@@ -27,6 +28,7 @@ const NAV_ITEMS = [
   { href: '/admin/categories', icon: Layers, label: 'Categories' },
   { href: '/admin/orders', icon: ShoppingBag, label: 'Orders' },
   { href: '/admin/users', icon: Users, label: 'Users' },
+  { href: '/admin/hero-slides', icon: Star, label: 'Banners' },
   { href: '/admin/promotions', icon: Tag, label: 'Promotions' },
   { href: '/admin/analytics', icon: BarChart2, label: 'Analytics' },
   { href: '/admin/reviews', icon: Star, label: 'Reviews' },
@@ -41,17 +43,30 @@ export function AdminSidebar({ user }: AdminSidebarProps) {
     await supabase.auth.signOut()
     router.push('/login')
   }
-
+  const LOGO_IMAGE = [
+    '/images/logo.png',
+  ]
   return (
     <aside className="fixed inset-y-0 left-0 w-64 bg-gray-900 text-white flex flex-col z-30">
       {/* Logo */}
-      <div className="p-6 border-b border-gray-800">
+      <div className="p-4 border-b border-gray-800">
         <Link href="/admin" className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
+          {/* <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
             <span className="text-white font-bold text-sm">TM</span>
           </div>
           <div>
             <p className="font-bold text-white text-sm">Lfour37</p>
+            <p className="text-xs text-gray-400">Admin Panel</p>
+          </div> */}
+          <div>
+            <Image
+              src={LOGO_IMAGE[0]}
+              alt={"Lfour37"}
+              height={60}
+              width={60}
+              className="object-cover transition-transform duration-700 group-hover:scale-105"
+              sizes="(max-width: 768px) 100vw, 50vw"
+            />
             <p className="text-xs text-gray-400">Admin Panel</p>
           </div>
         </Link>

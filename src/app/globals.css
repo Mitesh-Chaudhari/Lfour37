@@ -92,6 +92,14 @@
   .bg-dark{
     background-color: #000 !important;
   }
+  .hero-slide-input{
+    border: 1px solid #c39c41;
+    padding: 5px 10px;
+    border-radius: 5px;
+  }
+  .w-33{
+    width: 33.3333% !important;
+  }
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;

@@ -39,6 +39,12 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', order_id)
 
+    await supabase.from('order_tracking').insert({
+      order_id,
+      status: 'placed',
+      description: 'Order placed successfully',
+    })
+
     await supabase
       .from('payments')
       .update({

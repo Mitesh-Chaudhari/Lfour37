@@ -19,14 +19,14 @@ const FOOTER_LINKS = {
   ],
   Company: [
     { label: 'About Us', href: '/about' },
-    { label: 'Careers', href: '/careers' },
-    { label: 'Press', href: '/press' },
-    { label: 'Sustainability', href: '/sustainability' },
+    // { label: 'Careers', href: '/careers' },
+    // { label: 'Press', href: '/press' },
+    // { label: 'Sustainability', href: '/sustainability' },
   ],
   Legal: [
     { label: 'Privacy Policy', href: '/privacy' },
     { label: 'Terms of Service', href: '/terms' },
-    { label: 'Cookie Policy', href: '/cookies' },
+    // { label: 'Cookie Policy', href: '/cookies' },
   ],
 }
 
@@ -98,7 +98,7 @@ export function Footer() {
         {/* Bottom bar */}
         <div className="border-t border-gray-800 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-sm text-gray-500">
-            &copy; {new Date().getFullYear()} Lfour37. All rights reserved.
+            &copy; {new Date().getFullYear()} Yadevi Lifestyle Private Limited. All rights reserved.
           </p>
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500 mr-1">We accept:</span>
