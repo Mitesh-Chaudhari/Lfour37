@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
+import { useCartStore } from '@/store/cart-store'
 
 declare global {
   interface Window {
@@ -37,6 +38,7 @@ export function RazorpayPaymentForm({ razorpayOrder, orderId, amount }: any) {
 
     loadScript()
   }, [])
+  const clearCart = useCartStore.getState().clearCart
 
   const handlePayment = () => {
     // ❌ Prevent crash
@@ -71,6 +73,7 @@ export function RazorpayPaymentForm({ razorpayOrder, orderId, amount }: any) {
 
           if (res.ok) {
             toast.success('Payment successful!')
+            useCartStore.getState().clearCart()
             window.location.href = '/dashboard/orders'
           } else {
             toast.error('Verification failed')

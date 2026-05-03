@@ -5,6 +5,7 @@ import { Package, FileDown } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { formatPrice, formatDate } from '@/lib/utils'
 import { OrderStatus } from '@/types'
+import Image from 'next/image'
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; color: 'success' | 'warning' | 'info' | 'default' | 'destructive' }> = {
   pending: { label: 'Pending', color: 'warning' },
@@ -27,7 +28,13 @@ export default async function OrdersPage() {
     .select(`
       *,
       items:order_items(
-        id, product_name, quantity, total_price, variant_size, variant_color
+        id,
+        product_name,
+        product_image,
+        quantity,
+        total_price,
+        variant_size,
+        variant_color
       ),
       shipping_method:shipping_methods(name, estimated_days_min, estimated_days_max)
     `)
@@ -64,11 +71,11 @@ export default async function OrdersPage() {
                       <p className="font-bold text-gray-900">{order.order_number}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500">Date</p>
+                      <p className="text-xs text-gray-500">Order Date</p>
                       <p className="text-sm font-medium">{formatDate(order.created_at)}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500">Total</p>
+                      <p className="text-xs text-gray-500">Order Total</p>
                       <p className="text-sm font-bold">{formatPrice(order.total)}</p>
                     </div>
                   </div>
@@ -85,14 +92,52 @@ export default async function OrdersPage() {
 
                 {/* Items */}
                 <div className="p-4">
-                  {order.items?.slice(0, 3).map((item: { id: string; product_name: string; quantity: number; variant_size?: string; variant_color?: string; total_price: number }) => (
-                    <div key={item.id} className="flex justify-between text-sm py-1">
-                      <span className="text-gray-700">
-                        {item.product_name}
-                        {item.variant_size && ` (${item.variant_size}/${item.variant_color})`}
-                        {' ×'}{item.quantity}
+                  {order.items?.slice(0, 3).map((item: {
+                    id: string
+                    product_name: string
+                    product_image?: string
+                    quantity: number
+                    variant_size?: string
+                    variant_color?: string
+                    total_price: number
+                  }) => (
+                    <div key={item.id} className="flex items-center justify-between gap-3 py-2">
+
+                      {/* LEFT SIDE */}
+                      <Link className="flex items-center gap-3" href={`/products/${item.product_name.toLowerCase().replace(/\s+/g, '-')}/?size=${item.variant_size || ''}${item.variant_color ? `&color=${item.variant_color}` : ''}`}>
+                      {/* IMAGE */}
+                      <div className="relative h-12 w-12 rounded-md overflow-hidden bg-gray-100 flex-shrink-0">
+                        {item.product_image ? (
+                              <Image
+                                width={200}
+                                height={200}
+                                src={item.product_image}
+                                alt={item.product_name}
+                                className="h-full w-full object-cover"
+                              />
+                          ) : (
+                            <div className="h-full w-full bg-gray-200" />
+                          )}
+                      </div>
+
+                      {/* DETAILS */}
+                      <div className="text-sm">
+                        <p className="text-gray-800 font-medium line-clamp-1">
+                          {item.product_name}
+                        </p>
+
+                        <p className="text-gray-500 text-xs">
+                          {item.variant_size && `${item.variant_size}`}
+                          {item.variant_color && ` / ${item.variant_color}`}
+                          {' ×'}{item.quantity}
+                        </p>
+                      </div>
+                      </Link>
+
+                      {/* PRICE */}
+                      <span className="text-sm font-medium text-gray-900">
+                        {formatPrice(item.total_price)}
                       </span>
-                      <span className="font-medium">{formatPrice(item.total_price)}</span>
                     </div>
                   ))}
                   {order.items && order.items.length > 3 && (

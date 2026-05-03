@@ -54,14 +54,16 @@ export default function CartPage() {
             return (
               <div key={item.id} className="flex gap-4 bg-white rounded-xl border border-gray-200 p-4">
                 <div className="relative h-28 w-24 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
-                  {item.product.images[0] && (
+                  {item.variant.image_url ? (
                     <Image
-                      src={item.product.images[0].url}
+                      src={item.variant.image_url}
                       alt={item.product.name}
                       fill
                       className="object-cover"
                       sizes="96px"
                     />
+                  ) : (
+                    <div className="h-full w-full bg-gray-200" />
                   )}
                 </div>
 
@@ -136,8 +138,16 @@ export default function CartPage() {
               {savedForLater.map((item) => (
                 <div key={item.id} className="flex gap-4 bg-white rounded-xl border border-gray-200 p-4 mb-3">
                   <div className="relative h-20 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
-                    {item.product.images[0] && (
-                      <Image src={item.product.images[0].url} alt={item.product.name} fill className="object-cover" sizes="64px" />
+                    {item.variant.image_url ? (
+                      <Image
+                        src={item.variant.image_url}
+                        alt={item.product.name}
+                        fill
+                        className="object-cover"
+                        sizes="64px"
+                      />
+                    ) : (
+                      <div className="h-full w-full bg-gray-200" />
                     )}
                   </div>
                   <div className="flex-1">

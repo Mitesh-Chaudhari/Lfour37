@@ -5,6 +5,7 @@ import { formatPrice } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { ProductBulkUpload } from '@/components/admin/product-bulk-upload'
 import Image from 'next/image'
+import { AdminProductDeleteButton } from '@/components/admin/AdminProductDeleteButton'
 
 async function getProducts() {
   const supabase = await createClient()
@@ -132,17 +133,5 @@ export default async function AdminProductsPage() {
         </div>
       </div>
     </div>
-  )
-}
-
-function AdminProductDeleteButton({ productId }: { productId: string }) {
-  return (
-    <button
-      className="p-1.5 text-gray-400 hover:text-red-600 transition-colors"
-      title="Delete"
-      data-product-id={productId}
-    >
-      <Trash2 className="h-4 w-4" />
-    </button>
   )
 }

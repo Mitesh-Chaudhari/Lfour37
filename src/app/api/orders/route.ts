@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     const variantIds = data.items.map((i) => i.variant_id)
     const { data: variants } = await supabase
       .from('product_variants')
-      .select('id, stock, product_id, size, color')
+      .select('id, stock, product_id, size, color, image_url')
       .in('id', variantIds)
       .eq('is_active', true)
 
@@ -167,22 +167,29 @@ export async function POST(request: NextRequest) {
     }
 
     // Insert order items
-    const orderItems = data.items.map((item) => {
-      const product = products?.find((p) => p.id === item.product_id)
-      const variant = variants.find((v) => v.id === item.variant_id)
-      return {
-        order_id: order.id,
-        product_id: item.product_id,
-        variant_id: item.variant_id,
-        product_name: product?.name || 'Unknown Product',
-        product_image: product?.images?.[0]?.url || null,
-        variant_size: variant?.size || null,
-        variant_color: variant?.color || null,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        total_price: Number((item.unit_price * item.quantity).toFixed(2)),
-      }
-    })
+  const orderItems = data.items.map((item) => {
+    const product = products?.find((p) => p.id === item.product_id)
+    const variant = variants.find((v) => v.id === item.variant_id)
+
+    return {
+      order_id: order.id,
+      product_id: item.product_id,
+      variant_id: item.variant_id,
+      product_name: product?.name || 'Unknown Product',
+
+      // ✅ FIX: USE VARIANT IMAGE
+      product_image:
+        variant?.image_url ||
+        product?.images?.[0]?.url ||
+        null,
+
+      variant_size: variant?.size || null,
+      variant_color: variant?.color || null,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      total_price: Number((item.unit_price * item.quantity).toFixed(2)),
+    }
+  })
 
     const { error: itemsError } = await supabase.from('order_items').insert(orderItems)
 

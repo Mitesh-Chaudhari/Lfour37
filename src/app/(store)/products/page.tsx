@@ -28,9 +28,30 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
   const params = await searchParams
   const category = params.category
   return {
-    title: category ? `${category.charAt(0).toUpperCase() + category.slice(1)} Clothing` : 'All Products',
+    title: category
+      ? `${category.charAt(0).toUpperCase() + category.slice(1)} Clothing`
+      : 'All Products',
     description: 'Browse our full collection of premium clothing.',
   }
+}
+
+function buildCategoryTree(categories: any[]) {
+  const map = new Map()
+  const roots: any[] = []
+
+  categories.forEach((cat) => {
+    map.set(cat.id, { ...cat, children: [] })
+  })
+
+  categories.forEach((cat) => {
+    if (cat.parent_id) {
+      map.get(cat.parent_id)?.children.push(map.get(cat.id))
+    } else {
+      roots.push(map.get(cat.id))
+    }
+  })
+
+  return roots
 }
 
 async function getProducts(searchParams: Awaited<PageProps['searchParams']>) {
@@ -43,39 +64,60 @@ async function getProducts(searchParams: Awaited<PageProps['searchParams']>) {
 
   let query = supabase
     .from('products')
-    .select(`
+    .select(
+      `
       *,
       variants:product_variants(*),
       product_categories!inner(
         category:categories(*)
       )
-    `, { count: 'exact' })
+    `,
+      { count: 'exact' }
+    )
     .eq('status', 'active')
 
-  // Category filter
+  ////////////////////////////////////////////////////////////////
+  // ✅ FIXED CATEGORY FILTER (parent + children)
+  ////////////////////////////////////////////////////////////////
+
   if (searchParams.category) {
-    query = query.eq('product_categories.categories.slug', searchParams.category)
+    const { data: allCategories } = await supabase
+      .from('categories')
+      .select('id, slug, parent_id')
+
+    if (allCategories) {
+      const selected = allCategories.find(
+        (c) => c.slug === searchParams.category
+      )
+
+      if (selected) {
+        const childIds = allCategories
+          .filter((c) => c.parent_id === selected.id)
+          .map((c) => c.id)
+
+        const ids = [selected.id, ...childIds]
+
+        query = query.in('product_categories.category_id', ids)
+      }
+    }
   }
 
-  // Filter presets
+  ////////////////////////////////////////////////////////////////
+
   if (searchParams.filter === 'featured') query = query.eq('is_featured', true)
   if (searchParams.filter === 'new') query = query.eq('is_new_arrival', true)
   if (searchParams.filter === 'trending') query = query.eq('is_trending', true)
   if (searchParams.filter === 'sale') query = query.not('compare_price', 'is', null)
 
-  // Price range
   if (searchParams.minPrice) query = query.gte('price', Number(searchParams.minPrice))
   if (searchParams.maxPrice) query = query.lte('price', Number(searchParams.maxPrice))
 
-  // Rating filter
   if (searchParams.minRating) query = query.gte('average_rating', Number(searchParams.minRating))
 
-  // Search
   if (searchParams.search) {
     query = query.ilike('name', `%${searchParams.search}%`)
   }
 
-  // Sorting
   switch (searchParams.sortBy) {
     case 'price_asc':
       query = query.order('price', { ascending: true })
@@ -100,11 +142,18 @@ async function getProducts(searchParams: Awaited<PageProps['searchParams']>) {
 
   const { data, count } = await query
 
-  // Post-filter by size/color (variant-based)
   let products = (data as unknown as Product[]) || []
 
-  const sizes = typeof searchParams.sizes === 'string' ? [searchParams.sizes] : searchParams.sizes || []
-  const colors = typeof searchParams.colors === 'string' ? [searchParams.colors] : searchParams.colors || []
+  const sizes =
+    typeof searchParams.sizes === 'string'
+      ? [searchParams.sizes]
+      : searchParams.sizes || []
+
+  const colors =
+    typeof searchParams.colors === 'string'
+      ? [searchParams.colors]
+      : searchParams.colors || []
+
   const inStockOnly = searchParams.inStock === 'true'
 
   if (sizes.length > 0) {
@@ -112,11 +161,15 @@ async function getProducts(searchParams: Awaited<PageProps['searchParams']>) {
       p.variants?.some((v) => sizes.includes(v.size))
     )
   }
+
   if (colors.length > 0) {
     products = products.filter((p) =>
-      p.variants?.some((v) => colors.map((c) => c.toLowerCase()).includes(v.color.toLowerCase()))
+      p.variants?.some((v) =>
+        colors.map((c) => c.toLowerCase()).includes(v.color.toLowerCase())
+      )
     )
   }
+
   if (inStockOnly) {
     products = products.filter((p) =>
       p.variants?.some((v) => v.stock > 0)
@@ -126,69 +179,98 @@ async function getProducts(searchParams: Awaited<PageProps['searchParams']>) {
   return { products, total: count || 0, page, perPage }
 }
 
+//////////////////////////////////////////////////////////////////
+// ✅ FILTER OPTIONS (NOW WITH TREE)
+//////////////////////////////////////////////////////////////////
+
 async function getFilterOptions() {
   const supabase = await createClient()
 
   const [categoriesRes, variantsRes] = await Promise.all([
-    supabase.from('categories').select('id, name, slug').eq('is_active', true).order('sort_order'),
-    supabase.from('product_variants').select('size, color').eq('is_active', true),
+    supabase
+      .from('categories')
+      .select('id, name, slug, parent_id') // ✅ FIX
+      .eq('is_active', true)
+      .order('sort_order'),
+
+    supabase
+      .from('product_variants')
+      .select('size, color')
+      .eq('is_active', true),
   ])
 
   const variants = variantsRes.data || []
+
   const sizes = [...new Set(variants.map((v) => v.size))].sort()
   const colors = [...new Set(variants.map((v) => v.color))].sort()
 
+  const categoryTree = buildCategoryTree(categoriesRes.data || []) // ✅ TREE
+
   return {
-    categories: categoriesRes.data || [],
+    categories: categoryTree,
     sizes,
     colors,
   }
 }
 
+//////////////////////////////////////////////////////////////////
+// ✅ MAIN PAGE
+//////////////////////////////////////////////////////////////////
+
 export default async function ProductsPage({ searchParams }: PageProps) {
   const params = await searchParams
-  const [{ products, total, page, perPage }, filterOptions] = await Promise.all([
-    getProducts(params),
-    getFilterOptions(),
-  ])
+
+  const [{ products, total, page, perPage }, filterOptions] =
+    await Promise.all([getProducts(params), getFilterOptions()])
 
   const totalPages = Math.ceil(total / perPage)
 
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="flex flex-col md:flex-row gap-8">
-        {/* Filters sidebar */}
+        {/* Filters */}
         <aside className="w-full md:w-64 flex-shrink-0">
           <ProductFiltersPanel
-            categories={filterOptions.categories}
+            categories={filterOptions.categories} // ✅ TREE PASSED
             sizes={filterOptions.sizes}
             colors={filterOptions.colors}
             searchParams={params}
           />
         </aside>
 
-        {/* Main content */}
+        {/* Products */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-6">
             <p className="text-sm text-gray-600">
-              {params.search ? (
-                <>Results for <strong>&quot;{params.search}&quot;</strong> — </>
-              ) : null}
+              {params.search && (
+                <>
+                  Results for <strong>"{params.search}"</strong> —{' '}
+                </>
+              )}
               <strong>{total}</strong> products
             </p>
+
             <ProductSort currentSort={params.sortBy} />
           </div>
 
-          <Suspense fallback={
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {Array.from({ length: 8 }).map((_, i) => <ProductCardSkeleton key={i} />)}
-            </div>
-          }>
+          <Suspense
+            fallback={
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <ProductCardSkeleton key={i} />
+                ))}
+              </div>
+            }
+          >
             {products.length === 0 ? (
               <div className="text-center py-20">
                 <div className="text-6xl mb-4">🔍</div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">No products found</h3>
-                <p className="text-gray-500">Try adjusting your filters or search terms</p>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                  No products found
+                </h3>
+                <p className="text-gray-500">
+                  Try adjusting your filters or search terms
+                </p>
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">

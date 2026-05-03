@@ -15,7 +15,12 @@ import Image from 'next/image'
 import toast from 'react-hot-toast'
 
 interface ProductFormProps {
-  categories: { id: string; name: string; slug: string }[]
+  categories: {
+    id: string
+    name: string
+    slug: string
+    parent_id?: string | null
+  }[]
   initialData?: {
     id: string
     name: string
@@ -47,6 +52,25 @@ interface VariantInput {
   image_url?: string | null   // ✅ NEW
 }
 
+const buildCategoryTree = (categories: any[]) => {
+  const map = new Map()
+  const roots: any[] = []
+
+  categories.forEach((cat) => {
+    map.set(cat.id, { ...cat, children: [] })
+  })
+
+  categories.forEach((cat) => {
+    if (cat.parent_id) {
+      map.get(cat.parent_id)?.children.push(map.get(cat.id))
+    } else {
+      roots.push(map.get(cat.id))
+    }
+  })
+
+  return roots
+}
+
 export function ProductForm({ categories, initialData }: ProductFormProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -60,6 +84,7 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
   const [variants, setVariants] = useState<VariantInput[]>([
     { size: 'S', color: 'Black', color_hex: '#000000', stock: 0, price_modifier: 0 },
   ])
+  const categoryTree = buildCategoryTree(categories);
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<ProductFormData>({
     resolver: zodResolver(productSchema) as any,
@@ -81,7 +106,7 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
       category_ids: initialData?.category_ids || [],
     },
   })
-
+  const selectedCategories = watch('category_ids') || [];
   const productName = watch('name')
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -351,17 +376,86 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <h2 className="text-lg font-semibold mb-4">Categories</h2>
         <div className="flex flex-wrap gap-2">
-          {categories.map((cat) => (
-            <label key={cat.id} className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                value={cat.id}
-                className="accent-primary-600"
-                {...register('category_ids')}
-              />
-              <span className="text-sm text-gray-700">{cat.name}</span>
-            </label>
-          ))}
+          const selectedCategories = watch('category_ids') || []
+
+          <div className="space-y-3">
+            {categoryTree.map((parent) => (
+              <div key={parent.id}>
+
+                {/* Parent */}
+                <label className="flex items-center gap-2 font-medium text-gray-800">
+                  <input
+                    type="checkbox"
+                    value={parent.id}
+                    className="accent-primary-600"
+                    checked={selectedCategories.includes(parent.id)}
+                    onChange={(e) => {
+                      let updated = [...selectedCategories]
+
+                      if (e.target.checked) {
+                        updated.push(parent.id)
+
+                        parent.children.forEach((child: any) => {
+                          if (!updated.includes(child.id)) {
+                            updated.push(child.id)
+                          }
+                        })
+                      } else {
+                        updated = updated.filter(
+                          (id) =>
+                            id !== parent.id &&
+                            !parent.children.some((child: any) => child.id === id)
+                        )
+                      }
+
+                      setValue('category_ids', updated)
+                    }}
+                  />
+                  {parent.name}
+                </label>
+
+                {/* Children */}
+                {parent.children.length > 0 && (
+                  <div className="ml-6 mt-2 flex flex-wrap gap-3">
+                    {parent.children.map((child: any) => (
+                      <label key={child.id} className="flex items-center gap-2 text-sm text-gray-600">
+                        <input
+                          type="checkbox"
+                          value={child.id}
+                          className="accent-primary-600"
+                          checked={selectedCategories.includes(child.id)}
+                          onChange={(e) => {
+                            let updated = [...selectedCategories]
+
+                            if (e.target.checked) {
+                              updated.push(child.id)
+
+                              if (!updated.includes(parent.id)) {
+                                updated.push(parent.id)
+                              }
+                            } else {
+                              updated = updated.filter((id) => id !== child.id)
+
+                              const siblingSelected = parent.children.some(
+                                (c: any) => c.id !== child.id && updated.includes(c.id)
+                              )
+
+                              if (!siblingSelected) {
+                                updated = updated.filter((id) => id !== parent.id)
+                              }
+                            }
+
+                            setValue('category_ids', updated)
+                          }}
+                        />
+                        {child.name}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
         {errors.category_ids && <p className="text-xs text-red-500 mt-1">{errors.category_ids.message}</p>}
       </div>

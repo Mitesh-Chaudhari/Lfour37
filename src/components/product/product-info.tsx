@@ -14,6 +14,7 @@ import { createClient } from '@/lib/supabase/client'
 import { formatPrice, calculateDiscount } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 interface ProductInfoProps {
   product: Product
@@ -27,9 +28,37 @@ export function ProductInfo({ product }: ProductInfoProps) {
   const [selectedColor, setSelectedColor] = useState<string | null>(null)
   const [quantity, setQuantity] = useState(1)
   const [expandedSection, setExpandedSection] = useState<string | null>('details')
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
 
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
+  useEffect(() => {
+    const color = searchParams.get('color')
+    const size = searchParams.get('size')
+
+    if (color) setSelectedColor(color)
+    if (size) setSelectedSize(size)
+  }, [])
+
+  const updateUrl = (newColor: string | null, newSize: string | null) => {
+    const params = new URLSearchParams(window.location.search)
+
+    if (newColor) {
+      params.set('color', newColor)
+    } else {
+      params.delete('color')
+    }
+
+    if (newSize) {
+      params.set('size', newSize)
+    } else {
+      params.delete('size')
+    }
+
+    router.replace(`?${params.toString()}`, { scroll: false })
+  }
 
   const inWishlist = mounted && isInWishlist(product.id)
   const discount = calculateDiscount(product.price, product.compare_price || 0)
@@ -157,15 +186,22 @@ export function ProductInfo({ product }: ProductInfoProps) {
               return (
                 <button
                   key={color}
-                  onClick={() => available && setSelectedColor(selectedColor === color ? null : color)}
+                  onClick={() => {
+                    if (!available) return
+
+                    const newColor = selectedColor === color ? null : color
+
+                    setSelectedColor(newColor)
+                    updateUrl(newColor, selectedSize)
+                  }}
                   disabled={!available}
                   className={cn(
                     'px-4 py-2 text-sm font-medium rounded-lg border-2 transition-all',
                     selectedColor === color
                       ? 'border-purple-600 bg-purple-50 text-purple-700'
                       : available
-                      ? 'border-gray-300 text-gray-700 hover:border-purple-400'
-                      : 'border-gray-200 text-gray-300 cursor-not-allowed line-through'
+                        ? 'border-gray-300 text-gray-700 hover:border-purple-400'
+                        : 'border-gray-200 text-gray-300 cursor-not-allowed line-through'
                   )}
                 >
                   {color}
@@ -195,15 +231,22 @@ export function ProductInfo({ product }: ProductInfoProps) {
               return (
                 <button
                   key={size}
-                  onClick={() => available && setSelectedSize(selectedSize === size ? null : size)}
+                  onClick={() => {
+                    if (!available) return
+
+                    const newSize = selectedSize === size ? null : size
+
+                    setSelectedSize(newSize)
+                    updateUrl(selectedColor, newSize)
+                  }}
                   disabled={!available}
                   className={cn(
                     'h-10 min-w-[40px] px-3 text-sm font-medium rounded-lg border-2 transition-all relative',
                     selectedSize === size
                       ? 'border-purple-600 bg-purple-50 text-purple-700'
                       : available
-                      ? 'border-gray-300 text-gray-700 hover:border-purple-400'
-                      : 'border-gray-200 text-gray-300 cursor-not-allowed'
+                        ? 'border-gray-300 text-gray-700 hover:border-purple-400'
+                        : 'border-gray-200 text-gray-300 cursor-not-allowed'
                   )}
                 >
                   {size}
@@ -258,7 +301,7 @@ export function ProductInfo({ product }: ProductInfoProps) {
       {/* Actions */}
       <div className="flex gap-3">
         <Button
-          onClick={() => {}}
+          onClick={() => { }}
           className="flex-1"
           size="lg"
           variant="brand"

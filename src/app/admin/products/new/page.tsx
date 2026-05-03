@@ -3,7 +3,11 @@ import { ProductForm } from '@/components/admin/product-form'
 
 async function getCategories() {
   const supabase = await createClient()
-  const { data } = await supabase.from('categories').select('id, name, slug').eq('is_active', true).order('sort_order')
+  const { data } = await supabase
+    .from('categories')
+    .select('id, name, slug, parent_id') // ✅ IMPORTANT
+    .eq('is_active', true)
+    .order('sort_order')
   return data || []
 }
 

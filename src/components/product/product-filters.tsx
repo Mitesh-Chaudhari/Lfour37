@@ -102,6 +102,27 @@ export function ProductFiltersPanel({ categories, sizes, colors, searchParams }:
   const selectedSizes = typeof searchParams.sizes === 'string' ? [searchParams.sizes] : searchParams.sizes || []
   const selectedColors = typeof searchParams.colors === 'string' ? [searchParams.colors] : searchParams.colors || []
 
+  function renderCategories(cats: any[], level = 0) {
+    return cats.map((cat) => (
+      <div key={cat.id} style={{ paddingLeft: level * 12 }}>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="radio"
+            name="category"
+            checked={searchParams.category === cat.slug}
+            onChange={() => updateFilter('category', cat.slug)}
+            className="accent-primary-600"
+          />
+          <span className="text-sm text-gray-700">
+            {level > 0} {cat.name}
+          </span>
+        </label>
+
+        {cat.children?.length > 0 && renderCategories(cat.children, level + 1)}
+      </div>
+    ))
+  }
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4">
       {/* Header */}
@@ -130,7 +151,7 @@ export function ProductFiltersPanel({ categories, sizes, colors, searchParams }:
             />
             <span className="text-sm text-gray-700">All Categories</span>
           </label>
-          {categories.map((cat) => (
+          {/* {categories.map((cat) => (
             <label key={cat.id} className="flex items-center gap-2 cursor-pointer">
               <input
                 type="radio"
@@ -141,7 +162,8 @@ export function ProductFiltersPanel({ categories, sizes, colors, searchParams }:
               />
               <span className="text-sm text-gray-700">{cat.name}</span>
             </label>
-          ))}
+          ))} */}
+          {renderCategories(categories)}
         </div>
       </FilterSection>
 
