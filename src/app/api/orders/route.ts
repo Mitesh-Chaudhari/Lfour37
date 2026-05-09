@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
       variant_id: item.variant_id,
       product_name: product?.name || 'Unknown Product',
 
-      // ✅ FIX: USE VARIANT IMAGE
+      // USE VARIANT IMAGE
       product_image:
         variant?.image_url ||
         product?.images?.[0]?.url ||

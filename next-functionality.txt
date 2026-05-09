@@ -1,0 +1,2 @@
+Auto refund after approve (order cancellation request)
+Email user on approve/reject

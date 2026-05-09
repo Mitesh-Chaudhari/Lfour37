@@ -24,7 +24,9 @@ const FOOTER_LINKS = {
     // { label: 'Sustainability', href: '/sustainability' },
   ],
   Legal: [
-    { label: 'Privacy Policy', href: '/privacy' },
+    { label: 'Privacy Policy', href: '/privacy-policy' },
+    { label: 'Returns & Refunds', href: '/return-refund' },
+    { label: 'FAQ', href: '/faq' },
     { label: 'Terms of Service', href: '/terms' },
     // { label: 'Cookie Policy', href: '/cookies' },
   ],

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -39,6 +39,16 @@ interface ProductFormProps {
     seo_title?: string
     seo_description?: string
     category_ids: string[]
+
+    variants?: {
+      id: string
+      size: string
+      color: string
+      color_hex: string
+      stock: number
+      price_modifier: number
+      image_url?: string | null
+    }[]
   }
 }
 
@@ -81,9 +91,45 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [tags, setTags] = useState<string[]>(initialData?.tags || [])
   const [tagInput, setTagInput] = useState('')
-  const [variants, setVariants] = useState<VariantInput[]>([
-    { size: 'S', color: 'Black', color_hex: '#000000', stock: 0, price_modifier: 0 },
-  ])
+  const [variants, setVariants] = useState<VariantInput[]>(() => {
+    if (initialData?.variants && initialData.variants.length > 0) {
+      return initialData.variants.map((v) => ({
+        size: v.size || '',
+        color: v.color || '',
+        color_hex: v.color_hex || '#000000',
+        stock: v.stock ?? 0,
+        price_modifier: Number(v.price_modifier || 0),
+        image_url: v.image_url || null,
+        file: null,
+      }))
+    }
+
+    // fallback for new product
+    return [
+      {
+        size: '',
+        color: '',
+        color_hex: '#000000',
+        stock: 0,
+        price_modifier: 0,
+      },
+    ]
+  });
+  useEffect(() => {
+    if (initialData?.variants?.length) {
+      setVariants(
+        initialData.variants.map((v) => ({
+          size: v.size,
+          color: v.color,
+          color_hex: v.color_hex || '#000000',
+          stock: v.stock ?? 0,
+          price_modifier: Number(v.price_modifier || 0),
+          image_url: v.image_url || null,
+          file: null,
+        }))
+      )
+    }
+  }, [initialData])
   const categoryTree = buildCategoryTree(categories);
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<ProductFormData>({
@@ -376,8 +422,6 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <h2 className="text-lg font-semibold mb-4">Categories</h2>
         <div className="flex flex-wrap gap-2">
-          const selectedCategories = watch('category_ids') || []
-
           <div className="space-y-3">
             {categoryTree.map((parent) => (
               <div key={parent.id}>

@@ -27,7 +27,12 @@ export default async function AdminProductEditPage({ params }: Props) {
 
   const productWithCategories = {
     ...product,
-    category_ids: (product.categories || []).map((c: { category_id: string }) => c.category_id),
+
+    category_ids: (product.categories || []).map(
+      (c: { category_id: string }) => c.category_id
+    ),
+
+    variants: product.variants || [],
   }
 
   return (

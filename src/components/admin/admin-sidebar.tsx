@@ -13,7 +13,7 @@ import {
   Layers,
   LogOut,
   TicketSlash,
-
+  SquareX
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -29,6 +29,9 @@ const NAV_ITEMS = [
   { href: '/admin/products', icon: Package, label: 'Products' },
   { href: '/admin/categories', icon: Layers, label: 'Categories' },
   { href: '/admin/orders', icon: ShoppingBag, label: 'Orders' },
+  { href: '/admin/order-cancel-requests', icon: SquareX, label: 'Cancel Requests' },
+  { href: '/admin/cancel-reasons', icon: SquareX, label: 'Order Cancel Reasons Manage' },
+  { href: '/admin/pages', icon: TicketSlash, label: 'Policy Manager' },
   { href: '/admin/users', icon: Users, label: 'Users' },
   { href: '/admin/hero-slides', icon: TicketSlash, label: 'Banners' },
   { href: '/admin/promotions', icon: Tag, label: 'Promotions' },

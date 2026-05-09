@@ -8,7 +8,15 @@ async function getOrders() {
     .select(`
       *,
       user:users(id, full_name, email),
-      items:order_items(id, product_name, quantity, total_price),
+      items:order_items(
+        id,
+        product_name,
+        quantity,
+        total_price,
+        status,
+        cancel_custom_reason,
+        cancel_reason:cancel_reason_id(label)
+      ),
       payment:payments(id, status, payment_method, stripe_payment_intent_id)
     `)
     .order('created_at', { ascending: false })

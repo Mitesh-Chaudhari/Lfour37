@@ -43,7 +43,7 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
   const filtered = orders.filter((o) => {
     if (selectedStatus !== 'all' && o.status !== selectedStatus) return false
     if (search && !o.order_number.toLowerCase().includes(search.toLowerCase()) &&
-        !o.user?.email?.toLowerCase().includes(search.toLowerCase())) return false
+      !o.user?.email?.toLowerCase().includes(search.toLowerCase())) return false
     return true
   })
 
@@ -98,6 +98,66 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
     }
   }
 
+  const handleApproveCancel = async (itemId: string) => {
+    try {
+      const res = await fetch('/api/admin/orders/cancel-approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_id: itemId }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        toast.error(data.error || 'Failed to approve')
+        return
+      }
+
+      toast.success('Cancellation approved')
+
+      // ✅ UPDATE UI
+      setOrders((prev) =>
+        prev.map((order) => ({
+          ...order,
+          items: order.items?.map((item: any) =>
+            item.id === itemId ? { ...item, status: 'cancelled' } : item
+          ),
+        }))
+      )
+    } catch {
+      toast.error('Error approving cancellation')
+    }
+  }
+
+  const handleRejectCancel = async (itemId: string) => {
+    try {
+      const res = await fetch('/api/admin/orders/cancel-reject', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_id: itemId }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        toast.error(data.error || 'Failed to reject')
+        return
+      }
+
+      toast.success('Cancellation rejected')
+
+      // UPDATE UI
+      setOrders((prev) =>
+        prev.map((order) => ({
+          ...order,
+          items: order.items?.map((item: any) =>
+            item.id === itemId ? { ...item, status: 'active' } : item
+          ),
+        }))
+      )
+    } catch {
+      toast.error('Error rejecting cancellation')
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* Filters */}
@@ -132,6 +192,7 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Total</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Payment</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Items</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Update Status</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Actions</th>
               </tr>
@@ -159,6 +220,66 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
                     <Badge variant={STATUS_BADGE[order.status]}>
                       {order.status}
                     </Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="space-y-2">
+                      {order.items?.map((item: any) => (
+                        <div key={item.id} className="text-xs border rounded p-2 bg-gray-50">
+                          {
+                            item.status === 'cancelled' ? (
+                              <Badge variant="destructive" className="mb-1">Cancelled</Badge>
+                            ) : item.status === 'cancel_requested' ? (
+                              <Badge variant="warning" className="mb-1">Cancel Requested</Badge>
+                            ) : null
+                          }
+                          <p className="font-medium text-gray-800">
+                            {item.product_name}
+                          </p>
+
+                          <p className="text-gray-500">
+                            Qty: {item.quantity} • {formatPrice(item.total_price)}
+                          </p>
+
+                          {/* CANCEL REASON */}
+                          {item.status === 'cancelled' && (
+                            <p className="text-red-500 mt-1">
+                              Reason:{' '}
+                              {item.cancel_reason?.label || item.cancel_custom_reason}
+                            </p>
+                          )}
+
+                          {/* CANCEL REQUEST STATE */}
+                          {item.status === 'cancel_requested' && (
+                            <div className="mt-2 space-y-2">
+
+                              <p className="text-orange-500">
+                                Cancellation Requested
+                              </p>
+
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  className="text-xs px-2 py-1"
+                                  onClick={() => handleApproveCancel(item.id)}
+                                >
+                                  Approve
+                                </Button>
+
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-xs px-2 py-1"
+                                  onClick={() => handleRejectCancel(item.id)}
+                                >
+                                  Reject
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <select
