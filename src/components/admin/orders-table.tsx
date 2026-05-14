@@ -27,6 +27,11 @@ const STATUS_BADGE: Record<OrderStatus, 'success' | 'warning' | 'info' | 'defaul
   delivered: 'success',
   cancelled: 'destructive',
   refunded: 'default',
+  return_requested: 'warning',
+  return_initiated: 'info',
+  returned: 'success',
+  exchange_initiated: 'info',
+  exchanged: 'success',
 }
 
 interface AdminOrdersTableProps {
@@ -98,6 +103,114 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
     }
   }
 
+  const approveReturn = async (
+    itemId: string
+  ) => {
+    try {
+      const res = await fetch(
+        '/api/admin/orders/approve-return',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+          body: JSON.stringify({
+            item_id: itemId,
+          }),
+        }
+      )
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        toast.error(
+          data.error ||
+          'Failed to approve'
+        )
+        return
+      }
+
+      setOrders(
+        orders.map((order) => ({
+          ...order,
+          items: order.items?.map(
+            (item: any) =>
+              item.id === itemId
+                ? {
+                  ...item,
+                  return_status:
+                    'return_approved',
+                }
+                : item
+          ),
+        }))
+      )
+
+      toast.success(
+        'Return approved'
+      )
+    } catch {
+      toast.error(
+        'Failed to approve return'
+      )
+    }
+  }
+
+  const rejectReturn = async (
+    itemId: string
+  ) => {
+    try {
+      const res = await fetch(
+        '/api/admin/orders/reject-return',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+          body: JSON.stringify({
+            item_id: itemId,
+          }),
+        }
+      )
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        toast.error(
+          data.error ||
+          'Failed to reject'
+        )
+        return
+      }
+
+      setOrders(
+        orders.map((order) => ({
+          ...order,
+          items: order.items?.map(
+            (item: any) =>
+              item.id === itemId
+                ? {
+                  ...item,
+                  return_status:
+                    'return_rejected',
+                }
+                : item
+          ),
+        }))
+      )
+
+      toast.success(
+        'Return rejected'
+      )
+    } catch {
+      toast.error(
+        'Failed to reject return'
+      )
+    }
+  }
+
   const handleApproveCancel = async (itemId: string) => {
     try {
       const res = await fetch('/api/admin/orders/cancel-approve', {
@@ -114,7 +227,7 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
 
       toast.success('Cancellation approved')
 
-      // ✅ UPDATE UI
+      // UPDATE UI
       setOrders((prev) =>
         prev.map((order) => ({
           ...order,
@@ -275,6 +388,90 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
                                   Reject
                                 </Button>
                               </div>
+                            </div>
+                          )}
+
+                          {/* RETURN STATUS */}
+                          {item.return_status && (
+                            <div className="mt-2 border-t pt-2">
+
+                              <Badge
+                                variant={
+                                  item.return_status ===
+                                  'return_requested'
+                                    ? 'warning'
+                                    : item.return_status ===
+                                      'return_approved'
+                                    ? 'success'
+                                    : item.return_status ===
+                                      'return_rejected'
+                                    ? 'destructive'
+                                    : 'default'
+                                }
+                              >
+                                {item.return_status
+                                  .replace(/_/g, ' ')
+                                  .toUpperCase()}
+                              </Badge>
+
+                              <div className="mt-2 text-xs space-y-1 text-gray-600">
+
+                                <p>
+                                  Type:{' '}
+                                  <span className="font-medium">
+                                    {item.return_type}
+                                  </span>
+                                </p>
+
+                                {item.exchange_size && (
+                                  <p>
+                                    Exchange Size:{' '}
+                                    {item.exchange_size}
+                                  </p>
+                                )}
+
+                                {item.exchange_color && (
+                                  <p>
+                                    Exchange Color:{' '}
+                                    {item.exchange_color}
+                                  </p>
+                                )}
+
+                                {item.return_custom_reason && (
+                                  <p>
+                                    Reason:{' '}
+                                    {item.return_custom_reason}
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* APPROVE / REJECT */}
+                              {item.return_status ===
+                                'return_requested' && (
+                                <div className="flex gap-2 mt-3">
+
+                                  <Button
+                                    size="sm"
+                                    className="h-8"
+                                    onClick={() =>
+                                      approveReturn(item.id)
+                                    }
+                                  >
+                                    Approve
+                                  </Button>
+
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    className="h-8"
+                                    onClick={() =>
+                                      rejectReturn(item.id)
+                                    }
+                                  >
+                                    Reject
+                                  </Button>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>

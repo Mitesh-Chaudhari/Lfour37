@@ -34,13 +34,6 @@ export function ProductInfo({ product }: ProductInfoProps) {
 
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
-  useEffect(() => {
-    const color = searchParams.get('color')
-    const size = searchParams.get('size')
-
-    if (color) setSelectedColor(color)
-    if (size) setSelectedSize(size)
-  }, [])
 
   const updateUrl = (newColor: string | null, newSize: string | null) => {
     const params = new URLSearchParams(window.location.search)
@@ -67,6 +60,48 @@ export function ProductInfo({ product }: ProductInfoProps) {
   const variants = product.variants?.filter((v) => v.is_active) || []
   const sizes = [...new Set(variants.map((v) => v.size))]
   const colors = [...new Set(variants.map((v) => v.color))]
+
+  useEffect(() => {
+    const color =
+      searchParams.get('color')
+
+    const size =
+      searchParams.get('size')
+
+    // ONLY initialize once
+    if (
+      selectedColor === null &&
+      selectedSize === null
+    ) {
+      const initialColor =
+        color ||
+        colors[0] ||
+        null
+
+      const initialSize =
+        size ||
+        sizes[0] ||
+        null
+
+      setSelectedColor(initialColor)
+      setSelectedSize(initialSize)
+
+      // Sync URL only first time
+      if (!color || !size) {
+        updateUrl(
+          initialColor,
+          initialSize
+        )
+      }
+    }
+
+  }, [
+    searchParams,
+    colors,
+    sizes,
+    selectedColor,
+    selectedSize,
+  ])
 
   // Find matching variant
   const selectedVariant: ProductVariant | null =
@@ -301,14 +336,57 @@ export function ProductInfo({ product }: ProductInfoProps) {
       {/* Actions */}
       <div className="flex gap-3">
         <Button
-          onClick={() => { }}
+          onClick={() => {
+
+            // REQUIRE COLOR
+            if (!selectedColor) {
+              toast.error(
+                'Please select a color'
+              )
+              return
+            }
+
+            // FIND SELECTED COLOR IMAGE
+            const selectedColorVariant =
+              variants.find(
+                (v) =>
+                  v.color === selectedColor
+              )
+
+            const image =
+              selectedColorVariant?.image_url ||
+              selectedVariant?.image_url ||
+              product.images?.find(
+                (img: any) =>
+                  img.color === selectedColor
+              )?.url ||
+              product.images?.[0]?.url
+
+            if (!image) {
+              toast.error(
+                'No product image found'
+              )
+              return
+            }
+
+            router.push(
+              `/try-on?product=${encodeURIComponent(
+                image
+              )}&productId=${product.id}&name=${encodeURIComponent(
+                product.name
+              )}&color=${encodeURIComponent(
+                selectedColor
+              )}`
+            )
+          }}
           className="flex-1"
           size="lg"
           variant="brand"
         >
           <RectangleGoggles className="h-5 w-5" />
-          {'Virtual try on'}
+          Virtual Try On
         </Button>
+
         <Button
           onClick={handleAddToCart}
           className="flex-1"

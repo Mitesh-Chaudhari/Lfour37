@@ -17,7 +17,7 @@ export default function CancelModal({ itemId, onClose }: any) {
       const res = await fetch('/api/admin/cancel-reasons')
       const data = await res.json()
 
-      // ✅ Add "Other"
+      // Add "Other"
       setReasons([
         ...data,
         { id: 'other', label: 'Other' },
@@ -77,7 +77,7 @@ export default function CancelModal({ itemId, onClose }: any) {
           ))}
         </select>
 
-        {/* ✅ Show textarea when OTHER */}
+        {/* Show textarea when OTHER */}
         {reasonId === 'other' && (
           <textarea
             placeholder="Enter reason..."

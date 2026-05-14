@@ -1,5 +1,5 @@
 export type UserRole = 'customer' | 'admin' | 'super_admin'
-export type OrderStatus = 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded'
+export type OrderStatus = 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded' | 'return_requested' | 'return_initiated' | 'returned' | 'exchange_initiated' | 'exchanged'
 export type PaymentMethod = 'stripe' | 'crypto'
 export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'refunded'
 export type CryptoNetwork = 'ethereum' | 'polygon' | 'bsc' | 'base'

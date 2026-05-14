@@ -1,19 +1,91 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Package, Heart, MapPin, User, FileText } from 'lucide-react'
+import { Package, Heart, MapPin, User, FileText, Landmark  } from 'lucide-react'
 import { formatPrice, formatDate } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { OrderStatus } from '@/types'
 
-const ORDER_STATUS_CONFIG: Record<OrderStatus, { label: string; color: 'success' | 'warning' | 'info' | 'default' | 'destructive' }> = {
-  pending: { label: 'Pending', color: 'warning' },
-  paid: { label: 'Paid', color: 'info' },
-  processing: { label: 'Processing', color: 'info' },
-  shipped: { label: 'Shipped', color: 'info' },
-  delivered: { label: 'Delivered', color: 'success' },
-  cancelled: { label: 'Cancelled', color: 'destructive' },
-  refunded: { label: 'Refunded', color: 'default' },
+// const ORDER_STATUS_CONFIG: Record<OrderStatus, { label: string; color: 'success' | 'warning' | 'info' | 'default' | 'destructive' }> = {
+//   pending: { label: 'Pending', color: 'warning' },
+//   paid: { label: 'Paid', color: 'info' },
+//   processing: { label: 'Processing', color: 'info' },
+//   shipped: { label: 'Shipped', color: 'info' },
+//   delivered: { label: 'Delivered', color: 'success' },
+//   cancelled: { label: 'Cancelled', color: 'destructive' },
+//   refunded: { label: 'Refunded', color: 'default' },
+// }
+const ORDER_STATUS_CONFIG: Record<
+  OrderStatus,
+  {
+    label: string
+    color:
+      | 'success'
+      | 'warning'
+      | 'info'
+      | 'default'
+      | 'destructive'
+  }
+> = {
+  pending: {
+    label: 'Pending',
+    color: 'warning',
+  },
+
+  paid: {
+    label: 'Paid',
+    color: 'info',
+  },
+
+  processing: {
+    label: 'Processing',
+    color: 'info',
+  },
+
+  shipped: {
+    label: 'Shipped',
+    color: 'info',
+  },
+
+  delivered: {
+    label: 'Delivered',
+    color: 'success',
+  },
+
+  cancelled: {
+    label: 'Cancelled',
+    color: 'destructive',
+  },
+
+  refunded: {
+    label: 'Refunded',
+    color: 'default',
+  },
+
+  return_requested: {
+    label: 'Return Requested',
+    color: 'warning',
+  },
+
+  return_initiated: {
+    label: 'Return Initiated',
+    color: 'info',
+  },
+
+  returned: {
+    label: 'Returned',
+    color: 'default',
+  },
+
+  exchange_initiated: {
+    label: 'Exchange Initiated',
+    color: 'info',
+  },
+  
+  exchanged: {
+    label: 'Exchanged',
+    color: 'default',
+   },
 }
 
 async function getDashboardData() {
@@ -55,6 +127,7 @@ export default async function DashboardPage() {
     { href: '/dashboard/addresses', icon: MapPin, label: 'Addresses' },
     { href: '/dashboard/profile', icon: User, label: 'Profile' },
     { href: '/dashboard/invoices', icon: FileText, label: 'Invoices' },
+    { href: '/dashboard/bank-accounts', icon: Landmark, label: 'My Bank Accounts' },
   ]
 
   return (

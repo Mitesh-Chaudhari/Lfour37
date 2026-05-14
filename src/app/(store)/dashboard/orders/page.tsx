@@ -7,15 +7,79 @@ import { formatPrice, formatDate } from '@/lib/utils'
 import { OrderStatus } from '@/types'
 import Image from 'next/image'
 import OrderItemActions from '@/components/order/order-item-actions'
+import ReturnItemActions from '@/components/order/return-item-action'
 
-const STATUS_CONFIG: Record<OrderStatus, { label: string; color: 'success' | 'warning' | 'info' | 'default' | 'destructive' }> = {
-  pending: { label: 'Pending', color: 'warning' },
-  paid: { label: 'Paid', color: 'info' },
-  processing: { label: 'Processing', color: 'info' },
-  shipped: { label: 'Shipped', color: 'info' },
-  delivered: { label: 'Delivered', color: 'success' },
-  cancelled: { label: 'Cancelled', color: 'destructive' },
-  refunded: { label: 'Refunded', color: 'default' },
+const STATUS_CONFIG: Record<
+  OrderStatus,
+  {
+    label: string
+    color:
+    | 'success'
+    | 'warning'
+    | 'info'
+    | 'default'
+    | 'destructive'
+  }
+> = {
+  pending: {
+    label: 'Pending',
+    color: 'warning',
+  },
+
+  paid: {
+    label: 'Paid',
+    color: 'info',
+  },
+
+  processing: {
+    label: 'Processing',
+    color: 'info',
+  },
+
+  shipped: {
+    label: 'Shipped',
+    color: 'info',
+  },
+
+  delivered: {
+    label: 'Delivered',
+    color: 'success',
+  },
+
+  cancelled: {
+    label: 'Cancelled',
+    color: 'destructive',
+  },
+
+  refunded: {
+    label: 'Refunded',
+    color: 'default',
+  },
+
+  return_requested: {
+    label: 'Return Requested',
+    color: 'warning',
+  },
+
+  return_initiated: {
+    label: 'Return Initiated',
+    color: 'info',
+  },
+
+  returned: {
+    label: 'Returned',
+    color: 'default',
+  },
+
+  exchange_initiated: {
+    label: 'Exchange Initiated',
+    color: 'info',
+  },
+
+  exchanged: {
+    label: 'Exchanged',
+    color: 'default',
+  },
 }
 
 export default async function OrdersPage() {
@@ -31,6 +95,7 @@ export default async function OrdersPage() {
       items:order_items(
         id,
         status,
+        return_status,
         cancel_reason,
         cancelled_at,
         product_name,
@@ -106,6 +171,7 @@ export default async function OrdersPage() {
                       variant_color?: string
                       total_price: number
                       status?: string
+                      return_status?: string
                     }) => (
                       <div key={item.id} className="flex items-center justify-between gap-3 py-2">
 
@@ -137,6 +203,12 @@ export default async function OrdersPage() {
                               {item.variant_color && ` / ${item.variant_color}`}
                               {' ×'}{item.quantity}
                             </p>
+
+                            {item.return_status && (
+                              <p className="text-xs text-blue-600 mt-1">
+                                Return Status: {item.return_status}
+                              </p>
+                            )}
                           </div>
                         </Link>
 
@@ -145,7 +217,49 @@ export default async function OrdersPage() {
                           {formatPrice(item.total_price)}
                         </span>
 
-                        <OrderItemActions item={item} />
+                        <div className="flex gap-2">
+
+                          {/* CANCEL */}
+                          {['pending', 'paid', 'processing', 'shipped'].includes(order.status) &&
+                            item.status !== 'cancelled' &&
+                            !item.return_status && (
+                              <OrderItemActions item={item} />
+                            )}
+
+                          {/* RETURN / EXCHANGE */}
+                          {[
+                            'delivered',
+                            'return_requested',
+                            'return_initiated',
+                            'exchange_initiated',
+                            'returned',
+                          ].includes(order.status) &&
+                            item.status !== 'cancelled' && (
+                              <>
+                                {!item.return_status ? (
+                                  <ReturnItemActions item={item} />
+                                ) : (
+                                  <span
+                                    className={`text-xs px-2 py-1 rounded ${item.return_status === 'return_requested'
+                                      ? 'bg-orange-100 text-orange-700'
+                                      : item.return_status === 'return_approved'
+                                        ? 'bg-green-100 text-green-700'
+                                        : item.return_status === 'return_rejected'
+                                          ? 'bg-red-100 text-red-700'
+                                          : 'bg-gray-100 text-gray-700'
+                                      }`}
+                                  >
+                                    {item.return_status
+                                      .replace(/_/g, ' ')
+                                      .replace(/\b\w/g, (c) =>
+                                        c.toUpperCase()
+                                      )}
+                                  </span>
+                                )}
+                              </>
+                            )}
+
+                        </div>
                       </div>
                     ))}
                     {order.items && order.items.length > 3 && (
