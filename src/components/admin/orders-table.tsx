@@ -7,6 +7,10 @@ import { Button } from '@/components/ui/button'
 import { formatPrice, formatDate } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
+import {
+  Truck,
+  PackageCheck,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const STATUS_OPTIONS: { value: OrderStatus; label: string }[] = [
@@ -271,6 +275,142 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
     }
   }
 
+  const markShipped = async (
+  orderId: string
+) => {
+
+  const trackingNumber =
+    prompt(
+      'Enter tracking number'
+    )
+
+  if (!trackingNumber) {
+    return
+  }
+
+  try {
+
+    setUpdatingId(orderId)
+
+    const res = await fetch(
+      '/api/admin/orders/mark-shipped',
+      {
+        method: 'POST',
+
+        headers: {
+          'Content-Type':
+            'application/json',
+        },
+
+        body: JSON.stringify({
+          orderId,
+          trackingNumber,
+        }),
+      }
+    )
+
+    const data =
+      await res.json()
+
+    if (!res.ok) {
+      toast.error(
+        data.error ||
+        'Failed to mark shipped'
+      )
+      return
+    }
+
+    setOrders(
+      orders.map((o) =>
+        o.id === orderId
+          ? {
+              ...o,
+              status: 'shipped',
+            }
+          : o
+      )
+    )
+
+    toast.success(
+      'Order marked as shipped'
+    )
+
+  } catch (err) {
+
+    toast.error(
+      'Failed to update order'
+    )
+
+  } finally {
+
+    setUpdatingId(null)
+  }
+}
+
+const markDelivered =
+  async (orderId: string) => {
+
+    try {
+
+      setUpdatingId(orderId)
+
+      const res =
+        await fetch(
+          '/api/admin/orders/mark-delivered',
+          {
+            method: 'POST',
+
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+
+            body: JSON.stringify({
+              orderId,
+            }),
+          }
+        )
+
+      const data =
+        await res.json()
+
+      if (!res.ok) {
+
+        toast.error(
+          data.error ||
+          'Failed to mark delivered'
+        )
+
+        return
+      }
+
+      setOrders(
+        orders.map((o) =>
+          o.id === orderId
+            ? {
+                ...o,
+                status: 'delivered',
+              }
+            : o
+        )
+      )
+
+      toast.success(
+        'Order marked as delivered'
+      )
+
+    } catch (err) {
+
+      toast.error(
+        'Failed to update order'
+      )
+
+    } finally {
+
+      setUpdatingId(null)
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* Filters */}
@@ -485,24 +625,76 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
                       disabled={updatingId === order.id || order.status === 'refunded'}
                       className="text-xs border border-gray-300 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50"
                     >
-                      {STATUS_OPTIONS.map((s) => (
+                      {STATUS_OPTIONS
+                        .filter(
+                          (s) =>
+                            s.value !== 'shipped' &&
+                            s.value !== 'delivered'
+                        )
+                        .map((s) => (
                         <option key={s.value} value={s.value}>{s.label}</option>
                       ))}
                     </select>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {order.payment_method === 'stripe' &&
-                      order.payment_status === 'completed' &&
-                      order.status !== 'refunded' && (
+
+                    <div className="flex items-center justify-end gap-2 flex-wrap">
+
+                      {/* MARK SHIPPED */}
+                      {(order.status === 'processing' ||
+                        order.status === 'paid') && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={
+                            updatingId === order.id
+                          }
+                          onClick={() =>
+                            markShipped(order.id)
+                          }
+                        >
+                          <Truck className="h-4 w-4 mr-1" />
+                          Ship
+                        </Button>
+                      )}
+
+                      {/* MARK DELIVERED */}
+                      {order.status === 'shipped' && (
+                        <Button
+                          size="sm"
+                          disabled={
+                            updatingId === order.id
+                          }
+                          onClick={() =>
+                            markDelivered(order.id)
+                          }
+                        >
+                          <PackageCheck className="h-4 w-4 mr-1" />
+                          Deliver
+                        </Button>
+                      )}
+
+                      {/* REFUND */}
+                      {order.payment_method ===
+                        'razorpay' &&
+                        order.payment_status ===
+                          'completed' &&
+                        order.status !==
+                          'refunded' && (
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleRefund(order)}
+                          onClick={() =>
+                            handleRefund(order)
+                          }
                           className="text-red-600 hover:bg-red-50 text-xs"
                         >
                           Refund
                         </Button>
                       )}
+
+                    </div>
+
                   </td>
                 </tr>
               ))}

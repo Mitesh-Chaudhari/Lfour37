@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { sendWhatsAppTemplate } from '@/lib/whatsapp'
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -79,6 +80,93 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: 'Update blocked (RLS)' },
       { status: 403 }
+    )
+  }
+  
+  // SEND CANCEL MESSAGE
+  try {
+    const { data: orderDetails } =
+      await supabase
+        .from('orders')
+        .select(`
+          order_number,
+          shipping_address
+        `)
+        .eq('id', item.order_id)
+        .single()
+
+    const { data: cancelledItem } =
+      await supabase
+        .from('order_items')
+        .select(`
+          product_name,
+          quantity,
+          variant_size,
+          variant_color
+        `)
+        .eq('id', order_item_id)
+        .single()
+
+    const ordersUrl =
+      `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/orders`
+
+    const message =
+  `LFOUR37
+
+  Order ID:
+  ${orderDetails?.order_number}
+
+  ❌ ORDER ITEM CANCELLED
+
+  • ${cancelledItem?.product_name}
+
+  ${cancelledItem?.variant_size || '-'} / ${cancelledItem?.variant_color || '-'}
+
+  Qty:
+  ${cancelledItem?.quantity}
+
+  Your cancellation request has been processed successfully.
+
+  If payment was already completed, refund will be processed shortly.
+
+  Track your orders:
+  ${ordersUrl}
+
+  Thank you for shopping with LFOUR37 ❤️`
+
+  await sendWhatsAppTemplate({
+  phone:
+    orderDetails?.shipping_address
+      ?.phone,
+
+  userId:
+    user.id,
+
+  orderId:
+    item.order_id,
+
+  templateName:
+    'order_cancelled',
+
+  variables: [
+    orderDetails?.order_number || '',
+
+    cancelledItem?.product_name || '',
+
+    `${cancelledItem?.variant_size || '-'} / ${cancelledItem?.variant_color || '-'}`,
+
+    String(
+      cancelledItem?.quantity || 1
+    ),
+
+    `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/orders`,
+  ],
+})
+
+  } catch (err) {
+    console.error(
+      'Cancel WhatsApp Failed',
+      err
     )
   }
 
