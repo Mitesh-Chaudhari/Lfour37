@@ -13,12 +13,15 @@ import { User as UserType } from '@/types'
 import { cn } from '@/lib/utils'
 import Image from 'next/image'
 
-const NAV_LINKS = [
-  { href: '/products', label: 'All Products' },
-  { href: '/products?category=men', label: 'Men' },
-  { href: '/products?category=women', label: 'Women' },
-  { href: '/products?category=kids', label: 'Kids' },
-  { href: '/custom-printing', label: 'Custom Printing' }
+const STATIC_LINKS = [
+  {
+    href: '/products',
+    label: 'All Products',
+  },
+  {
+    href: '/custom-printing',
+    label: 'Custom Printing',
+  },
 ]
 
 export function Navbar() {
@@ -30,6 +33,8 @@ export function Navbar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [mounted, setMounted] = useState(false)
+  const [categories, setCategories] =
+  useState<any[]>([])
   const supabase = createClient()
 
   useEffect(() => { setMounted(true) }, [])
@@ -52,6 +57,62 @@ export function Navbar() {
     })
     return () => subscription.unsubscribe()
   }, [])
+
+  useEffect(() => {
+    const fetchCategories =
+      async () => {
+
+        const { data, error } =
+          await supabase
+            .from('categories')
+            .select(`
+              id,
+              name,
+              slug,
+              parent_id,
+              sort_order
+            `)
+            .eq('is_active', true)
+            .order('sort_order', {
+              ascending: true,
+            })
+
+        if (error) {
+          console.error(error)
+          return
+        }
+
+        setCategories(data || [])
+      }
+
+    fetchCategories()
+
+  }, [])
+
+  const NAV_LINKS = [
+    ...STATIC_LINKS.slice(0, 1),
+    ...categories.map((category) => ({
+      href:
+        `/products?category=${category.slug}`,
+      label:
+        category.name,
+    })),
+    STATIC_LINKS[1],
+  ];
+
+  const parentCategories =
+    categories.filter(
+      (cat) => !cat.parent_id
+    )
+
+  const getSubCategories = (
+    parentId: string
+  ) => {
+    return categories.filter(
+      (cat) =>
+        cat.parent_id === parentId
+    )
+  }
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -94,15 +155,110 @@ export function Navbar() {
 
             {/* Desktop Navigation */}
             <nav className="hidden md:flex items-center gap-6">
-              {NAV_LINKS.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className="text-sm font-medium text-gray-600 hover:text-purple-600 transition-colors"
-                >
-                  {link.label}
-                </Link>
-              ))}
+
+              {/* ALL PRODUCTS */}
+              <Link
+                href="/products"
+                className="text-sm font-medium text-gray-600 hover:text-purple-600 transition-colors"
+              >
+                All Products
+              </Link>
+
+              {/* DYNAMIC CATEGORIES */}
+              {parentCategories.map(
+                (category) => {
+
+                  const subCategories =
+                    getSubCategories(
+                      category.id
+                    )
+
+                  return (
+
+                    <div
+                      key={category.id}
+                      className="relative group"
+                    >
+
+                      {/* PARENT */}
+                      <Link
+                        href={`/products?category=${category.slug}`}
+                        className="text-sm font-medium text-gray-600 hover:text-purple-600 transition-colors"
+                      >
+                        {category.name}
+                      </Link>
+
+                      {/* DROPDOWN */}
+                      {subCategories.length >
+                        0 && (
+                        <div
+                          className="
+                            absolute
+                            left-0
+                            top-full
+                            pt-4
+                            opacity-0
+                            invisible
+                            group-hover:opacity-100
+                            group-hover:visible
+                            transition-all
+                            duration-200
+                            z-50
+                          "
+                        >
+
+                          <div
+                            className="
+                              min-w-[220px]
+                              rounded-2xl
+                              bg-white
+                              shadow-xl
+                              p-3
+                            "
+                          >
+
+                            <div className="space-y-1">
+
+                              {subCategories.map(
+                                (sub) => (
+
+                                  <Link
+                                    key={sub.id}
+                                    href={`/products?category=${sub.slug}`}
+                                    className="
+                                      block
+                                      px-3
+                                      py-2
+                                      rounded-lg
+                                      text-sm
+                                      text-gray-700
+                                      hover:bg-purple-600
+                                      hover:text-white
+                                      transition-colors
+                                    "
+                                  >
+                                    {sub.name}
+                                  </Link>
+                                )
+                              )}
+
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                }
+              )}
+
+              {/* CUSTOM PRINTING */}
+              <Link
+                href="/custom-printing"
+                className="text-sm font-medium text-gray-600 hover:text-purple-600 transition-colors"
+              >
+                Custom Printing
+              </Link>
+
             </nav>
 
             {/* Actions */}
@@ -247,16 +403,108 @@ export function Navbar() {
               <button onClick={closeMobileMenu}><X className="h-5 w-5" /></button>
             </div>
             <nav className="flex-1 p-4 space-y-1">
-              {NAV_LINKS.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className="block px-3 py-2.5 rounded-lg text-gray-700 hover:bg-purple-50 hover:text-purple-600 transition-colors"
-                  onClick={closeMobileMenu}
-                >
-                  {link.label}
-                </Link>
-              ))}
+              {/* ALL PRODUCTS */}
+              <Link
+                href="/products"
+                className="
+                  block
+                  px-3
+                  py-2.5
+                  rounded-lg
+                  text-gray-700
+                  hover:bg-purple-50
+                  hover:text-purple-600
+                "
+                onClick={closeMobileMenu}
+              >
+                All Products
+              </Link>
+
+              {/* CATEGORIES */}
+              {parentCategories.map(
+                (category) => {
+
+                  const subCategories =
+                    getSubCategories(
+                      category.id
+                    )
+
+                  return (
+
+                    <div
+                      key={category.id}
+                      className="space-y-1"
+                    >
+
+                      {/* PARENT */}
+                      <Link
+                        href={`/products?category=${category.slug}`}
+                        className="
+                          block
+                          px-3
+                          py-2.5
+                          rounded-lg
+                          font-medium
+                          text-gray-800
+                          hover:bg-purple-600
+                          hover:text-white
+                        "
+                        onClick={closeMobileMenu}
+                      >
+                        {category.name}
+                      </Link>
+
+                      {/* CHILDREN */}
+                      {subCategories.length >
+                        0 && (
+
+                        <div className="ml-4 border-l pl-3 space-y-1">
+
+                          {subCategories.map(
+                            (sub) => (
+
+                              <Link
+                                key={sub.id}
+                                href={`/products?category=${sub.slug}`}
+                                className="
+                                  block
+                                  py-1.5
+                                  text-sm
+                                  text-gray-500
+                                  hover:text-purple-600
+                                "
+                                onClick={
+                                  closeMobileMenu
+                                }
+                              >
+                                {sub.name}
+                              </Link>
+                            )
+                          )}
+
+                        </div>
+                      )}
+                    </div>
+                  )
+                }
+              )}
+
+              {/* CUSTOM PRINTING */}
+              <Link
+                href="/custom-printing"
+                className="
+                  block
+                  px-3
+                  py-2.5
+                  rounded-lg
+                  text-gray-700
+                  hover:bg-purple-50
+                  hover:text-purple-600
+                "
+                onClick={closeMobileMenu}
+              >
+                Custom Printing
+              </Link>
             </nav>
             {!user && (
               <div className="p-4 border-t space-y-2">
