@@ -334,7 +334,7 @@ export function ProductInfo({ product }: ProductInfoProps) {
       </div>
 
       {/* Actions */}
-      <div className="flex gap-3">
+      <div className="flex flex-col sm:flex-row gap-3 w-full">
         <Button
           onClick={() => {
 
@@ -379,7 +379,7 @@ export function ProductInfo({ product }: ProductInfoProps) {
               )}`
             )
           }}
-          className="flex-1"
+          className="w-full sm:flex-1"
           size="lg"
           variant="brand"
         >
@@ -389,7 +389,7 @@ export function ProductInfo({ product }: ProductInfoProps) {
 
         <Button
           onClick={handleAddToCart}
-          className="flex-1"
+          className=" w-full sm:flex-1"
           size="lg"
           variant="brand"
           disabled={Boolean(isOutOfStock)}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import Image from 'next/image'
 import { ChevronLeft, ChevronRight, ZoomIn, Share2, Check } from 'lucide-react'
 import { ProductImage } from '@/types'
@@ -17,6 +17,10 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
   const [isZoomed, setIsZoomed] = useState(false)
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
   const [copied, setCopied] = useState(false)
+  
+  // Refs to track touch coordinates for swiping
+  const touchStartX = useRef<number | null>(null)
+  const touchEndX = useRef<number | null>(null)
 
   const currentImage = images[selectedIndex]
 
@@ -29,6 +33,36 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
     const x = ((e.clientX - rect.left) / rect.width) * 100
     const y = ((e.clientY - rect.top) / rect.height) * 100
     setMousePosition({ x, y })
+  }
+
+  // Touch handlers for mobile swiping
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    // Don't register swipes if the user is zoomed in
+    if (isZoomed) return
+    touchStartX.current = e.targetTouches[0].clientX
+    touchEndX.current = null
+  }
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (isZoomed) return
+    touchEndX.current = e.targetTouches[0].clientX
+  }
+
+  const handleTouchEnd = () => {
+    if (isZoomed || !touchStartX.current || !touchEndX.current) return
+
+    const diffX = touchStartX.current - touchEndX.current
+    const minSwipeDistance = 50 // Minimum swipe distance in pixels to trigger a flip
+
+    if (diffX > minSwipeDistance) {
+      next() // Swiped left -> next image
+    } else if (diffX < -minSwipeDistance) {
+      prev() // Swiped right -> previous image
+    }
+
+    // Reset values
+    touchStartX.current = null
+    touchEndX.current = null
   }
 
   const handleShare = async () => {
@@ -53,15 +87,18 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
 
   return (
     <div className="space-y-4">
-      {/* Main image */}
+      {/* Main image container with touch events added */}
       <div
         className={cn(
-          'relative aspect-square rounded-2xl overflow-hidden bg-gray-100 cursor-zoom-in',
+          'relative aspect-square rounded-2xl overflow-hidden bg-white cursor-zoom-in touch-pan-y',
           isZoomed && 'cursor-zoom-out'
         )}
         onClick={() => setIsZoomed(!isZoomed)}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => { if (isZoomed) setIsZoomed(false) }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
         {currentImage && (
           <Image
@@ -69,7 +106,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
             alt={currentImage.alt || productName}
             fill
             className={cn(
-              'object-cover transition-transform duration-200',
+              'object-contain transition-transform duration-200 select-none',
               isZoomed && 'scale-200'
             )}
             style={
@@ -82,18 +119,18 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
           />
         )}
 
-        {/* Navigation arrows */}
+        {/* Navigation arrows (hidden on touch screens via md:flex) */}
         {images.length > 1 && (
           <>
             <button
               onClick={(e) => { e.stopPropagation(); prev() }}
-              className="absolute left-3 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-white/90 shadow flex items-center justify-center hover:bg-white transition-colors"
+              className="hidden md:flex absolute left-3 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-white/90 shadow items-center justify-center hover:bg-white transition-colors"
             >
               <ChevronLeft className="h-5 w-5 text-gray-700" />
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); next() }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-white/90 shadow flex items-center justify-center hover:bg-white transition-colors"
+              className="hidden md:flex absolute right-3 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-white/90 shadow items-center justify-center hover:bg-white transition-colors"
             >
               <ChevronRight className="h-5 w-5 text-gray-700" />
             </button>
@@ -114,7 +151,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
           </button>
         </div>
 
-        {/* Image counter */}
+        {/* Image counter / indicator dots */}
         {images.length > 1 && (
           <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
             {images.map((_, i) => (
@@ -133,7 +170,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
 
       {/* Thumbnail strip */}
       {images.length > 1 && (
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
           {images.map((img, i) => (
             <button
               key={i}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
@@ -17,26 +17,153 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [phoneVerified, setPhoneVerified] =
+    useState(false)
+
+  const [otp, setOtp] =
+    useState('')
+
+  const [sendingOtp, setSendingOtp] =
+    useState(false)
+
+  const [verifyingOtp, setVerifyingOtp] =
+    useState(false)
+
+  const [verifiedPhone, setVerifiedPhone] =
+    useState('')
+  const [isSendOTPCliked, setIsSendOTPCliked] =
+    useState(false);
   const supabase = createClient()
+  const [emailExists, setEmailExists] =
+    useState(false)
+
+  const [checkingEmail, setCheckingEmail] =
+    useState(false)
 
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema) as any,
   })
 
+  const phone = watch('phone')
+  const email = watch('email')
+  const isValidPhone =
+    /^[0-9]{10}$/.test(
+      phone || ''
+    )
+
+  useEffect(() => {
+
+    if (!phone) return
+
+    if (
+      verifiedPhone &&
+      verifiedPhone !== phone
+    ) {
+      setPhoneVerified(false)
+      setVerifiedPhone('')
+    }
+
+    if (
+      phone.length === 10
+    ) {
+      checkPhoneVerification(
+        phone
+      )
+    }
+
+  }, [phone])
+  useEffect(() => {
+    if (
+      !email ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        .test(email)
+    ) {
+      setEmailExists(false)
+      return
+    }
+
+    const timeout =
+      setTimeout(async () => {
+        try {
+          setCheckingEmail(true)
+          const res =
+            await fetch(
+              '/api/auth/check-email',
+              {
+                method: 'POST',
+
+                headers: {
+                  'Content-Type':
+                    'application/json',
+                },
+                body:
+                  JSON.stringify({
+                    email,
+                  }),
+              }
+            )
+          const data =
+            await res.json()
+          setEmailExists(
+            data.exists
+          )
+        } catch {
+          setEmailExists(false)
+        } finally {
+          setCheckingEmail(false)
+        }
+      }, 500)
+    return () =>
+      clearTimeout(timeout)
+  }, [email])
+
   const onSubmit = async (data: RegisterFormData) => {
+    if (emailExists) {
+      toast.error(
+        'This email is already registered'
+      )
+      return
+    }
+    if (!phoneVerified) {
+      toast.error(
+        'Please verify your phone number'
+      )
+      return
+    }
+    if (
+      verifiedPhone !== data.phone
+    ) {
+      toast.error(
+        'Phone number changed. Please verify again.'
+      )
+
+      return
+    }
     setIsLoading(true)
     try {
       const { error } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
         options: {
-          data: { full_name: data.full_name },
-          emailRedirectTo: `${window.location.origin}/api/auth/callback`,
-        },
+          data: {
+            full_name:
+              data.full_name,
+
+            phone:
+              data.phone,
+
+            phone_verified:
+              true,
+          },
+
+          emailRedirectTo:
+            `${window.location.origin}/api/auth/callback`,
+        }
       })
 
       if (error) {
@@ -67,6 +194,167 @@ export default function RegisterPage() {
     if (error) toast.error(error.message)
   }
 
+  const sendOtp = async () => {
+    if (!isValidPhone) {
+      toast.error(
+        'Please enter a valid 10 digit phone number'
+      )
+      return
+    }
+    if (!phone) {
+      toast.error(
+        'Enter phone number first'
+      )
+      return
+    }
+    setSendingOtp(true);
+
+    try {
+
+      const res =
+        await fetch(
+          '/api/auth/send-phone-otp',
+          {
+            method: 'POST',
+
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+
+            body: JSON.stringify({
+              phone,
+            }),
+          }
+        )
+
+      const data =
+        await res.json()
+
+      if (!res.ok) {
+        toast.error(
+          data.error ||
+          'Failed to send OTP'
+        )
+        return
+      }
+      setIsSendOTPCliked(true);
+      toast.success(
+        'OTP sent on WhatsApp'
+      )
+
+    } catch {
+      toast.error(
+        'Failed to send OTP'
+      )
+    } finally {
+      setSendingOtp(false)
+    }
+  }
+
+  const verifyOtp = async () => {
+    if (!otp) {
+      toast.error(
+        'Enter OTP'
+      )
+      return
+    }
+    setVerifyingOtp(true)
+
+    try {
+      const res =
+        await fetch(
+          '/api/auth/verify-phone-otp',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+            body: JSON.stringify({
+              phone,
+              otp,
+            }),
+          }
+        )
+
+      const data =
+        await res.json()
+
+      if (!res.ok) {
+        toast.error(
+          data.error ||
+          'Invalid OTP'
+        )
+        return
+      }
+
+      setPhoneVerified(true)
+      setVerifiedPhone(phone)
+      toast.success(
+        'Phone verified'
+      )
+
+    } catch {
+      toast.error(
+        'Verification failed'
+      )
+    } finally {
+      setVerifyingOtp(false)
+    }
+  }
+
+  const checkPhoneVerification =
+    async (
+      phoneNumber: string
+    ) => {
+
+      try {
+
+        const res =
+          await fetch(
+            '/api/auth/check-phone-verified',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type':
+                  'application/json',
+              },
+              body: JSON.stringify({
+                phone: phoneNumber,
+              }),
+            }
+          )
+
+        const data =
+          await res.json()
+
+        if (
+          data.verified &&
+          !phoneVerified
+        ) {
+          setPhoneVerified(true)
+
+          setVerifiedPhone(
+            phoneNumber
+          )
+
+          setIsSendOTPCliked(
+            false
+          )
+
+          toast.success(
+            'Phone already verified'
+          )
+        }
+
+      } catch (err) {
+
+        console.error(err)
+
+      }
+  }
+
   return (
     <div className="w-full max-w-md">
       <div className="bg-white rounded-2xl shadow-xl p-8">
@@ -89,14 +377,14 @@ export default function RegisterPage() {
           Continue with Google
         </button> */}
 
-        <div className="relative mb-6">
+        {/* <div className="relative mb-6">
           <div className="absolute inset-0 flex items-center">
             <span className="w-full border-t border-gray-200" />
           </div>
           <div className="relative flex justify-center text-xs uppercase">
             <span className="bg-white px-2 text-gray-400">Or continue with email</span>
           </div>
-        </div>
+        </div> */}
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <Input
@@ -113,9 +401,102 @@ export default function RegisterPage() {
             type="email"
             placeholder="you@example.com"
             leftIcon={<Mail className="h-4 w-4" />}
-            error={errors.email?.message}
+            error={
+              errors.email?.message ||
+              (
+                emailExists
+                  ? 'This email is already registered. Please use another email or sign in'
+                  : undefined
+              )
+            }
             {...register('email')}
           />
+          {checkingEmail && (
+            <p className="text-xs text-gray-500">
+              Checking email...
+            </p>
+          )}
+
+          <Input
+            label="Phone Number"
+            type="tel"
+            placeholder="9876543210"
+            maxLength={10}
+            error={errors.phone?.message}
+            {...register('phone', {
+              onChange: (e) => {
+                e.target.value =
+                  e.target.value
+                    .replace(/\D/g, '')
+                    .slice(0, 10)
+              },
+            })}
+          />
+          {phone &&
+            !isValidPhone && (
+              <p className="text-xs text-red-500">
+                Enter a valid 10 digit mobile number
+              </p>
+            )}
+          <div className="space-y-2">
+            {
+              isValidPhone && !phoneVerified && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={sendOtp}
+                  disabled={
+                    sendingOtp ||
+                    !isValidPhone ||
+                    emailExists
+                  }
+                >
+                  {sendingOtp
+                    ? 'Sending OTP...'
+                    : phoneVerified
+                      ? '✓ Verified'
+                      : 'Send OTP'}
+                </Button>
+              )
+            }
+
+            {!phoneVerified && isSendOTPCliked && (
+              <div className="flex gap-2">
+
+                <input
+                  type="text"
+                  value={otp}
+                  maxLength={6}
+                  placeholder="Enter OTP"
+                  onChange={(e) =>
+                    setOtp(e.target.value)
+                  }
+                  className="
+                    flex-1
+                    border
+                    rounded-lg
+                    px-3
+                    py-2
+                    text-sm
+                  "
+                />
+
+                <Button
+                  type="button"
+                  onClick={verifyOtp}
+                  disabled={verifyingOtp}
+                >
+                  Verify
+                </Button>
+              </div>
+            )}
+
+            {phoneVerified && (
+              <p className="text-green-600 text-sm">
+                ✓ Phone number verified
+              </p>
+            )}
+          </div>
 
           <Input
             label="Password"
@@ -158,7 +539,16 @@ export default function RegisterPage() {
             .
           </p>
 
-          <Button type="submit" className="w-full" loading={isLoading}>
+          <Button
+            type="submit"
+            className="w-full"
+            loading={isLoading}
+            disabled={
+              !phoneVerified ||
+              emailExists ||
+              checkingEmail
+            }
+          >
             Create Account
           </Button>
         </form>

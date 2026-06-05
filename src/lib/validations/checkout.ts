@@ -44,7 +44,21 @@ export const productSchema = z.object({
   description: z.string().optional(),
   short_description: z.string().max(500).optional(),
   price: z.number().min(0, 'Price must be positive'),
-  compare_price: z.number().min(0).optional(),
+  compare_price: z.preprocess(
+    (value) => {
+      if (
+        value === '' ||
+        value === null ||
+        value === undefined ||
+        Number.isNaN(value)
+      ) {
+        return undefined
+      }
+
+      return Number(value)
+    },
+    z.number().min(0).optional()
+  ),
   cost_price: z.number().min(0).optional(),
   sku: z.string().max(100).optional(),
   status: z.enum(['active', 'inactive', 'draft']),

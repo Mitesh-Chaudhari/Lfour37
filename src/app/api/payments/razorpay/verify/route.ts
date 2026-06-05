@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createClient } from '@/lib/supabase/server'
+import { createShipment } from '@/lib/delhivery'
 
 export async function POST(request: NextRequest) {
   try {
@@ -52,6 +53,30 @@ export async function POST(request: NextRequest) {
         razorpay_payment_id,
       })
       .eq('order_id', order_id) // ✅ FIXED
+
+    // Fetch order and order items for Delhivery
+    const { data: order } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('id', order_id)
+      .single()
+
+    const { data: orderItems } = await supabase
+      .from('order_items')
+      .select('*')
+      .eq('order_id', order_id)
+
+    if (order && orderItems && orderItems.length > 0) {
+      try {
+        await createShipment({
+          order,
+          items: orderItems,
+        })
+        console.log('Delhivery shipment created successfully for order:', order.order_number)
+      } catch (delhiveryError) {
+        console.error('Failed to create Delhivery shipment:', delhiveryError)
+      }
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {

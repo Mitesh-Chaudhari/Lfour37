@@ -1,5 +1,5 @@
 import { createClient }
-from '@/lib/supabase/server'
+  from '@/lib/supabase/server'
 
 export function normalizePhone(
   phone: string
@@ -79,7 +79,7 @@ export async function sendWhatsAppMessage({
               'application/json',
 
             Authorization:
-              `Bearer ${process.env.VEBLIKA_API_KEY}`,
+              `Bearer ${process.env.WHATSAPP_API_KEY}`,
           },
 
           body: JSON.stringify(
@@ -180,7 +180,15 @@ export async function sendWhatsAppTemplate({
   userId,
   orderId,
 }: SendTemplateProps) {
+  console.log(
+    'API KEY EXISTS:',
+    !!process.env.WHATSAPP_API_KEY
+  )
 
+  console.log(
+    'PHONE ID:',
+    process.env.VEBLIKA_PHONE_NUMBER_ID
+  )
   const supabase =
     await createClient()
 
@@ -190,24 +198,28 @@ export async function sendWhatsAppTemplate({
       to: normalizePhone(phone),
 
       phoneNoId:
-        process.env
-          .VEBLIKA_PHONE_NUMBER_ID,
+        process.env.VEBLIKA_PHONE_NUMBER_ID,
 
       type: 'template',
 
-      template: {
-        name: templateName,
+      name: 'phone_otp_verify',
 
-        language: {
-          code: 'en',
-        },
+      language: 'en',
 
-        body: {
-          variables,
+      bodyParams: variables,
+
+      buttons: [
+        {
+          type: 'button',
+          sub_type: 'url',
+          text: variables[0],
         },
-      },
+      ],
     }
-
+    console.log(
+      'VEBLIKA TEMPLATE PAYLOAD:',
+      JSON.stringify(payload, null, 2)
+    )
     const response =
       await fetch(
         'https://automate.veblika.com/api/v2/whatsapp-business/messages',
@@ -219,7 +231,7 @@ export async function sendWhatsAppTemplate({
               'application/json',
 
             Authorization:
-              `Bearer ${process.env.VEBLIKA_API_KEY}`,
+              `Bearer ${process.env.WHATSAPP_API_KEY}`,
           },
 
           body: JSON.stringify(
@@ -228,8 +240,23 @@ export async function sendWhatsAppTemplate({
         }
       )
 
-    const data =
-      await response.json()
+    console.log(
+      'STATUS:',
+      response.status
+    )
+    const raw = await response.text()
+
+    console.log(
+      'RAW VEBLIKA RESPONSE:',
+      raw
+    )
+
+    const data = JSON.parse(raw)
+
+    console.log(
+      'VEBLIKA RESPONSE:',
+      data
+    )
 
     // SAVE LOG
     await supabase

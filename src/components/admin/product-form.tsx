@@ -53,13 +53,14 @@ interface ProductFormProps {
 }
 
 interface VariantInput {
+  id?: string
   size: string
   color: string
   color_hex: string
   stock: number
   price_modifier: number
-  file?: File | null          // ✅ NEW
-  image_url?: string | null   // ✅ NEW
+  file?: File | null
+  image_url?: string | null
 }
 
 const buildCategoryTree = (categories: any[]) => {
@@ -94,12 +95,15 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
   const [variants, setVariants] = useState<VariantInput[]>(() => {
     if (initialData?.variants && initialData.variants.length > 0) {
       return initialData.variants.map((v) => ({
+        id: v.id,
         size: v.size || '',
         color: v.color || '',
         color_hex: v.color_hex || '#000000',
         stock: v.stock ?? 0,
-        price_modifier: Number(v.price_modifier || 0),
-        image_url: v.image_url || null,
+        price_modifier:
+          Number(v.price_modifier || 0),
+        image_url:
+          v.image_url || null,
         file: null,
       }))
     }
@@ -119,12 +123,15 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
     if (initialData?.variants?.length) {
       setVariants(
         initialData.variants.map((v) => ({
-          size: v.size,
-          color: v.color,
+          id: v.id,
+          size: v.size || '',
+          color: v.color || '',
           color_hex: v.color_hex || '#000000',
           stock: v.stock ?? 0,
-          price_modifier: Number(v.price_modifier || 0),
-          image_url: v.image_url || null,
+          price_modifier:
+            Number(v.price_modifier || 0),
+          image_url:
+            v.image_url || null,
           file: null,
         }))
       )
@@ -210,8 +217,27 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
     setVariants([...variants, { size: '', color: '', color_hex: '#000000', stock: 0, price_modifier: 0 }])
   }
 
-  const removeVariant = (index: number) => {
-    setVariants(variants.filter((_, i) => i !== index))
+  const removeVariant = (
+    index: number
+  ) => {
+
+    const variant =
+      variants[index]
+
+    if (
+      variant.id &&
+      !confirm(
+        'Delete this variant?'
+      )
+    ) {
+      return
+    }
+
+    setVariants(
+      variants.filter(
+        (_, i) => i !== index
+      )
+    )
   }
 
   const updateVariant = (
@@ -258,7 +284,7 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
         description: data.description || null,
         short_description: data.short_description || null,
         price: data.price,
-        compare_price: data.compare_price || null,
+        compare_price: data.compare_price ?? null,
         sku: data.sku || null,
         status: data.status,
         is_featured: data.is_featured || false,
@@ -288,7 +314,46 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
       await supabase.from('product_categories').insert(
         data.category_ids.map((cat_id) => ({ product_id: productId, category_id: cat_id }))
       )
+      // =========================
+      // DELETE REMOVED VARIANTS
+      // =========================
 
+      if (
+        isEditing &&
+        productId &&
+        initialData?.variants
+      ) {
+
+        const existingIds =
+          initialData.variants
+            .map((v) => v.id)
+
+        const currentIds =
+          validVariants
+            .filter((v) => v.id)
+            .map((v) => v.id)
+
+        const deletedIds =
+          existingIds.filter(
+            (id) =>
+              !currentIds.includes(id)
+          )
+        if (deletedIds.length) {
+          const { error } =
+            await supabase
+              .from(
+                'product_variants'
+              )
+              .delete()
+              .in(
+                'id',
+                deletedIds
+              )
+          if (error) {
+            throw error
+          }
+        }
+      }
       // Upsert variants
       for (const variant of validVariants) {
         let imageUrl: string | null = variant.image_url || null
@@ -303,19 +368,29 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
           }
         }
 
-        await supabase.from('product_variants').upsert(
-          {
-            product_id: productId,
-            size: variant.size,
-            color: variant.color,
-            color_hex: variant.color_hex,
-            stock: variant.stock,
-            price_modifier: variant.price_modifier,
-            image_url: imageUrl, // ✅ preserved OR updated
-            is_active: true,
-          },
-          { onConflict: 'product_id,size,color' }
-        )
+        await supabase
+          .from('product_variants')
+          .upsert(
+            {
+              id: variant.id,
+              product_id:
+                productId,
+              size:
+                variant.size,
+              color:
+                variant.color,
+              color_hex:
+                variant.color_hex,
+              stock:
+                variant.stock,
+              price_modifier:
+                variant.price_modifier,
+              image_url:
+                imageUrl,
+              is_active:
+                true,
+            }
+          )
       }
 
       toast.success(isEditing ? 'Product updated!' : 'Product created!')
@@ -378,7 +453,17 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
         <h2 className="text-lg font-semibold">Pricing</h2>
         <div className="grid grid-cols-2 gap-4">
           <Input label="Price (Rs)" type="number" step="0.01" min="0" error={errors.price?.message} {...register('price', { valueAsNumber: true })} />
-          <Input label="Compare Price (Rs)" type="number" step="0.01" min="0" helperText="Original price (optional)" {...register('compare_price', { valueAsNumber: true })} />
+          <Input
+            label="Compare Price (Rs)"
+            type="number"
+            step="0.01"
+            min="0"
+            helperText="Original price (optional)"
+            {...register('compare_price', {
+              setValueAs: (v) =>
+                v === '' ? undefined : Number(v),
+            })}
+          />
         </div>
       </div>
 

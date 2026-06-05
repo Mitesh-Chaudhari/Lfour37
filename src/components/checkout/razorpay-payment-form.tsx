@@ -89,8 +89,10 @@ export function RazorpayPaymentForm({ razorpayOrder, orderId, amount }: any) {
         contact: '',
       },
 
+      // Custom theme colors configuration
       theme: {
-        color: '#7c3aed',
+        color: "#c39c41 ",
+        backdrop_color: "#1a1a1ad2"
       },
     }
 
