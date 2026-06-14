@@ -63,9 +63,8 @@ export default async function HomePage() {
   return (
     <>
       <HeroBanner />
-      <TrustBadges />
       {/* <BrandsMarquee /> */}
-      <CategoryGrid categories={categories} />
+      {/* <CategoryGrid categories={categories} /> */}
 
       {featured.length > 0 && (
         <ProductSection
@@ -77,13 +76,13 @@ export default async function HomePage() {
         />
       )}
 
-      <PromoBanner
+      {/* <PromoBanner
         title="New Season, New You"
         subtitle="Up to 50% off on selected items"
         backgroundGradient="bg-primary"
         href="/products?filter=sale"
         ctaText="Shop the Sale"
-      />
+      /> */}
 
       {newArrivals.length > 0 && (
         <ProductSection
@@ -95,13 +94,13 @@ export default async function HomePage() {
         />
       )}
 
-      <PromoBanner
+      {/* <PromoBanner
         title="Trending This Season"
         subtitle="Shop what everyone is wearing right now"
         backgroundGradient="bg-dark"
         href="/products?filter=trending"
         ctaText="Shop Trending"
-      />
+      /> */}
 
       {trending.length > 0 && (
         <ProductSection
@@ -112,7 +111,7 @@ export default async function HomePage() {
           viewAllHref="/products?filter=trending"
         />
       )}
-
+      <TrustBadges />
       <NewsletterSection />
     </>
   )

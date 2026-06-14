@@ -40,28 +40,55 @@ interface ProductFormProps {
     seo_description?: string
     category_ids: string[]
 
-    variants?: {
-      id: string
-      size: string
-      color: string
-      color_hex: string
-      stock: number
-      price_modifier: number
-      image_url?: string | null
-    }[]
+  variants?: {
+    id: string
+    size: string
+    color: string
+    color_group: string
+    color_hex: string
+    stock: number
+    price_modifier: number
+    image_url?: string | null
+  }[]
   }
+  colorGroups?: string[]
 }
-
 interface VariantInput {
   id?: string
   size: string
   color: string
+  color_group: string
   color_hex: string
   stock: number
   price_modifier: number
   file?: File | null
   image_url?: string | null
 }
+
+const SIZE_OPTIONS = [
+  'XS',
+  'S',
+  'M',
+  'L',
+  'XL',
+  'XXL',
+  'XXXL',
+]
+const COLOR_GROUPS = [
+  'Black',
+  'White',
+  'Blue',
+  'Red',
+  'Green',
+  'Yellow',
+  'Orange',
+  'Pink',
+  'Purple',
+  'Brown',
+  'Grey',
+  'Beige',
+  'Multi Color',
+]
 
 const buildCategoryTree = (categories: any[]) => {
   const map = new Map()
@@ -82,7 +109,7 @@ const buildCategoryTree = (categories: any[]) => {
   return roots
 }
 
-export function ProductForm({ categories, initialData }: ProductFormProps) {
+export function ProductForm({ categories, initialData, colorGroups = [], }: ProductFormProps) {
   const router = useRouter()
   const supabase = createClient()
   const isEditing = !!initialData
@@ -98,6 +125,7 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
         id: v.id,
         size: v.size || '',
         color: v.color || '',
+        color_group: v.color_group || '',
         color_hex: v.color_hex || '#000000',
         stock: v.stock ?? 0,
         price_modifier:
@@ -111,8 +139,9 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
     // fallback for new product
     return [
       {
-        size: '',
+        size: 'Select',
         color: '',
+        color_group: '',
         color_hex: '#000000',
         stock: 0,
         price_modifier: 0,
@@ -126,6 +155,7 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
           id: v.id,
           size: v.size || '',
           color: v.color || '',
+          color_group: v.color_group || '',
           color_hex: v.color_hex || '#000000',
           stock: v.stock ?? 0,
           price_modifier:
@@ -214,7 +244,17 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
   }
 
   const addVariant = () => {
-    setVariants([...variants, { size: '', color: '', color_hex: '#000000', stock: 0, price_modifier: 0 }])
+    setVariants([
+      ...variants,
+      {
+        size: 'M',
+        color: '',
+        color_group: '',
+        color_hex: '#000000',
+        stock: 0,
+        price_modifier: 0,
+      },
+    ])
   }
 
   const removeVariant = (
@@ -272,9 +312,33 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
     setIsSaving(true)
     try {
       // Validate variants
-      const validVariants = variants.filter((v) => v.size && v.color)
+      const validVariants =
+        variants.filter(
+          (v) =>
+            v.size &&
+            v.color &&
+            v.color_group
+        )
       if (validVariants.length === 0) {
         toast.error('Please add at least one variant')
+        return
+      }
+      const duplicateVariants =
+        validVariants.some(
+          (variant, index) =>
+            validVariants.findIndex(
+              (v) =>
+                v.size ===
+                  variant.size &&
+                v.color ===
+                  variant.color
+            ) !== index
+        )
+
+      if (duplicateVariants) {
+        toast.error(
+          'Duplicate size/color variant found'
+        )
         return
       }
 
@@ -379,6 +443,8 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
                 variant.size,
               color:
                 variant.color,
+              color_group:
+                  variant.color_group,
               color_hex:
                 variant.color_hex,
               stock:
@@ -603,7 +669,12 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
               <tr className="border-b border-gray-100">
                 <th className="text-left py-2 px-2 text-xs text-gray-500 font-medium">Size</th>
                 <th className="text-left py-2 px-2 text-xs text-gray-500 font-medium">Color</th>
-                <th className="text-left py-2 px-2 text-xs text-gray-500 font-medium">Color Hex</th>
+                <th className="text-left py-2 px-2 text-xs text-gray-500 font-medium">
+                  Filter Color
+                </th>
+                <th className="text-left py-2 px-2 text-xs text-gray-500 font-medium">
+                  Color Hex
+                </th>
                 <th className="text-left py-2 px-2 text-xs text-gray-500 font-medium">Stock</th>
                 <th className="text-left py-2 px-2 text-xs text-gray-500 font-medium">Price Adj.</th>
                 <th />
@@ -613,12 +684,40 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
               {variants.map((variant, i) => (
                 <tr key={i}>
                   <td className="py-2 px-2">
-                    <input
+                    <select
                       value={variant.size}
-                      onChange={(e) => updateVariant(i, 'size', e.target.value)}
-                      className="w-16 px-2 py-1 text-sm border border-gray-300 rounded"
-                      placeholder="S, M, L..."
-                    />
+                      onChange={(e) =>
+                        updateVariant(
+                          i,
+                          'size',
+                          e.target.value
+                        )
+                      }
+                      className="
+                        w-24
+                        px-2
+                        py-1
+                        text-sm
+                        border
+                        border-gray-300
+                        rounded
+                      "
+                    >
+                      <option value="">
+                        Select
+                      </option>
+
+                      {SIZE_OPTIONS.map(
+                        (size) => (
+                          <option
+                            key={size}
+                            value={size}
+                          >
+                            {size}
+                          </option>
+                        )
+                      )}
+                    </select>
                   </td>
                   <td className="py-2 px-2">
                     <input
@@ -627,6 +726,77 @@ export function ProductForm({ categories, initialData }: ProductFormProps) {
                       className="w-24 px-2 py-1 text-sm border border-gray-300 rounded"
                       placeholder="Black"
                     />
+                  </td>
+                  <td className="py-2 px-2">
+                    <select
+                      value={variant.color_group}
+                      onChange={(e) =>
+                        updateVariant(
+                          i,
+                          'color_group',
+                          e.target.value
+                        )
+                      }
+                      className="
+                        w-40
+                        px-2
+                        py-1
+                        text-sm
+                        border
+                        border-gray-300
+                        rounded
+                      "
+                    >
+                      <option value="">
+                        Filter Color
+                      </option>
+
+                      {colorGroups.map(
+                        (color) => (
+                          <option
+                            key={color}
+                            value={color}
+                          >
+                            {color}
+                          </option>
+                        )
+                      )}
+
+                      <option value="__NEW__">
+                        + Create New
+                      </option>
+                    </select>
+                    {
+                      variant.color_group ===
+                        '__NEW__' && (
+                        <input
+                          type="text"
+                          placeholder="New Filter Color"
+                          className="
+                            mt-2
+                            w-40
+                            px-2
+                            py-1
+                            text-sm
+                            border
+                            border-gray-300
+                            rounded
+                          "
+                          onBlur={(e) => {
+                            const value =
+                              e.target.value.trim()
+
+                            if (value) {
+                              updateVariant(
+                                i,
+                                'color_group',
+                                value
+                              )
+                            }
+                          }}
+                        />
+                      )
+                    }
                   </td>
                   <td className="py-2 px-2">
                     <input

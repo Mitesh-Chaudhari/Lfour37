@@ -80,6 +80,7 @@ export interface ProductVariant {
   product_id: string
   size: string
   color: string
+  color_group: string
   color_hex: string | null
   stock: number
   price_modifier: number

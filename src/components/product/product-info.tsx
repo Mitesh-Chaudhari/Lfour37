@@ -303,11 +303,11 @@ export function ProductInfo({ product }: ProductInfoProps) {
       )}
 
       {/* Stock warning */}
-      {selectedVariant && currentStock > 0 && currentStock <= 5 && (
+      {/* {selectedVariant && currentStock > 0 && currentStock <= 5 && (
         <p className="text-sm text-orange-600 font-medium">
           Only {currentStock} left in stock — order soon!
         </p>
-      )}
+      )} */}
 
       {/* Quantity */}
       <div className="flex items-center gap-3">

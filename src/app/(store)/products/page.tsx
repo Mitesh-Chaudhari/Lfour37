@@ -4,6 +4,7 @@ import { ProductFiltersPanel } from '@/components/product/product-filters'
 import { ProductSort } from '@/components/product/product-sort'
 import { ProductPagination } from '@/components/product/product-pagination'
 import { ProductCardSkeleton } from '@/components/ui/skeleton'
+import InfiniteProducts from '@/components/product/infinite-products'
 import { Suspense } from 'react'
 import type { Metadata } from 'next'
 import { Product } from '@/types'
@@ -165,7 +166,12 @@ async function getProducts(searchParams: Awaited<PageProps['searchParams']>) {
   if (colors.length > 0) {
     products = products.filter((p) =>
       p.variants?.some((v) =>
-        colors.map((c) => c.toLowerCase()).includes(v.color.toLowerCase())
+        colors
+          .map((c) => c.toLowerCase())
+          .includes(
+            (v.color_group || '')
+              .toLowerCase()
+          )
       )
     )
   }
@@ -189,22 +195,45 @@ async function getFilterOptions() {
   const [categoriesRes, variantsRes] = await Promise.all([
     supabase
       .from('categories')
-      .select('id, name, slug, parent_id') // ✅ FIX
+      .select('id, name, slug, parent_id')
       .eq('is_active', true)
       .order('sort_order'),
 
     supabase
       .from('product_variants')
-      .select('size, color')
-      .eq('is_active', true),
+      .select(`
+        size,
+        color_group,
+        products!inner(
+          status
+        )
+      `)
+      .eq(
+        'is_active',
+        true
+      )
+      .eq(
+        'products.status',
+        'active'
+      )
   ])
 
   const variants = variantsRes.data || []
 
   const sizes = [...new Set(variants.map((v) => v.size))].sort()
-  const colors = [...new Set(variants.map((v) => v.color))].sort()
+  const colors =
+  [
+    ...new Set(
+      variants
+        .map(
+          (v: any) =>
+            v.color_group
+        )
+        .filter(Boolean)
+    ),
+  ].sort()
 
-  const categoryTree = buildCategoryTree(categoriesRes.data || []) // ✅ TREE
+  const categoryTree = buildCategoryTree(categoriesRes.data || [])
 
   return {
     categories: categoryTree,
@@ -231,7 +260,7 @@ export default async function ProductsPage({ searchParams }: PageProps) {
         {/* Filters */}
         <aside className="w-full md:w-64 flex-shrink-0">
           <ProductFiltersPanel
-            categories={filterOptions.categories} // ✅ TREE PASSED
+            categories={filterOptions.categories}
             sizes={filterOptions.sizes}
             colors={filterOptions.colors}
             searchParams={params}
@@ -239,7 +268,7 @@ export default async function ProductsPage({ searchParams }: PageProps) {
         </aside>
 
         {/* Products */}
-        <div className="flex-1 min-w-0">
+        <div className="">
           <div className="flex items-center justify-between mb-6">
             <p className="text-sm text-gray-600">
               {params.search && (
@@ -273,19 +302,18 @@ export default async function ProductsPage({ searchParams }: PageProps) {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                {products.map((product) => (
-                  <ProductCard key={product.id} product={product} />
-                ))}
-              </div>
+                <InfiniteProducts
+                  initialProducts={products}
+                  searchParams={params}
+                />
             )}
           </Suspense>
 
-          {totalPages > 1 && (
+          {/* {totalPages > 1 && (
             <div className="mt-10">
               <ProductPagination currentPage={page} totalPages={totalPages} />
             </div>
-          )}
+          )} */}
         </div>
       </div>
     </div>

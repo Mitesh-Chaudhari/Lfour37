@@ -402,7 +402,7 @@ export function Navbar() {
               <span className="font-bold text-lg">Menu</span>
               <button onClick={closeMobileMenu}><X className="h-5 w-5" /></button>
             </div>
-            <nav className="flex-1 p-4 space-y-1">
+            <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
               {/* ALL PRODUCTS */}
               <Link
                 href="/products"

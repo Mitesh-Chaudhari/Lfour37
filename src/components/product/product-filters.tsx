@@ -37,6 +37,8 @@ function FilterSection({ title, children }: { title: string; children: React.Rea
 export function ProductFiltersPanel({ categories, sizes, colors, searchParams }: ProductFiltersPanelProps) {
   const router = useRouter()
   const pathname = usePathname()
+  const [mobileOpen, setMobileOpen] =
+  useState<string | null>(null)
 
   // 🔥 RANGE LIMITS (you can make dynamic later)
   const MIN = 0
@@ -124,146 +126,409 @@ export function ProductFiltersPanel({ categories, sizes, colors, searchParams }:
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <SlidersHorizontal className="h-4 w-4 text-gray-600" />
-          <span className="font-semibold text-gray-900">Filters</span>
-        </div>
-        {hasFilters && (
-          <button onClick={clearAllFilters} className="text-xs text-purple-600 hover:underline flex items-center gap-1">
-            <X className="h-3 w-3" /> Clear all
+    <>
+      {/* MOBILE FILTERS */}
+
+      <div className="md:hidden mb-4 relative">
+        <div
+          className="
+            flex
+            gap-2
+            overflow-x-auto
+            pb-2
+            scrollbar-hide
+          "
+        >
+          <button
+            onClick={() =>
+              setMobileOpen(
+                mobileOpen === 'category'
+                  ? null
+                  : 'category'
+              )
+            }
+            className="
+              whitespace-nowrap
+              px-4
+              py-2
+              border
+              rounded-full
+              text-sm
+            "
+          >
+            Category
           </button>
+
+          <button
+            onClick={() =>
+              setMobileOpen(
+                mobileOpen === 'price'
+                  ? null
+                  : 'price'
+              )
+            }
+            className="
+              whitespace-nowrap
+              px-4
+              py-2
+              border
+              rounded-full
+              text-sm
+            "
+          >
+            Price
+          </button>
+
+          <button
+            onClick={() =>
+              setMobileOpen(
+                mobileOpen === 'size'
+                  ? null
+                  : 'size'
+              )
+            }
+            className="
+              whitespace-nowrap
+              px-4
+              py-2
+              border
+              rounded-full
+              text-sm
+            "
+          >
+            Size
+          </button>
+
+          <button
+            onClick={() =>
+              setMobileOpen(
+                mobileOpen === 'color'
+                  ? null
+                  : 'color'
+              )
+            }
+            className="
+              whitespace-nowrap
+              px-4
+              py-2
+              border
+              rounded-full
+              text-sm
+            "
+          >
+            Color
+          </button>
+
+          {hasFilters && (
+            <button
+              onClick={clearAllFilters}
+              className="
+                whitespace-nowrap
+                px-4
+                py-2
+                border
+                rounded-full
+                text-sm
+                text-red-500
+              "
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
+        {mobileOpen && (
+          <div
+            className="
+              mt-3
+              border
+              rounded-xl
+              bg-white
+              p-4
+              shadow-sm
+              absolute left-0 right-0 w-full z-10
+            "
+          >
+            {mobileOpen ===
+              'category' && (
+              <div className="space-y-2">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    checked={
+                      !searchParams.category
+                    }
+                    onChange={() =>
+                      updateFilter(
+                        'category',
+                        null
+                      )
+                    }
+                  />
+                  All Categories
+                </label>
+
+                {renderCategories(
+                  categories
+                )}
+              </div>
+            )}
+
+            {mobileOpen ===
+              'size' && (
+              <div className="flex flex-wrap gap-2">
+                {sizes.map(
+                  (size) => (
+                    <button
+                      key={size}
+                      onClick={() =>
+                        toggleArrayFilter(
+                          'sizes',
+                          size
+                        )
+                      }
+                      className={cn(
+                        'px-3 py-1 rounded border text-xs',
+                        selectedSizes.includes(
+                          size
+                        ) &&
+                          'bg-purple-600 text-white'
+                      )}
+                    >
+                      {size}
+                    </button>
+                  )
+                )}
+              </div>
+            )}
+
+            {mobileOpen ===
+              'color' && (
+              <div className="flex flex-wrap gap-2">
+                {colors.map(
+                  (color) => (
+                    <button
+                      key={color}
+                      onClick={() =>
+                        toggleArrayFilter(
+                          'colors',
+                          color
+                        )
+                      }
+                      className={cn(
+                        'px-3 py-1 rounded border text-xs',
+                        selectedColors.includes(
+                          color
+                        ) &&
+                          'bg-purple-600 text-white'
+                      )}
+                    >
+                      {color}
+                    </button>
+                  )
+                )}
+              </div>
+            )}
+
+            {mobileOpen ===
+              'price' && (
+              <div className="space-y-4">
+                <div className="flex justify-between">
+                  <span>
+                    ₹{minPrice}
+                  </span>
+                  <span>
+                    ₹{maxPrice}
+                  </span>
+                </div>
+
+                <input
+                  type="range"
+                  min={MIN}
+                  max={MAX}
+                  value={minPrice}
+                  onChange={(e) =>
+                    setMinPrice(
+                      Number(
+                        e.target.value
+                      )
+                    )
+                  }
+                  className="w-full"
+                // className="w-full pointer-events-none appearance-none bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto"
+                />
+
+                <input
+                  type="range"
+                  min={MIN}
+                  max={MAX}
+                  value={maxPrice}
+                  onChange={(e) =>
+                    setMaxPrice(
+                      Number(
+                        e.target.value
+                      )
+                    )
+                  }
+                  className="w-full"
+                // className="w-full pointer-events-none appearance-none bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto"
+                />
+              </div>
+            )}
+          </div>
         )}
       </div>
+      <div
+          className="
+            hidden
+            md:block
+            bg-white
+            rounded-xl
+            border
+            border-gray-200
+            p-4
+          "
+        >
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <SlidersHorizontal className="h-4 w-4 text-gray-600" />
+            <span className="font-semibold text-gray-900">Filters</span>
+          </div>
+          {hasFilters && (
+            <button onClick={clearAllFilters} className="text-xs text-purple-600 hover:underline flex items-center gap-1">
+              <X className="h-3 w-3" /> Clear all
+            </button>
+          )}
+        </div>
 
-      {/* Category */}
-      <FilterSection title="Category">
-        <div className="space-y-2">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="category"
-              checked={!searchParams.category}
-              onChange={() => updateFilter('category', null)}
-              className="accent-primary-600"
-            />
-            <span className="text-sm text-gray-700">All Categories</span>
-          </label>
-          {/* {categories.map((cat) => (
-            <label key={cat.id} className="flex items-center gap-2 cursor-pointer">
+        {/* Category */}
+        <FilterSection title="Category">
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="radio"
                 name="category"
-                checked={searchParams.category === cat.slug}
-                onChange={() => updateFilter('category', cat.slug)}
+                checked={!searchParams.category}
+                onChange={() => updateFilter('category', null)}
                 className="accent-primary-600"
               />
-              <span className="text-sm text-gray-700">{cat.name}</span>
+              <span className="text-sm text-gray-700">All Categories</span>
             </label>
-          ))} */}
-          {renderCategories(categories)}
-        </div>
-      </FilterSection>
-
-      <FilterSection title="Price Range">
-        <div className="space-y-4">
-          {/* Labels */}
-          <div className="flex justify-between text-sm font-medium">
-            <span>₹{minPrice}</span>
-            <span>₹{maxPrice}</span>
+            {/* {categories.map((cat) => (
+              <label key={cat.id} className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="category"
+                  checked={searchParams.category === cat.slug}
+                  onChange={() => updateFilter('category', cat.slug)}
+                  className="accent-primary-600"
+                />
+                <span className="text-sm text-gray-700">{cat.name}</span>
+              </label>
+            ))} */}
+            {renderCategories(categories)}
           </div>
+        </FilterSection>
 
-          {/* Slider */}
-          <div className="relative h-2 bg-gray-200 rounded-full">
-            <div
-              className="absolute h-2 bg-purple-600 rounded-full"
-              style={{
-                left: `${(minPrice / MAX) * 100}%`,
-                right: `${100 - (maxPrice / MAX) * 100}%`,
-              }}
-            />
+        <FilterSection title="Price Range">
+          <div className="space-y-4">
+            {/* Labels */}
+            <div className="flex justify-between text-sm font-medium">
+              <span>₹{minPrice}</span>
+              <span>₹{maxPrice}</span>
+            </div>
 
-            {/* Min */}
-            <input
-              type="range"
-              min={MIN}
-              max={MAX}
-              value={minPrice}
-              onChange={(e) => setMinPrice(Math.min(Number(e.target.value), maxPrice - 50))}
-              className="absolute w-full top-0 pointer-events-none appearance-none bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto"
-            />
-
-            {/* Max */}
-            <input
-              type="range"
-              min={MIN}
-              max={MAX}
-              value={maxPrice}
-              onChange={(e) => setMaxPrice(Math.max(Number(e.target.value), minPrice + 50))}
-              className="absolute w-full top-0 pointer-events-none appearance-none bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto"
-            />
-          </div>
-
-          {/* Presets */}
-          <div className="flex flex-wrap gap-2">
-            {[
-              [99, 499],
-              [499, 999],
-              [999, 1499],
-              [1499, 2499],
-            ].map(([min, max]) => (
-              <button
-                key={`${min}-${max}`}
-                onClick={() => {
-                  setMinPrice(min)
-                  setMaxPrice(max)
+            {/* Slider */}
+            <div className="relative h-2 bg-gray-200 rounded-full">
+              <div
+                className="absolute h-2 bg-purple-600 rounded-full"
+                style={{
+                  left: `${(minPrice / MAX) * 100}%`,
+                  right: `${100 - (maxPrice / MAX) * 100}%`,
                 }}
-                className="px-2 py-1 text-xs border rounded-full hover:border-purple-400"
+              />
+
+              {/* Min */}
+              <input
+                type="range"
+                min={MIN}
+                max={MAX}
+                value={minPrice}
+                onChange={(e) => setMinPrice(Math.min(Number(e.target.value), maxPrice - 50))}
+                className="absolute w-full top-0 pointer-events-none appearance-none bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto"
+              />
+
+              {/* Max */}
+              <input
+                type="range"
+                min={MIN}
+                max={MAX}
+                value={maxPrice}
+                onChange={(e) => setMaxPrice(Math.max(Number(e.target.value), minPrice + 50))}
+                className="absolute w-full top-0 pointer-events-none appearance-none bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto"
+              />
+            </div>
+
+            {/* Presets */}
+            <div className="flex flex-wrap gap-2">
+              {[
+                [99, 499],
+                [499, 999],
+                [999, 1499],
+                [1499, 2499],
+              ].map(([min, max]) => (
+                <button
+                  key={`${min}-${max}`}
+                  onClick={() => {
+                    setMinPrice(min)
+                    setMaxPrice(max)
+                  }}
+                  className="px-2 py-1 text-xs border rounded-full hover:border-purple-400"
+                >
+                  ₹{min} – ₹{max}
+                </button>
+              ))}
+            </div>
+          </div>
+        </FilterSection>
+
+        {/* Size */}
+        <FilterSection title="Size">
+          <div className="flex flex-wrap gap-2">
+            {sizes.map((size) => (
+              <button
+                key={size}
+                onClick={() => toggleArrayFilter('sizes', size)}
+                className={cn(
+                  'px-3 py-1.5 text-xs rounded-lg border',
+                  selectedSizes.includes(size) ? 'bg-purple-600 text-white' : ''
+                )}
               >
-                ₹{min} – ₹{max}
+                {size}
               </button>
             ))}
           </div>
-        </div>
-      </FilterSection>
+        </FilterSection>
 
-      {/* Size */}
-      <FilterSection title="Size">
-        <div className="flex flex-wrap gap-2">
-          {sizes.map((size) => (
-            <button
-              key={size}
-              onClick={() => toggleArrayFilter('sizes', size)}
-              className={cn(
-                'px-3 py-1.5 text-xs rounded-lg border',
-                selectedSizes.includes(size) ? 'bg-purple-600 text-white' : ''
-              )}
-            >
-              {size}
-            </button>
-          ))}
-        </div>
-      </FilterSection>
-
-      {/* Color */}
-      <FilterSection title="Color">
-        <div className="flex flex-wrap gap-2">
-          {colors.map((color) => (
-            <button
-              key={color}
-              onClick={() => toggleArrayFilter('colors', color)}
-              className={cn(
-                'px-3 py-1.5 text-xs rounded-lg border',
-                selectedColors.includes(color) ? 'bg-purple-600 text-white' : ''
-              )}
-            >
-              {color}
-            </button>
-          ))}
-        </div>
-      </FilterSection>
-    </div>
+        {/* Color */}
+        <FilterSection title="Color">
+          <div className="flex flex-wrap gap-2">
+            {colors.map((color) => (
+              <button
+                key={color}
+                onClick={() => toggleArrayFilter('colors', color)}
+                className={cn(
+                  'px-3 py-1.5 text-xs rounded-lg border',
+                  selectedColors.includes(color) ? 'bg-purple-600 text-white' : ''
+                )}
+              >
+                {color}
+              </button>
+            ))}
+          </div>
+        </FilterSection>
+      </div>
+    </>
   )
 }

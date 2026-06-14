@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import {
+  useRouter,
+  useSearchParams,
+} from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Eye, EyeOff, Mail, Lock, User } from 'lucide-react'
@@ -14,6 +17,11 @@ import toast from 'react-hot-toast'
 
 export default function RegisterPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const redirectTo =
+    searchParams.get(
+      'redirectTo'
+    ) || '/'
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -176,7 +184,11 @@ export default function RegisterPage() {
       }
 
       toast.success('Account created! Check your email to verify your account.')
-      router.push('/login')
+      router.push(
+        `/login?redirectTo=${encodeURIComponent(
+          redirectTo
+        )}`
+      )
     } catch {
       toast.error('An unexpected error occurred')
     } finally {
@@ -555,7 +567,16 @@ export default function RegisterPage() {
 
         <p className="text-center text-sm text-gray-600 mt-6">
           Already have an account?{' '}
-          <Link href="/login" className="font-medium text-purple-600 hover:underline">
+          <Link
+            href={`/login?redirectTo=${encodeURIComponent(
+              redirectTo
+            )}`}
+            className="
+              font-medium
+              text-purple-600
+              hover:underline
+            "
+          >
             Sign in
           </Link>
         </p>

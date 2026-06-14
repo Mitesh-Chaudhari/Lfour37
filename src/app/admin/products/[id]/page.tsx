@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import { ProductForm } from '@/components/admin/product-form'
+import { getUniqueColorGroups } from '@/lib/product-colors'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -41,7 +42,9 @@ export default async function AdminProductEditPage({ params }: Props) {
         <h1 className="text-2xl font-bold text-gray-900">Edit Product</h1>
         <p className="text-sm text-gray-500 mt-1">{product.name}</p>
       </div>
-      <ProductForm initialData={productWithCategories} categories={(categories || []) as any} />
+      <ProductForm initialData={productWithCategories} categories={(categories || []) as any}   colorGroups={
+    await getUniqueColorGroups()
+  } />
     </div>
   )
 }
