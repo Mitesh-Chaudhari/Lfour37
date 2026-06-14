@@ -22,7 +22,14 @@ export function ProductCard({ product, className }: ProductCardProps) {
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
   const inWishlist = mounted && isInWishlist(product.id)
-  const discount = calculateDiscount(product.price, product.compare_price || 0)
+const discount =
+  product.compare_price &&
+  product.compare_price > product.price
+    ? calculateDiscount(
+        product.price,
+        product.compare_price
+      )
+    : 0
   const primaryImage = product.images[0]?.url
   const secondaryImage = product.images[1]?.url
   const totalStock = product.variants?.reduce((sum, v) => sum + v.stock, 0) ?? 0

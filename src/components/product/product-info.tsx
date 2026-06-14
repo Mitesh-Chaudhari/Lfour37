@@ -24,13 +24,25 @@ export function ProductInfo({ product }: ProductInfoProps) {
   const { addItem } = useCartStore()
   const { isInWishlist, toggleWishlist } = useWishlistStore()
   const { openCart } = useUIStore()
-  const [selectedSize, setSelectedSize] = useState<string | null>(null)
-  const [selectedColor, setSelectedColor] = useState<string | null>(null)
   const [quantity, setQuantity] = useState(1)
   const [expandedSection, setExpandedSection] = useState<string | null>('details')
   const router = useRouter()
   const searchParams = useSearchParams()
+    const initialColor =
+    searchParams.get('color')
 
+  const initialSize =
+    searchParams.get('size')
+
+  const [selectedSize, setSelectedSize] =
+    useState<string | null>(
+      initialSize
+    )
+
+  const [selectedColor, setSelectedColor] =
+    useState<string | null>(
+      initialColor
+    )
 
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
@@ -58,51 +70,70 @@ export function ProductInfo({ product }: ProductInfoProps) {
 
   // Get unique sizes and colors from active variants
   const variants = product.variants?.filter((v) => v.is_active) || []
+  const totalStock = variants.reduce(
+    (sum, variant) => sum + variant.stock,
+      0
+    )
+    console.log(
+  variants.map(v => ({
+    color: v.color,
+    size: v.size,
+    stock: v.stock
+  }))
+)
+  const isProductOutOfStock = totalStock === 0
   const sizes = [...new Set(variants.map((v) => v.size))]
   const colors = [...new Set(variants.map((v) => v.color))]
 
   useEffect(() => {
-    const color =
-      searchParams.get('color')
-
-    const size =
-      searchParams.get('size')
-
-    // ONLY initialize once
-    if (
-      selectedColor === null &&
-      selectedSize === null
-    ) {
-      const initialColor =
-        color ||
-        colors[0] ||
-        null
-
-      const initialSize =
-        size ||
-        sizes[0] ||
-        null
-
-      setSelectedColor(initialColor)
-      setSelectedSize(initialSize)
-
-      // Sync URL only first time
-      if (!color || !size) {
-        updateUrl(
-          initialColor,
-          initialSize
-        )
-      }
+    if (!selectedColor && colors.length > 0) {
+      setSelectedColor(colors[0])
     }
+    if (!selectedSize && sizes.length > 0) {
+      setSelectedSize(sizes[0])
+    }
+  }, [colors, sizes])
+  useEffect(() => {
+    if (
+      selectedColor &&
+      selectedSize &&
+      !searchParams.get('color') &&
+      !searchParams.get('size')
+    ) {
+      updateUrl(
+        selectedColor,
+        selectedSize
+      )
+    }
+  }, [selectedColor, selectedSize])
 
-  }, [
-    searchParams,
-    colors,
-    sizes,
-    selectedColor,
-    selectedSize,
-  ])
+  useEffect(() => {
+    if (!selectedColor || !selectedSize) return
 
+    const variantExists = variants.some(
+      (v) =>
+        v.color === selectedColor &&
+        v.size === selectedSize &&
+        v.stock > 0
+    )
+
+    if (variantExists) return
+
+    const fallbackVariant = variants.find(
+      (v) =>
+        v.color === selectedColor &&
+        v.stock > 0
+    )
+
+    if (fallbackVariant) {
+      setSelectedSize(fallbackVariant.size)
+
+      updateUrl(
+        fallbackVariant.color,
+        fallbackVariant.size
+      )
+    }
+  }, [selectedColor, selectedSize, variants])
   // Find matching variant
   const selectedVariant: ProductVariant | null =
     selectedSize && selectedColor
@@ -115,20 +146,26 @@ export function ProductInfo({ product }: ProductInfoProps) {
   }
 
   const isSizeAvailable = (size: string) => {
-    if (!selectedColor) return variants.some((v) => v.size === size && v.stock > 0)
-    return variants.some((v) => v.size === size && v.color === selectedColor && v.stock > 0)
+    return variants.some(
+      (v) => v.size === size && v.stock > 0
+    )
   }
 
   const isColorAvailable = (color: string) => {
-    if (!selectedSize) return variants.some((v) => v.color === color && v.stock > 0)
-    return variants.some((v) => v.color === color && v.size === selectedSize && v.stock > 0)
+    return variants.some(
+      (v) => v.color === color && v.stock > 0
+    )
   }
 
   const currentStock = selectedVariant?.stock || 0
   const currentPrice = product.price + (selectedVariant?.price_modifier || 0)
-  const isOutOfStock = selectedVariant && currentStock === 0
+  const isOutOfStock = !!selectedVariant && currentStock === 0
 
   const handleAddToCart = () => {
+    if (isProductOutOfStock) {
+      toast.error('Product is out of stock')
+      return
+    }
     if (!selectedSize) { toast.error('Please select a size'); return }
     if (!selectedColor) { toast.error('Please select a color'); return }
     if (!selectedVariant) { toast.error('This combination is unavailable'); return }
@@ -178,7 +215,19 @@ export function ProductInfo({ product }: ProductInfoProps) {
       </div>
 
       {/* Product name */}
-      <h1 className="text-3xl font-bold text-gray-900">{product.name}</h1>
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900">
+          {product.name}
+        </h1>
+
+        {isProductOutOfStock && (
+          <div className="mt-2">
+            <span className="inline-flex items-center rounded-full bg-red-100 px-3 py-1 text-sm font-medium text-red-700">
+              Out of Stock
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* Rating */}
       {product.review_count > 0 && (
@@ -202,7 +251,20 @@ export function ProductInfo({ product }: ProductInfoProps) {
           </span>
         )}
       </div>
-
+      {isProductOutOfStock ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+          <p className="text-sm font-medium text-red-700">
+            This product is currently out of stock.
+          </p>
+        </div>
+      ) : currentStock > 0 && currentStock <= 5 ? (
+        // <div className="rounded-lg border border-orange-200 bg-orange-50 px-4 py-3">
+        //   <p className="text-sm font-medium text-orange-700">
+        //     Only {currentStock} left in stock.
+        //   </p>
+        // </div> 
+        ''
+      ) : null}
       {/* Short description */}
       {product.short_description && (
         <p className="text-gray-600 leading-relaxed">{product.short_description}</p>
@@ -222,21 +284,31 @@ export function ProductInfo({ product }: ProductInfoProps) {
                 <button
                   key={color}
                   onClick={() => {
-                    if (!available) return
+                    setSelectedColor(color)
 
-                    const newColor = selectedColor === color ? null : color
+                    const matchingVariant = variants.find(
+                      (v) =>
+                        v.color === color &&
+                        v.stock > 0
+                    )
 
-                    setSelectedColor(newColor)
-                    updateUrl(newColor, selectedSize)
+                    if (matchingVariant) {
+                      setSelectedSize(matchingVariant.size)
+
+                      updateUrl(
+                        matchingVariant.color,
+                        matchingVariant.size
+                      )
+                    }
                   }}
-                  disabled={!available}
+                  disabled={!available || isProductOutOfStock}
                   className={cn(
                     'px-4 py-2 text-sm font-medium rounded-lg border-2 transition-all',
                     selectedColor === color
                       ? 'border-purple-600 bg-purple-50 text-purple-700'
                       : available
                         ? 'border-gray-300 text-gray-700 hover:border-purple-400'
-                        : 'border-gray-200 text-gray-300 cursor-not-allowed line-through'
+                        : 'border-gray-200 text-gray-300 cursor-not-allowed opacity-60'
                   )}
                 >
                   {color}
@@ -267,21 +339,34 @@ export function ProductInfo({ product }: ProductInfoProps) {
                 <button
                   key={size}
                   onClick={() => {
-                    if (!available) return
+                    setSelectedSize(size)
 
-                    const newSize = selectedSize === size ? null : size
+                    const matchingVariant =
+                      variants.find(
+                        (v) =>
+                          v.size === size &&
+                          v.stock > 0
+                      )
 
-                    setSelectedSize(newSize)
-                    updateUrl(selectedColor, newSize)
+                    if (matchingVariant) {
+                      setSelectedColor(
+                        matchingVariant.color
+                      )
+
+                      updateUrl(
+                        matchingVariant.color,
+                        size
+                      )
+                    }
                   }}
-                  disabled={!available}
+                  disabled={!available || isProductOutOfStock}
                   className={cn(
                     'h-10 min-w-[40px] px-3 text-sm font-medium rounded-lg border-2 transition-all relative',
                     selectedSize === size
                       ? 'border-purple-600 bg-purple-50 text-purple-700'
                       : available
                         ? 'border-gray-300 text-gray-700 hover:border-purple-400'
-                        : 'border-gray-200 text-gray-300 cursor-not-allowed'
+                        : 'border-gray-200 text-gray-300 cursor-not-allowed opacity-60'
                   )}
                 >
                   {size}
@@ -310,32 +395,35 @@ export function ProductInfo({ product }: ProductInfoProps) {
       )} */}
 
       {/* Quantity */}
-      <div className="flex items-center gap-3">
-        <span className="text-sm font-semibold text-gray-900">Quantity:</span>
-        <div className="flex items-center gap-2 border border-gray-300 rounded-lg overflow-hidden">
-          <button
-            onClick={() => setQuantity(Math.max(1, quantity - 1))}
-            className="px-3 py-2 hover:bg-gray-100 transition-colors"
-          >
-            -
-          </button>
-          <span className="w-10 text-center text-sm font-medium">{quantity}</span>
-          <button
-            onClick={() => setQuantity(Math.min(currentStock || 10, quantity + 1))}
-            className="px-3 py-2 hover:bg-gray-100 transition-colors"
-            disabled={selectedVariant ? quantity >= currentStock : false}
-          >
-            +
-          </button>
+      {!isProductOutOfStock && (
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-semibold text-gray-900">Quantity:</span>
+          <div className="flex items-center gap-2 border border-gray-300 rounded-lg overflow-hidden">
+            <button
+              onClick={() => setQuantity(Math.max(1, quantity - 1))}
+              className="px-3 py-2 hover:bg-gray-100 transition-colors"
+            >
+              -
+            </button>
+            <span className="w-10 text-center text-sm font-medium">{quantity}</span>
+            <button
+              onClick={() => setQuantity(Math.min(currentStock || 10, quantity + 1))}
+              className="px-3 py-2 hover:bg-gray-100 transition-colors"
+              disabled={selectedVariant ? quantity >= currentStock : false}
+            >
+              +
+            </button>
+          </div>
+          {selectedVariant && (
+            <span className="text-sm text-gray-500">{currentStock} available</span>
+          )}
         </div>
-        {selectedVariant && (
-          <span className="text-sm text-gray-500">{currentStock} available</span>
-        )}
-      </div>
+      )}
 
       {/* Actions */}
       <div className="flex flex-col sm:flex-row gap-3 w-full">
         <Button
+        disabled={isProductOutOfStock}
           onClick={() => {
 
             // REQUIRE COLOR
@@ -392,10 +480,12 @@ export function ProductInfo({ product }: ProductInfoProps) {
           className=" w-full sm:flex-1"
           size="lg"
           variant="brand"
-          disabled={Boolean(isOutOfStock)}
+          disabled={isProductOutOfStock}
         >
           <ShoppingBag className="h-5 w-5" />
-          {isOutOfStock ? 'Out of Stock' : 'Add to Cart'}
+          {isProductOutOfStock
+            ? 'Out of Stock'
+            : 'Add to Cart'}
         </Button>
         <button
           onClick={handleWishlist}

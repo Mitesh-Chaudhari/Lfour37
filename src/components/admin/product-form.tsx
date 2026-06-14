@@ -348,7 +348,11 @@ export function ProductForm({ categories, initialData, colorGroups = [], }: Prod
         description: data.description || null,
         short_description: data.short_description || null,
         price: data.price,
-        compare_price: data.compare_price ?? null,
+        compare_price:
+          data.compare_price &&
+          data.compare_price > 0
+            ? data.compare_price
+            : null,
         sku: data.sku || null,
         status: data.status,
         is_featured: data.is_featured || false,
