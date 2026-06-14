@@ -119,6 +119,13 @@ export function ProductForm({ categories, initialData, colorGroups = [], }: Prod
   const [isSaving, setIsSaving] = useState(false)
   const [tags, setTags] = useState<string[]>(initialData?.tags || [])
   const [tagInput, setTagInput] = useState('')
+  const [availableColorGroups, setAvailableColorGroups] =
+  useState<string[]>([
+    ...new Set([
+      ...COLOR_GROUPS,
+      ...colorGroups,
+    ]),
+  ])
   const [variants, setVariants] = useState<VariantInput[]>(() => {
     if (initialData?.variants && initialData.variants.length > 0) {
       return initialData.variants.map((v) => ({
@@ -755,8 +762,7 @@ export function ProductForm({ categories, initialData, colorGroups = [], }: Prod
                         Filter Color
                       </option>
 
-                      {colorGroups.map(
-                        (color) => (
+                      {availableColorGroups.map((color) => (
                           <option
                             key={color}
                             value={color}
@@ -787,16 +793,28 @@ export function ProductForm({ categories, initialData, colorGroups = [], }: Prod
                             rounded
                           "
                           onBlur={(e) => {
-                            const value =
-                              e.target.value.trim()
+                            const value = e.target.value.trim()
 
-                            if (value) {
-                              updateVariant(
-                                i,
-                                'color_group',
+                            if (!value) return
+
+                            if (
+                              !availableColorGroups.includes(
                                 value
                               )
+                            ) {
+                              setAvailableColorGroups(
+                                (prev) => [
+                                  ...prev,
+                                  value,
+                                ]
+                              )
                             }
+
+                            updateVariant(
+                              i,
+                              'color_group',
+                              value
+                            )
                           }}
                         />
                       )

@@ -276,7 +276,7 @@ export default async function ProductsPage({ searchParams }: PageProps) {
                   Results for <strong>"{params.search}"</strong> —{' '}
                 </>
               )}
-              <strong>{total}</strong> products
+              <strong>{total}</strong> total products
             </p>
 
             <ProductSort currentSort={params.sortBy} />

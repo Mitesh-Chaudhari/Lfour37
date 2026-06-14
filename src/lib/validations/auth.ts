@@ -22,6 +22,19 @@ export const registerSchema = z.object({
       'Phone number must be exactly 10 digits'
     ),
 
+  gender: z
+    .enum([
+      'male',
+      'female',
+      'other',
+      'prefer_not_to_say',
+    ])
+    .optional(),
+
+  dob: z
+    .string()
+    .optional(),
+
   password: z
     .string()
     .min(

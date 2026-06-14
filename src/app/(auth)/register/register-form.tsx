@@ -157,25 +157,33 @@ export default function RegisterForm() {
     }
     setIsLoading(true)
     try {
-      const { error } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-        options: {
-          data: {
-            full_name:
-              data.full_name,
+        const { error } =
+        await supabase.auth.signUp({
+            email: data.email,
+            password:
+            data.password,
 
-            phone:
-              data.phone,
+            options: {
+            data: {
+                full_name:
+                data.full_name,
 
-            phone_verified:
-              true,
-          },
+                phone:
+                data.phone,
 
-          emailRedirectTo:
-            `${window.location.origin}/api/auth/callback`,
-        }
-      })
+                phone_verified:
+                true,
+
+                gender:
+                data.gender || null,
+
+                dob: data.dob || null,
+            },
+
+            emailRedirectTo:
+                `${window.location.origin}/api/auth/callback`,
+            },
+        })
 
       if (error) {
         if (error.message.includes('already registered')) {
@@ -410,6 +418,87 @@ export default function RegisterForm() {
               error={errors.full_name?.message}
               {...register('full_name')}
             />
+
+            <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Gender (Optional)
+                </label>
+
+                <select
+                    {...register('gender')}
+                    className="
+                    w-full
+                    rounded-lg
+                    border
+                    border-gray-300
+                    px-3
+                    py-2
+                    text-sm
+                    focus:outline-none
+                    focus:ring-2
+                    focus:ring-purple-500
+                    "
+                >
+                    <option value="">
+                    Select Gender
+                    </option>
+
+                    <option value="male">
+                    Male
+                    </option>
+
+                    <option value="female">
+                    Female
+                    </option>
+
+                    <option value="other">
+                    Other
+                    </option>
+
+                    <option value="prefer_not_to_say">
+                    Prefer not to say
+                    </option>
+                </select>
+
+                {errors.gender && (
+                    <p className="mt-1 text-xs text-red-500">
+                    {errors.gender.message}
+                    </p>
+                )}
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Date of Birth (Optional)
+                </label>
+
+                <input
+                    type="date"
+                    {...register('dob')}
+                    max={
+                    new Date()
+                        .toISOString()
+                        .split('T')[0]
+                    }
+                    className="
+                    w-full
+                    rounded-lg
+                    border
+                    border-gray-300
+                    px-3
+                    py-2
+                    text-sm
+                    focus:outline-none
+                    focus:ring-2
+                    focus:ring-purple-500
+                    "
+                />
+
+                {errors.dob && (
+                    <p className="mt-1 text-xs text-red-500">
+                    {errors.dob.message}
+                    </p>
+                )}
+                </div>
 
             <Input
               label="Email"
