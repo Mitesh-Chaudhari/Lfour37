@@ -2,6 +2,7 @@
 
 import {
     useSearchParams,
+    useRouter,
 } from 'next/navigation'
 
 import {
@@ -22,6 +23,7 @@ import { Button }
     from '@/components/ui/button'
 
 export default function TryOnPageContent() {
+    const router = useRouter()
     const params =
         useSearchParams()
 
@@ -131,6 +133,17 @@ export default function TryOnPageContent() {
                             body: formData,
                         }
                     )
+                // Check if response is Unauthorized (401)
+                // Inside handleGenerate on your try-on page:
+                if (res.status === 401) {
+                    toast.error('Please log in to continue')
+                    // Capture the entire relative path along with all original query parameters
+                    const currentUrl = encodeURIComponent(window.location.pathname + window.location.search)
+                    
+                    // Uses 'redirectTo' to align perfectly with your LoginForm state configuration
+                    router.push(`/login?redirectTo=${currentUrl}`)
+                    return
+                }
 
                 const data =
                     await res.json()

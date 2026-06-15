@@ -82,7 +82,7 @@ export async function GET(req: NextRequest, { params }: Props) {
 <div class="invoice">
   <div class="header">
     <div>
-      <div class="logo">StyleStore</div>
+      <div class="logo">Lfour37</div>
       <p style="color: #6b7280; margin-top: 4px; font-size: 13px;">Premium Clothing Marketplace</p>
     </div>
     <div class="invoice-meta">
@@ -159,7 +159,7 @@ export async function GET(req: NextRequest, { params }: Props) {
   </div>
 
   <div class="footer">
-    <p>Thank you for shopping with StyleStore!</p>
+    <p>Thank you for shopping with Lfour37!</p>
     <p style="margin-top: 4px;">Payment method: ${order.payment_method} | Payment status: ${order.payment_status}</p>
     ${order.tracking_number ? `<p style="margin-top: 4px;">Tracking: ${order.tracking_number}</p>` : ''}
   </div>

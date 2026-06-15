@@ -46,6 +46,30 @@ export function CategoriesClient({ categories: initialCategories }: { categories
   const rootCategories = categories.filter((c) => !c.parent_id)
   const getChildren = (parentId: string) => categories.filter((c) => c.parent_id === parentId)
 
+  const getCategoryPath = (
+    category: Category
+  ): string => {
+    const parts = [category.name]
+    let current =
+      category.parent_id
+    while (current) {
+      const parent =
+        categories.find(
+          (c) =>
+            c.id === current
+        )
+      if (!parent) break
+      parts.unshift(
+        parent.name
+      )
+      current =
+        parent.parent_id
+    }
+    return parts.join(
+      ' → '
+    )
+  }
+
   const startEdit = (cat: Category) => {
     setEditingId(cat.id)
     setShowForm(true)
@@ -62,6 +86,31 @@ export function CategoriesClient({ categories: initialCategories }: { categories
   const onSubmit = async (data: CategoryFormData) => {
     setIsSaving(true)
     try {
+      if (
+        editingId &&
+        data.parent_id === editingId
+      ) {
+        toast.error(
+          'Category cannot be its own parent'
+        )
+        setIsSaving(false)
+        return
+      }
+      if (
+        editingId &&
+        data.parent_id &&
+        isDescendant(
+          editingId,
+          data.parent_id
+        )
+      ) {
+        toast.error(
+          'Cannot move category under one of its descendants'
+        )
+
+        setIsSaving(false)
+        return
+      }
       const payload = {
         ...data,
         parent_id: data.parent_id || null,
@@ -100,7 +149,33 @@ export function CategoriesClient({ categories: initialCategories }: { categories
       setIsSaving(false)
     }
   }
+  const isDescendant = (
+    parentId: string,
+    targetId: string
+  ): boolean => {
+    const children =
+      categories.filter(
+        (c) =>
+          c.parent_id === parentId
+      )
 
+    for (const child of children) {
+      if (
+        child.id === targetId
+      )
+        return true
+
+      if (
+        isDescendant(
+          child.id,
+          targetId
+        )
+      )
+        return true
+    }
+
+    return false
+  }
   const toggleActive = async (id: string, current: boolean) => {
     const { error } = await supabase.from('categories').update({ is_active: !current }).eq('id', id)
     if (!error) {
@@ -213,11 +288,37 @@ export function CategoriesClient({ categories: initialCategories }: { categories
             />
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Parent Category</label>
-              <select className="h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" {...register('parent_id')}>
-                <option value="">None (Root Category)</option>
-                {rootCategories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
-                ))}
+              <select
+                {...register('parent_id')}
+                className="h-10 w-full rounded-lg border border-gray-300 px-3 text-sm"
+              >
+                <option value="">
+                  None (Root Category)
+                </option>
+
+                {categories
+                  .filter((cat) => {
+                    if (!editingId) return true
+
+                    // Cannot select itself
+                    if (cat.id === editingId) {
+                      return false
+                    }
+
+                    // Cannot select descendants
+                    return !isDescendant(
+                      editingId,
+                      cat.id
+                    )
+                  })
+                  .map((cat) => (
+                    <option
+                      key={cat.id}
+                      value={cat.id}
+                    >
+                      {getCategoryPath(cat)}
+                    </option>
+                  ))}
               </select>
             </div>
             <Input

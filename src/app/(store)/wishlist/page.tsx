@@ -6,7 +6,7 @@ import { Heart } from 'lucide-react'
 import { WishlistClient } from '@/components/wishlist/wishlist-client'
 
 export const metadata = {
-  title: 'Wishlist | StyleStore',
+  title: 'Wishlist | LFour37',
   description: 'Your saved items',
 }
 

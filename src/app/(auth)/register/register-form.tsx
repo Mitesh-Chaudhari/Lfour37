@@ -527,6 +527,13 @@ export default function RegisterForm() {
               placeholder="9876543210"
               maxLength={10}
               error={errors.phone?.message}
+              leftIcon={
+                <span className="text-sm font-medium text-gray-500 select-none">
+                +91
+                </span>
+              }
+              className="pl-[2.25rem]"
+
               {...register('phone', {
                 onChange: (e) => {
                   e.target.value =

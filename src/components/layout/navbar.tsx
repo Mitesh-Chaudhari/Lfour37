@@ -10,8 +10,12 @@ import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
 import { useState, useEffect } from 'react'
 import { User as UserType } from '@/types'
+import {
+  useCategoryDrawerStore,
+} from '@/store/category-drawer-store'
 import { cn } from '@/lib/utils'
 import Image from 'next/image'
+import { CategoryDrawer } from './category-drawer'
 
 const STATIC_LINKS = [
   {
@@ -36,6 +40,10 @@ export function Navbar() {
   const [categories, setCategories] =
   useState<any[]>([])
   const supabase = createClient()
+  const {
+  open,
+} =
+  useCategoryDrawerStore()
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -137,6 +145,16 @@ export function Navbar() {
       <header className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm">
         <div className="container mx-auto px-4">
           <div className="flex h-16 items-center justify-between">
+            <button
+            onClick={open}
+            className="
+              p-2
+              text-gray-600
+              hover:text-purple-600
+            "
+          >
+            <Menu className="h-6 w-6" />
+          </button>
             {/* Logo */}
             <Link href="/" className="flex items-center gap-2">
               {/* <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
@@ -519,6 +537,9 @@ export function Navbar() {
           </div>
         </>
       )}
+      <CategoryDrawer
+        categories={categories}
+      />
     </>
   )
 }

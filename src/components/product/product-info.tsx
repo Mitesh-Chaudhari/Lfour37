@@ -504,8 +504,8 @@ export function ProductInfo({ product }: ProductInfoProps) {
       {/* Delivery estimate */}
       <div className="grid grid-cols-3 gap-3 py-4 border-t border-b border-gray-100">
         {[
-          { icon: Truck, text: 'Free shipping over Rs. 1500' },
-          { icon: RotateCcw, text: '30-day returns' },
+          { icon: Truck, text: 'Free shipping' },
+          { icon: RotateCcw, text: '7-days return' },
           { icon: Shield, text: 'Secure checkout' },
         ].map(({ icon: Icon, text }) => (
           <div key={text} className="flex flex-col items-center gap-1 text-center">

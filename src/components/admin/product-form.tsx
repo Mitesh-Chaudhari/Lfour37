@@ -679,9 +679,9 @@ export function ProductForm({ categories, initialData, colorGroups = [], }: Prod
             <thead>
               <tr className="border-b border-gray-100">
                 <th className="text-left py-2 px-2 text-xs text-gray-500 font-medium">Size</th>
-                <th className="text-left py-2 px-2 text-xs text-gray-500 font-medium">Color</th>
+                <th className="text-left py-2 px-2 text-xs text-gray-500 font-medium">Color (Actual Product Color)</th>
                 <th className="text-left py-2 px-2 text-xs text-gray-500 font-medium">
-                  Filter Color
+                  Filter Color (Main color/Color to show in Filter)
                 </th>
                 <th className="text-left py-2 px-2 text-xs text-gray-500 font-medium">
                   Color Hex

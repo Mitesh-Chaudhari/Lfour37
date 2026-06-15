@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { formatDate, formatPrice } from '@/lib/utils'
 
 export const metadata = {
-  title: 'Invoices | StyleStore',
+  title: 'Invoices | Lfour37',
 }
 
 export default async function InvoicesPage() {
