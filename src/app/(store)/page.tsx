@@ -9,7 +9,7 @@ import { TrustBadges } from '@/components/home/trust-badges'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Lfour37 - Premium Clothing Marketplace',
+  title: 'Lfour37 - Premium Clothing Brand',
   description: 'Discover premium clothing for men, women, and kids. Shop the latest styles with fast shipping and easy returns.',
 }
 

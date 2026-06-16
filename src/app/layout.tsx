@@ -19,11 +19,11 @@ const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || 'Lfour37'
 export const metadata: Metadata = {
   metadataBase: new URL(APP_URL),
   title: {
-    default: `${APP_NAME} - Premium Clothing Marketplace`,
+    default: `${APP_NAME} - Premium Clothing Brand`,
     template: `%s | ${APP_NAME}`,
   },
   description: 'Discover premium clothing for men, women, and kids. Shop the latest styles with fast shipping, easy returns, and crypto payment options.',
-  keywords: ['clothing', 'fashion', 'men', 'women', 'kids', 'online shopping', 'marketplace'],
+  keywords: ['clothing', 'fashion', 'men', 'women', 'kids', 'online shopping', 'Brand Name', 'premium clothing', 'fast shipping', 'easy returns', 'crypto payments'],
   authors: [{ name: APP_NAME }],
   creator: APP_NAME,
   openGraph: {
@@ -31,13 +31,13 @@ export const metadata: Metadata = {
     locale: 'en_US',
     url: APP_URL,
     siteName: APP_NAME,
-    title: `${APP_NAME} - Premium Clothing Marketplace`,
+    title: `${APP_NAME} - Premium Clothing Brand`,
     description: 'Discover premium clothing for everyone. Shop with confidence.',
     images: [{ url: '/og-image.jpg', width: 1200, height: 630, alt: APP_NAME }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: `${APP_NAME} - Premium Clothing Marketplace`,
+    title: `${APP_NAME} - Premium Clothing Brand`,
     description: 'Discover premium clothing for everyone.',
     images: ['/og-image.jpg'],
   },

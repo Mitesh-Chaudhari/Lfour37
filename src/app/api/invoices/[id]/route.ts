@@ -83,7 +83,7 @@ export async function GET(req: NextRequest, { params }: Props) {
   <div class="header">
     <div>
       <div class="logo">Lfour37</div>
-      <p style="color: #6b7280; margin-top: 4px; font-size: 13px;">Premium Clothing Marketplace</p>
+      <p style="color: #6b7280; margin-top: 4px; font-size: 13px;">Premium Clothing Brand</p>
     </div>
     <div class="invoice-meta">
       <h2>INVOICE</h2>
