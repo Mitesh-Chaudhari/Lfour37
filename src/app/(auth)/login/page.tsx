@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useState, Suspense, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
@@ -18,17 +18,66 @@ function LoginForm() {
   const redirectTo = searchParams.get('redirectTo') || '/'
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [emailExists, setEmailExists] = useState(true)
+  const [checkingEmail, setCheckingEmail] = useState(false)
   const supabase = createClient()
 
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema) as any,
   })
+  const email = watch('email')
+
+  useEffect(() => {
+    if (
+      !email ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    ) {
+      setEmailExists(true)
+      return
+    }
+
+    const timeout = setTimeout(async () => {
+      try {
+        setCheckingEmail(true)
+
+        const res = await fetch(
+          '/api/auth/check-email',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              email,
+            }),
+          }
+        )
+
+        const data = await res.json()
+
+        setEmailExists(data.exists)
+      } catch {
+        setEmailExists(true)
+      } finally {
+        setCheckingEmail(false)
+      }
+    }, 500)
+
+    return () => clearTimeout(timeout)
+  }, [email])
 
   const onSubmit = async (data: LoginFormData) => {
+    if (!emailExists) {
+      toast.error(
+        'This email is not registered. Please sign up first.'
+      )
+      return
+    }
     setIsLoading(true)
     try {
       const { error } = await supabase.auth.signInWithPassword({
@@ -71,10 +120,20 @@ function LoginForm() {
             type="email"
             placeholder="you@example.com"
             leftIcon={<Mail className="h-4 w-4" />}
-            error={errors.email?.message}
+            error={
+              errors.email?.message ||
+              (!emailExists &&
+                email
+                ? 'This email is not registered. Please sign up first.'
+                : undefined)
+            }
             {...register('email')}
-          />
-
+          />  
+          {checkingEmail && (
+            <p className="text-xs text-gray-500">
+              Checking email...
+            </p>
+          )}
           <Input
             label="Password"
             type={showPassword ? 'text' : 'password'}
@@ -95,7 +154,15 @@ function LoginForm() {
             </Link>
           </div>
 
-          <Button type="submit" className="w-full" loading={isLoading}>
+          <Button
+            type="submit"
+            className="w-full"
+            loading={isLoading}
+            disabled={
+              !emailExists ||
+              checkingEmail
+            }
+          >
             Sign In
           </Button>
         </form>
@@ -106,6 +173,11 @@ function LoginForm() {
             href={`/register?redirectTo=${encodeURIComponent(
               redirectTo
             )}`}
+            className="
+              font-medium
+              text-purple-600
+              hover:underline
+            "
           >
             Sign up
           </Link>

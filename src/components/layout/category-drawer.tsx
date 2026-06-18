@@ -2,12 +2,16 @@
 
 import Link from 'next/link'
 import { ChevronDown, ChevronUp, X } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 import { Category } from '@/types'
 import { useCategoryDrawerStore } from '@/store/category-drawer-store'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 interface Props {
   categories: Category[]
+}
+type CategoryWithPreview = Category & {
+  previewImage?: string | null
 }
 
 export function CategoryDrawer({
@@ -15,25 +19,27 @@ export function CategoryDrawer({
 }: Props) {
   const { isOpen, close } =
     useCategoryDrawerStore()
-
+    const supabase = createClient()
   const [activeTab, setActiveTab] =
     useState('Men')
     const [expandedSection, setExpandedSection] =
   useState<string | null>(null)
+  const [categoryImages, setCategoryImages] =
+  useState<Record<string, string>>({})
 
-    const parentCategories =
-    useMemo(
-        () =>
-        categories.filter(
-            (c) =>
-            !c.parent_id &&
-            ['men', 'women']
-                .includes(
-                c.slug.toLowerCase()
-                )
-        ),
-        [categories]
-    )
+  const parentCategories =
+        useMemo(
+            () =>
+            categories.filter(
+                (c) =>
+                !c.parent_id &&
+                ['men', 'women']
+                    .includes(
+                    c.slug.toLowerCase()
+                    )
+            ),
+            [categories]
+        )
 
   const activeParent =
     parentCategories.find(
@@ -49,6 +55,70 @@ export function CategoryDrawer({
       (c) =>
         c.parent_id === parentId
     )
+
+    useEffect(() => {
+        const loadCategoryImages =
+            async () => {
+
+            const {
+                data,
+                error,
+            } =
+                await supabase
+                .from(
+                    'product_categories'
+                )
+                .select(`
+                    category_id,
+                    products!product_categories_product_id_fkey (
+                    images
+                    )
+                `)
+            console.log(data)
+            if (error) {
+                console.error(error)
+                return
+            }
+
+            const previews:
+                Record<
+                string,
+                string
+                > = {}
+
+            data?.forEach((row: any) => {
+                const product =
+                    Array.isArray(row.products)
+                    ? row.products[1]
+                    : row.products
+
+                const images =
+                    product?.images
+
+                if (
+                    !previews[row.category_id] &&
+                    Array.isArray(images) &&
+                    images.length > 0
+                ) {
+                    const firstImage =
+                    typeof images[1] === 'string'
+                        ? images[1]
+                        : images[1]?.url
+
+                    if (firstImage) {
+                    previews[row.category_id] =
+                        firstImage
+                    }
+                }
+                })
+
+            setCategoryImages(
+                previews
+            )
+            }
+
+        loadCategoryImages()
+        }, [])
 
   if (!isOpen) return null
 
@@ -211,41 +281,65 @@ export function CategoryDrawer({
                             href={`/products?category=${item.slug}`}
                             onClick={close}
                             className="
-                                border
-                                rounded-xl
-                                p-4
-                                hover:border-purple-600
+                            group
+                            border
+                            rounded-xl
+                            overflow-hidden
+                            bg-white
+                            transition-all
+                            hover:shadow-lg
+                            hover:border-purple-600
                             "
                             >
                             <div
+                            className="
+                            aspect-square
+                            rounded-lg
+                            bg-gray-100
+                            mb-2
+                            overflow-hidden
+                            flex
+                            items-center
+                            justify-center
+                            "
+                            >
+                            {categoryImages[
+                            item.id
+                            ] ? (
+                            <img
+                                src={
+                                categoryImages[
+                                    item.id
+                                ]
+                                }
+                                alt={
+                                item.name
+                                }
                                 className="
-                                aspect-square
-                                rounded-lg
-                                bg-gray-100
-                                mb-2
+                                h-full
+                                w-full
+                                object-cover
+                                "
+                            />
+                            ) : (
+                            <div
+                                className="
+                                text-center
+                                text-xs
+                                text-gray-400
+                                px-2
                                 "
                             >
-                                {item.image_url && (
-                                <img
-                                    src={
-                                    item.image_url
-                                    }
-                                    alt={
-                                    item.name
-                                    }
-                                    className="
-                                    h-full
-                                    w-full
-                                    object-cover
-                                    "
-                                />
-                                )}
+                                {item.name}
+                            </div>
+                            )}
                             </div>
 
                             <p
                                 className="
                                 text-sm
                                 font-medium
+                                p-3
                                 "
                             >
                                 {item.name}

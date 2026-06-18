@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     template: `%s | ${APP_NAME}`,
   },
   description: 'Discover premium clothing for men, women, and kids. Shop the latest styles with fast shipping, easy returns, and UPI payment options.',
-  keywords: ['clothing', 'fashion', 'men', 'women', 'kids', 'online shopping', 'Brand Name', 'premium clothing', 'fast shipping', 'easy returns', 'UPI payments', 'Premium Clothing Brand in Jamnagar', 'Lfour37', 'Lfour37 Clothing', 'Lfour37 Fashion', 'Lfour37 Online Store'],
+  keywords: ['clothing', 'fashion', 'men', 'women', 'kids', 'online shopping', 'Brand', 'premium clothing', 'fast shipping', 'easy returns', 'UPI payments', 'Premium Clothing Brand in Jamnagar', 'New Premium Clothing Brand in Jamnagar', 'Lfour37', 'Lfour37 Clothing', 'Lfour37 Fashion', 'Lfour37 Online Store'],
   authors: [{ name: APP_NAME }],
   creator: APP_NAME,
   openGraph: {

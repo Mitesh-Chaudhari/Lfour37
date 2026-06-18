@@ -268,7 +268,7 @@ export default async function ProductsPage({ searchParams }: PageProps) {
         </aside>
 
         {/* Products */}
-        <div className="">
+        <div className="w-full">
           <div className="flex items-center justify-between mb-6">
             <p className="text-sm text-gray-600">
               {params.search && (

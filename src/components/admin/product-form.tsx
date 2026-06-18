@@ -109,6 +109,122 @@ const buildCategoryTree = (categories: any[]) => {
   return roots
 }
 
+const CategoryNode = ({
+  category,
+  selectedCategories,
+  setValue,
+}: {
+  category: any
+  selectedCategories: string[]
+  setValue: any
+}) => {
+  const isChecked =
+    selectedCategories.includes(
+      category.id
+    )
+
+  const handleToggle = (
+    checked: boolean
+  ) => {
+    let updated = [
+      ...selectedCategories,
+    ]
+
+    const collectIds = (
+      node: any
+    ): string[] => {
+      let ids = [node.id]
+
+      node.children?.forEach(
+        (child: any) => {
+          ids.push(
+            ...collectIds(
+              child
+            )
+          )
+        }
+      )
+
+      return ids
+    }
+
+    const allIds =
+      collectIds(category)
+
+    if (checked) {
+      allIds.forEach((id) => {
+        if (
+          !updated.includes(id)
+        ) {
+          updated.push(id)
+        }
+      })
+    } else {
+      updated =
+        updated.filter(
+          (id) =>
+            !allIds.includes(id)
+        )
+    }
+
+    setValue(
+      'category_ids',
+      updated
+    )
+  }
+
+  return (
+    <div className="ml-4 mt-2">
+      <label
+        className="
+          flex
+          items-center
+          gap-2
+          text-sm
+        "
+      >
+        <input
+          type="checkbox"
+          checked={isChecked}
+          onChange={(e) =>
+            handleToggle(
+              e.target.checked
+            )
+          }
+        />
+
+        {category.name}
+      </label>
+
+      {category.children?.length >
+        0 && (
+        <div
+          className="
+            ml-6
+            mt-2
+            border-l
+            border-gray-200
+            pl-4
+          "
+        >
+          {category.children.map(
+            (child: any) => (
+              <CategoryNode
+                key={child.id}
+                category={child}
+                selectedCategories={
+                  selectedCategories
+                }
+                setValue={setValue}
+              />
+            )
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ProductForm({ categories, initialData, colorGroups = [], }: ProductFormProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -581,89 +697,54 @@ export function ProductForm({ categories, initialData, colorGroups = [], }: Prod
       </div>
 
       {/* Categories */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold mb-4">Categories</h2>
-        <div className="flex flex-wrap gap-2">
-          <div className="space-y-3">
-            {categoryTree.map((parent) => (
-              <div key={parent.id}>
+      <div
+        className="
+          bg-white
+          rounded-xl
+          border
+          border-gray-200
+          p-6
+        "
+      >
+        <h2
+          className="
+            text-lg
+            font-semibold
+            mb-4
+          "
+        >
+          Categories
+        </h2>
 
-                {/* Parent */}
-                <label className="flex items-center gap-2 font-medium text-gray-800">
-                  <input
-                    type="checkbox"
-                    value={parent.id}
-                    className="accent-primary-600"
-                    checked={selectedCategories.includes(parent.id)}
-                    onChange={(e) => {
-                      let updated = [...selectedCategories]
-
-                      if (e.target.checked) {
-                        updated.push(parent.id)
-
-                        parent.children.forEach((child: any) => {
-                          if (!updated.includes(child.id)) {
-                            updated.push(child.id)
-                          }
-                        })
-                      } else {
-                        updated = updated.filter(
-                          (id) =>
-                            id !== parent.id &&
-                            !parent.children.some((child: any) => child.id === id)
-                        )
-                      }
-
-                      setValue('category_ids', updated)
-                    }}
-                  />
-                  {parent.name}
-                </label>
-
-                {/* Children */}
-                {parent.children.length > 0 && (
-                  <div className="ml-6 mt-2 flex flex-wrap gap-3">
-                    {parent.children.map((child: any) => (
-                      <label key={child.id} className="flex items-center gap-2 text-sm text-gray-600">
-                        <input
-                          type="checkbox"
-                          value={child.id}
-                          className="accent-primary-600"
-                          checked={selectedCategories.includes(child.id)}
-                          onChange={(e) => {
-                            let updated = [...selectedCategories]
-
-                            if (e.target.checked) {
-                              updated.push(child.id)
-
-                              if (!updated.includes(parent.id)) {
-                                updated.push(parent.id)
-                              }
-                            } else {
-                              updated = updated.filter((id) => id !== child.id)
-
-                              const siblingSelected = parent.children.some(
-                                (c: any) => c.id !== child.id && updated.includes(c.id)
-                              )
-
-                              if (!siblingSelected) {
-                                updated = updated.filter((id) => id !== parent.id)
-                              }
-                            }
-
-                            setValue('category_ids', updated)
-                          }}
-                        />
-                        {child.name}
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+        <div className="space-y-4">
+          {categoryTree.map(
+            (parent) => (
+              <CategoryNode
+                key={parent.id}
+                category={parent}
+                selectedCategories={
+                  selectedCategories
+                }
+                setValue={setValue}
+              />
+            )
+          )}
         </div>
-        {errors.category_ids && <p className="text-xs text-red-500 mt-1">{errors.category_ids.message}</p>}
+
+        {errors.category_ids && (
+          <p
+            className="
+              text-xs
+              text-red-500
+              mt-2
+            "
+          >
+            {
+              errors.category_ids
+                .message
+            }
+          </p>
+        )}
       </div>
 
       {/* Variants */}
