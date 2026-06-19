@@ -51,6 +51,17 @@ async function getRelatedProducts(categoryIds: string[], currentProductId: strin
   return data || []
 }
 
+async function getSizeOrder() {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('product_sizes')
+    .select('name')
+    .order('display_order')
+    .order('name')
+
+  return (data || []).map((size) => size.name)
+}
+
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params
   const product = await getProduct(slug)
@@ -81,7 +92,10 @@ export default async function ProductDetailPage({ params }: PageProps) {
   if (!product) notFound()
 
   const categoryIds = product.categories?.map((pc: { category: { id: string } }) => pc.category.id) || []
-  const relatedProducts = await getRelatedProducts(categoryIds, product.id)
+  const [relatedProducts, sizeOrder] = await Promise.all([
+    getRelatedProducts(categoryIds, product.id),
+    getSizeOrder(),
+  ])
 
   // JSON-LD structured data
   const jsonLd = {
@@ -143,7 +157,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
         {/* Main product section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-16">
           <ProductGallery images={product.images} productName={product.name} />
-          <ProductInfo product={product} />
+          <ProductInfo product={product} sizeOrder={sizeOrder} />
         </div>
 
         {/* Reviews */}

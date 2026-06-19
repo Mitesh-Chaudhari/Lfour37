@@ -18,9 +18,10 @@ import { useRouter, useSearchParams } from 'next/navigation'
 
 interface ProductInfoProps {
   product: Product
+  sizeOrder?: string[]
 }
 
-export function ProductInfo({ product }: ProductInfoProps) {
+export function ProductInfo({ product, sizeOrder = [] }: ProductInfoProps) {
   const { addItem } = useCartStore()
   const { isInWishlist, toggleWishlist } = useWishlistStore()
   const { openCart } = useUIStore()
@@ -82,7 +83,15 @@ export function ProductInfo({ product }: ProductInfoProps) {
   }))
 )
   const isProductOutOfStock = totalStock === 0
-  const sizes = [...new Set(variants.map((v) => v.size))]
+  const sizes = [...new Set(variants.map((v) => v.size))].sort((a, b) => {
+    const aIndex = sizeOrder.indexOf(a)
+    const bIndex = sizeOrder.indexOf(b)
+
+    if (aIndex === -1 && bIndex === -1) return a.localeCompare(b)
+    if (aIndex === -1) return 1
+    if (bIndex === -1) return -1
+    return aIndex - bIndex
+  })
   const colors = [...new Set(variants.map((v) => v.color))]
 
   useEffect(() => {

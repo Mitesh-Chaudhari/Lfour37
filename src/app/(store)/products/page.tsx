@@ -192,7 +192,7 @@ async function getProducts(searchParams: Awaited<PageProps['searchParams']>) {
 async function getFilterOptions() {
   const supabase = await createClient()
 
-  const [categoriesRes, variantsRes] = await Promise.all([
+  const [categoriesRes, variantsRes, sizesRes] = await Promise.all([
     supabase
       .from('categories')
       .select('id, name, slug, parent_id')
@@ -215,12 +215,22 @@ async function getFilterOptions() {
       .eq(
         'products.status',
         'active'
-      )
+      ),
+    supabase
+      .from('product_sizes')
+      .select('name')
+      .order('display_order')
+      .order('name'),
   ])
 
   const variants = variantsRes.data || []
 
-  const sizes = [...new Set(variants.map((v) => v.size))].sort()
+  const variantSizes = [...new Set(variants.map((v) => v.size))]
+  const managedSizes = (sizesRes.data || []).map((size) => size.name)
+  const sizes = [
+    ...managedSizes.filter((size) => variantSizes.includes(size)),
+    ...variantSizes.filter((size) => !managedSizes.includes(size)).sort(),
+  ]
   const colors =
   [
     ...new Set(

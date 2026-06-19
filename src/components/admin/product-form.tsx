@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { ProductImage } from '@/types'
 import { slugify } from '@/lib/utils'
 import Image from 'next/image'
+import Link from 'next/link'
 import toast from 'react-hot-toast'
 
 interface ProductFormProps {
@@ -52,6 +53,7 @@ interface ProductFormProps {
   }[]
   }
   colorGroups?: string[]
+  sizes?: string[]
 }
 interface VariantInput {
   id?: string
@@ -65,15 +67,6 @@ interface VariantInput {
   image_url?: string | null
 }
 
-const SIZE_OPTIONS = [
-  'XS',
-  'S',
-  'M',
-  'L',
-  'XL',
-  'XXL',
-  'XXXL',
-]
 const COLOR_GROUPS = [
   'Black',
   'White',
@@ -225,7 +218,7 @@ const CategoryNode = ({
   )
 }
 
-export function ProductForm({ categories, initialData, colorGroups = [], }: ProductFormProps) {
+export function ProductForm({ categories, initialData, colorGroups = [], sizes = []}: ProductFormProps) {
   const router = useRouter()
   const supabase = createClient()
   const isEditing = !!initialData
@@ -242,6 +235,12 @@ export function ProductForm({ categories, initialData, colorGroups = [], }: Prod
       ...colorGroups,
     ]),
   ])
+  const availableSizes = [
+    ...new Set([
+      ...sizes,
+      ...(initialData?.variants || []).map((variant) => variant.size).filter(Boolean),
+    ]),
+  ]
   const [variants, setVariants] = useState<VariantInput[]>(() => {
     if (initialData?.variants && initialData.variants.length > 0) {
       return initialData.variants.map((v) => ({
@@ -262,7 +261,7 @@ export function ProductForm({ categories, initialData, colorGroups = [], }: Prod
     // fallback for new product
     return [
       {
-        size: 'Select',
+        size: '',
         color: '',
         color_group: '',
         color_hex: '#000000',
@@ -370,7 +369,7 @@ export function ProductForm({ categories, initialData, colorGroups = [], }: Prod
     setVariants([
       ...variants,
       {
-        size: 'M',
+        size: '',
         color: '',
         color_group: '',
         color_hex: '#000000',
@@ -750,7 +749,15 @@ export function ProductForm({ categories, initialData, colorGroups = [], }: Prod
       {/* Variants */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Variants (Size / Color)</h2>
+          <div>
+            <h2 className="text-lg font-semibold">Variants (Size / Color)</h2>
+            <Link
+              href="/admin/sizes"
+              className="text-xs text-purple-600 hover:underline"
+            >
+              Manage available sizes
+            </Link>
+          </div>
           <Button type="button" variant="outline" size="sm" onClick={addVariant}>
             <Plus className="h-4 w-4" /> Add Variant
           </Button>
@@ -786,7 +793,7 @@ export function ProductForm({ categories, initialData, colorGroups = [], }: Prod
                         )
                       }
                       className="
-                        w-24
+                        w-28
                         px-2
                         py-1
                         text-sm
@@ -796,10 +803,10 @@ export function ProductForm({ categories, initialData, colorGroups = [], }: Prod
                       "
                     >
                       <option value="">
-                        Select
+                        Select Size
                       </option>
 
-                      {SIZE_OPTIONS.map(
+                      {availableSizes.map(
                         (size) => (
                           <option
                             key={size}

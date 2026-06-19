@@ -11,7 +11,12 @@ export default async function AdminProductEditPage({ params }: Props) {
   const { id } = await params
   const supabase = await createClient()
 
-  const [{ data: product }, { data: categories }] = await Promise.all([
+  const [
+    { data: product },
+    { data: categories },
+    { data: sizes },
+    colorGroups,
+  ] = await Promise.all([
     supabase
       .from('products')
       .select('*, variants:product_variants(*), categories:product_categories(category_id)')
@@ -22,6 +27,12 @@ export default async function AdminProductEditPage({ params }: Props) {
       .select('id, name, parent_id')
       .eq('is_active', true)
       .order('name'),
+    supabase
+      .from('product_sizes')
+      .select('name')
+      .order('display_order')
+      .order('name'),
+    getUniqueColorGroups(),
   ])
 
   if (!product) notFound()
@@ -42,9 +53,12 @@ export default async function AdminProductEditPage({ params }: Props) {
         <h1 className="text-2xl font-bold text-gray-900">Edit Product</h1>
         <p className="text-sm text-gray-500 mt-1">{product.name}</p>
       </div>
-      <ProductForm initialData={productWithCategories} categories={(categories || []) as any}   colorGroups={
-    await getUniqueColorGroups()
-  } />
+      <ProductForm
+        initialData={productWithCategories}
+        categories={(categories || []) as any}
+        colorGroups={colorGroups}
+        sizes={(sizes || []).map((size) => size.name)}
+      />
     </div>
   )
 }
