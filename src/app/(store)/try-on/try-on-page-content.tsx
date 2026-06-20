@@ -87,7 +87,7 @@ export default function TryOnPageContent() {
     }
 
     const handleGenerate =
-        async () => {
+        async (regenerate = false) => {
             if (!personImage) {
                 toast.error(
                     'Upload your image'
@@ -104,7 +104,7 @@ export default function TryOnPageContent() {
 
             setLoading(true)
 
-            setResult('')
+            // setResult('')
 
             try {
                 const formData =
@@ -123,6 +123,13 @@ export default function TryOnPageContent() {
                 formData.append(
                     'productId',
                     params.get('productId') || ''
+                )
+
+                formData.append(
+                    'forceRegenerate',
+                    regenerate
+                        ? 'true'
+                        : 'false'
                 )
 
                 const res =
@@ -292,8 +299,11 @@ export default function TryOnPageContent() {
                                 <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={handleGenerate}
-                                >
+                                    disabled={loading}
+                                    onClick={() =>
+                                        handleGenerate(true)
+                                    }
+                                    >
                                     <RefreshCcw className="h-4 w-4" />
 
                                     Regenerate
@@ -346,7 +356,9 @@ export default function TryOnPageContent() {
 
                     <Button
                         size="lg"
-                        onClick={handleGenerate}
+                        onClick={() =>
+                            handleGenerate(false)
+                        }                        
                         loading={loading}
                         disabled={loading}
                         className="min-w-[220px]"

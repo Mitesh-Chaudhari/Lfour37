@@ -96,10 +96,15 @@ export async function POST(
         'productImage'
       ) as string
 
-    const productId =
-      formData.get(
-        'productId'
-      ) as string
+      const productId =
+        formData.get(
+          'productId'
+        ) as string
+
+      const forceRegenerate =
+        formData.get(
+          'forceRegenerate'
+        ) === 'true'
 
     if (
       !person ||
@@ -135,7 +140,7 @@ export async function POST(
         .digest('hex')
 
     // CACHE CHECK
-
+    
     const {
       data: cached,
     } =
@@ -158,17 +163,18 @@ export async function POST(
         )
         .maybeSingle()
 
-    if (
-      cached?.result_image
-    ) {
-      return NextResponse.json(
-        {
-          image:
-            cached.result_image,
-          cached: true,
-        }
-      )
-    }
+      if (
+        !forceRegenerate &&
+        cached?.result_image
+      ) {
+        return NextResponse.json(
+          {
+            image:
+              cached.result_image,
+            cached: true,
+          }
+        )
+      }
 
     // BASE64
 
@@ -236,56 +242,78 @@ export async function POST(
               'application/json',
           },
 
-          body: JSON.stringify(
-            {
-              model_name:
-                'product-to-model',
+          body: JSON.stringify({
+            model_name:
+              'tryon-max',
 
-              inputs: {
-                model_image:
-                  base64,
+            inputs: {
+              model_image:
+                base64,
 
-                product_image:
-                  productImage,
-              },
-            }
-          ),
+              product_image:
+                productImage,
+
+              resolution:
+                '2k',
+
+              generation_mode:
+                'quality',
+
+              output_format:
+                'jpeg',
+
+              num_images: 1,
+
+              seed: Math.floor(
+                Math.random() *
+                1000000
+              ),
+
+              prompt: '',
+            },
+          }),
         }
       )
 
     const data =
       await response.json()
 
-    if (
-      !response.ok
-    ) {
+    console.log(
+      'FASHN RUN RESPONSE:',
+      data
+    )
+
+    if (!response.ok) {
+      console.error(
+        'FASHN ERROR:',
+        data
+      )
+
       return NextResponse.json(
         {
           error:
             data.message ||
+            data.error ||
             'Generation failed',
         },
-        { status: 500 }
+        {
+          status: 500,
+        }
       )
     }
 
     const predictionId =
       data.id
 
-    let output =
-      null
-
-    // POLLING
+    let output: string | null = null
 
     for (
       let i = 0;
-      i < 30;
+      i < 60;
       i++
     ) {
       await new Promise(
-        (
-          resolve
-        ) =>
+        (resolve) =>
           setTimeout(
             resolve,
             2000
@@ -306,16 +334,36 @@ export async function POST(
       const statusData =
         await statusRes.json()
 
+      console.log(
+        'FASHN STATUS:',
+        statusData.status
+      )
+
       if (
         statusData.status ===
         'completed'
       ) {
-        output =
-          statusData
-            .output
-            ?.image ||
-          statusData
-            .output?.[0]
+        if (
+          typeof statusData.output ===
+          'string'
+        ) {
+          output =
+            statusData.output
+        }
+        else if (
+          Array.isArray(
+            statusData.output
+          )
+        ) {
+          output =
+            statusData.output[0]
+        }
+        else if (
+          statusData.output?.image
+        ) {
+          output =
+            statusData.output.image
+        }
 
         break
       }
@@ -324,6 +372,11 @@ export async function POST(
         statusData.status ===
         'failed'
       ) {
+        console.error(
+          'FASHN FAILED:',
+          statusData
+        )
+
         break
       }
     }
