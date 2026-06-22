@@ -4,6 +4,7 @@ import { apiRateLimit } from '@/lib/rate-limit'
 import { sendWhatsAppTemplate } from '@/lib/whatsapp'
 import logger from '@/lib/logger'
 import { z } from 'zod'
+import { resolveHsnFromCategories, mappingsArrayToRecord } from '@/lib/hsn'
 
 const createOrderSchema = z.object({
   items: z.array(z.object({
@@ -144,8 +145,43 @@ export async function POST(request: NextRequest) {
     const productIds = [...new Set(data.items.map((i) => i.product_id))]
     const { data: products } = await supabase
       .from('products')
-      .select('id, name, images')
+      .select('id, name, images, hsn_code')
       .in('id', productIds)
+
+    const productsMissingHsn = (products || [])
+      .filter((product) => !product.hsn_code)
+      .map((product) => product.id)
+
+    const resolvedHsnByProductId: Record<string, string> = {}
+
+    if (productsMissingHsn.length > 0) {
+      const [
+        { data: productCategories },
+        { data: hsnRows },
+        { data: allCategories },
+      ] = await Promise.all([
+        supabase
+          .from('product_categories')
+          .select('product_id, category_id')
+          .in('product_id', productsMissingHsn),
+        supabase.from('category_hsn_mappings').select('category_id, hsn_code'),
+        supabase.from('categories').select('id, parent_id'),
+      ])
+
+      const mappings = mappingsArrayToRecord(hsnRows || [])
+
+      for (const productId of productsMissingHsn) {
+        const categoryIds = (productCategories || [])
+          .filter((row) => row.product_id === productId)
+          .map((row) => row.category_id)
+        const hsn = resolveHsnFromCategories(
+          categoryIds,
+          allCategories || [],
+          mappings
+        )
+        if (hsn) resolvedHsnByProductId[productId] = hsn
+      }
+    }
 
     // Create order
     const { data: order, error: orderError } = await supabase
@@ -196,6 +232,10 @@ export async function POST(request: NextRequest) {
       quantity: item.quantity,
       unit_price: item.unit_price,
       total_price: Number((item.unit_price * item.quantity).toFixed(2)),
+      hsn_code:
+        product?.hsn_code ||
+        resolvedHsnByProductId[item.product_id] ||
+        null,
     }
   })
 

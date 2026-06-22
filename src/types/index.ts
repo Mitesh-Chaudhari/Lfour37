@@ -56,6 +56,7 @@ export interface Product {
   cost_price: number | null
   sku: string | null
   barcode: string | null
+  hsn_code: string | null
   status: ProductStatus
   is_featured: boolean
   is_new_arrival: boolean
@@ -215,8 +216,17 @@ export interface OrderItem {
   quantity: number
   unit_price: number
   total_price: number
+  hsn_code: string | null
   created_at: string
   product?: Product
+}
+
+export interface CategoryHsnMapping {
+  id: string
+  category_id: string
+  hsn_code: string
+  created_at: string
+  updated_at: string
 }
 
 export interface Payment {

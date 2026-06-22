@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -14,6 +14,7 @@ import { slugify } from '@/lib/utils'
 import { OptimizedImage } from '@/components/ui/optimized-image'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
+import { resolveHsnFromCategories } from '@/lib/hsn'
 
 interface ProductFormProps {
   categories: {
@@ -22,6 +23,7 @@ interface ProductFormProps {
     slug: string
     parent_id?: string | null
   }[]
+  hsnMappings?: Record<string, string>
   initialData?: {
     id: string
     name: string
@@ -31,6 +33,7 @@ interface ProductFormProps {
     price: number
     compare_price?: number
     sku?: string
+    hsn_code?: string | null
     status: string
     is_featured: boolean
     is_new_arrival: boolean
@@ -218,7 +221,13 @@ const CategoryNode = ({
   )
 }
 
-export function ProductForm({ categories, initialData, colorGroups = [], sizes = []}: ProductFormProps) {
+export function ProductForm({
+  categories,
+  hsnMappings = {},
+  initialData,
+  colorGroups = [],
+  sizes = [],
+}: ProductFormProps) {
   const router = useRouter()
   const supabase = createClient()
   const isEditing = !!initialData
@@ -301,6 +310,7 @@ export function ProductForm({ categories, initialData, colorGroups = [], sizes =
       price: initialData?.price || 0,
       compare_price: initialData?.compare_price,
       sku: initialData?.sku || '',
+      hsn_code: initialData?.hsn_code || '',
       status: (initialData?.status as 'active' | 'inactive' | 'draft') || 'draft',
       is_featured: initialData?.is_featured || false,
       is_new_arrival: initialData?.is_new_arrival || false,
@@ -313,6 +323,29 @@ export function ProductForm({ categories, initialData, colorGroups = [], sizes =
   })
   const selectedCategories = watch('category_ids') || [];
   const productName = watch('name')
+  const skipInitialHsnAutofill = useRef(true)
+
+  useEffect(() => {
+    if (skipInitialHsnAutofill.current) {
+      skipInitialHsnAutofill.current = false
+      return
+    }
+
+    if (!selectedCategories.length) return
+
+    const resolvedHsn = resolveHsnFromCategories(
+      selectedCategories,
+      categories.map((category) => ({
+        id: category.id,
+        parent_id: category.parent_id ?? null,
+      })),
+      hsnMappings
+    )
+
+    if (resolvedHsn) {
+      setValue('hsn_code', resolvedHsn)
+    }
+  }, [selectedCategories, categories, hsnMappings, setValue])
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
@@ -476,6 +509,7 @@ export function ProductForm({ categories, initialData, colorGroups = [], sizes =
             ? data.compare_price
             : null,
         sku: data.sku || null,
+        hsn_code: data.hsn_code?.trim() || null,
         status: data.status,
         is_featured: data.is_featured || false,
         is_new_arrival: data.is_new_arrival || false,
@@ -621,6 +655,13 @@ export function ProductForm({ categories, initialData, colorGroups = [], sizes =
           </div>
           <Input label="SKU" placeholder="Optional" {...register('sku')} />
         </div>
+        <Input
+          label="HSN Code"
+          placeholder="Auto-filled from category mapping"
+          helperText="Used on GST invoices. Auto-populates when you select a category."
+          error={errors.hsn_code?.message}
+          {...register('hsn_code')}
+        />
         <div>
           <label className="text-sm font-medium text-gray-700 mb-1 block">Short Description</label>
           <textarea

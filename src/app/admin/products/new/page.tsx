@@ -22,17 +22,29 @@ async function getSizes() {
   return (data || []).map((size) => size.name)
 }
 
+import { mappingsArrayToRecord } from '@/lib/hsn'
+
+async function getHsnMappings() {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('category_hsn_mappings')
+    .select('category_id, hsn_code')
+  return mappingsArrayToRecord(data || [])
+}
+
 export default async function NewProductPage() {
-  const [categories, sizes, uniqueColorGroups] = await Promise.all([
+  const [categories, sizes, uniqueColorGroups, hsnMappings] = await Promise.all([
     getCategories(),
     getSizes(),
     getUniqueColorGroups(),
+    getHsnMappings(),
   ])
   return (
     <div className="">
       <h1 className="text-3xl font-bold text-gray-900 mb-8">Add New Product</h1>
       <ProductForm
         categories={categories}
+        hsnMappings={hsnMappings}
         colorGroups={uniqueColorGroups}
         sizes={sizes}
       />

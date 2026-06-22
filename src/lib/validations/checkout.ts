@@ -68,6 +68,13 @@ export const productSchema = z.object({
   tags: z.array(z.string()).optional().default([]),
   seo_title: z.string().max(200).optional(),
   seo_description: z.string().max(500).optional(),
+  hsn_code: z.preprocess(
+    (value) => {
+      if (value === '' || value === null || value === undefined) return undefined
+      return value
+    },
+    z.string().regex(/^\d{4,8}$/, 'HSN code must be 4–8 digits').optional()
+  ),
   category_ids: z.array(z.string().uuid()).min(1, 'At least one category required'),
 })
 

@@ -12,6 +12,7 @@ import {
   Star,
   Layers,
   Ruler,
+  Hash,
   LogOut,
   TicketSlash,
   SquareX
@@ -30,6 +31,7 @@ const NAV_ITEMS = [
   { href: '/admin/products', icon: Package, label: 'Products' },
   { href: '/admin/categories', icon: Layers, label: 'Categories' },
   { href: '/admin/sizes', icon: Ruler, label: 'Product Sizes' },
+  { href: '/admin/hsn-codes', icon: Hash, label: 'Manage HSN Code' },
   { href: '/admin/orders', icon: ShoppingBag, label: 'Orders' },
   { href: '/admin/order-cancel-requests', icon: SquareX, label: 'Cancel Requests' },
   { href: '/admin/cancel-reasons', icon: SquareX, label: 'Order Cancel Reasons Manage' },

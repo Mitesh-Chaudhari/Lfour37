@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation'
 import { ProductForm } from '@/components/admin/product-form'
 import { getUniqueColorGroups } from '@/lib/product-colors'
 
+import { mappingsArrayToRecord } from '@/lib/hsn'
+
 interface Props {
   params: Promise<{ id: string }>
 }
@@ -15,6 +17,7 @@ export default async function AdminProductEditPage({ params }: Props) {
     { data: product },
     { data: categories },
     { data: sizes },
+    { data: hsnMappingRows },
     colorGroups,
   ] = await Promise.all([
     supabase
@@ -32,8 +35,13 @@ export default async function AdminProductEditPage({ params }: Props) {
       .select('name')
       .order('display_order')
       .order('name'),
+    supabase
+      .from('category_hsn_mappings')
+      .select('category_id, hsn_code'),
     getUniqueColorGroups(),
   ])
+
+  const hsnMappings = mappingsArrayToRecord(hsnMappingRows || [])
 
   if (!product) notFound()
 
@@ -56,6 +64,7 @@ export default async function AdminProductEditPage({ params }: Props) {
       <ProductForm
         initialData={productWithCategories}
         categories={(categories || []) as any}
+        hsnMappings={hsnMappings}
         colorGroups={colorGroups}
         sizes={(sizes || []).map((size) => size.name)}
       />
