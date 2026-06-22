@@ -13,7 +13,7 @@ function categoryDepth(
   let currentId: string | null = categoryId
 
   while (currentId) {
-    const parentId = categoryById.get(currentId)?.parent_id
+    const parentId: string | null = categoryById.get(currentId)!.parent_id
     if (!parentId) break
     depth++
     currentId = parentId
@@ -32,7 +32,7 @@ function findMappingForBranch(
   while (currentId) {
     const hsn = mappings[currentId]
     if (hsn) return hsn
-    currentId = categoryById.get(currentId)?.parent_id ?? null
+    currentId = categoryById.get(currentId)!.parent_id ?? null
   }
 
   return null
