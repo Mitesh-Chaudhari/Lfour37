@@ -138,12 +138,12 @@ export function generateInvoicePdf(order: InvoiceOrderInput): Uint8Array {
     styles: {
       fontSize: 8,
       cellPadding: 5,
-      textColor: TEXT,
+      textColor: [...TEXT],
       lineColor: [229, 231, 235],
       lineWidth: 0.5,
     },
     headStyles: {
-      fillColor: GOLD,
+      fillColor: [...GOLD],
       textColor: [255, 255, 255],
       fontStyle: 'bold',
       halign: 'center',
@@ -237,12 +237,12 @@ export function generateInvoicePdf(order: InvoiceOrderInput): Uint8Array {
     styles: {
       fontSize: 8,
       cellPadding: 4,
-      textColor: TEXT,
+      textColor: [...TEXT],
       lineColor: [229, 231, 235],
       lineWidth: 0.5,
     },
     headStyles: {
-      fillColor: GOLD,
+      fillColor: [...GOLD],
       textColor: [255, 255, 255],
       fontStyle: 'bold',
       halign: 'center',
