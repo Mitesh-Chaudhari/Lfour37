@@ -59,7 +59,7 @@ export function buildCategoryPreviewMap(
     category_id: string
     products: RankableProduct | RankableProduct[] | null
   }>,
-  categories: Array<{ id: string; image_url?: string | null }>
+  categories: Array<{ id: string; image_url?: string | null; parent_id?: string | null }>
 ): Record<string, string> {
   const productsByCategory: Record<string, RankableProduct[]> = {}
 
