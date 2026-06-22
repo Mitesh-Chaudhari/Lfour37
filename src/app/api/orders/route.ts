@@ -25,7 +25,7 @@ const createOrderSchema = z.object({
   shipping_method_id: z.string().uuid(),
   coupon_code: z.string().nullable().optional(),
   discount_amount: z.number().min(0).default(0),
-  payment_method: z.enum(['razorpay']),
+  payment_method: z.enum(['razorpay', 'cod']),
   save_address: z.boolean().nullable().optional(),
 })
 
@@ -99,6 +99,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid shipping method' }, { status: 400 })
     }
 
+    if (Number(shippingMethod.price) > 0) {
+      return NextResponse.json(
+        { error: 'Only free shipping is available right now' },
+        { status: 400 }
+      )
+    }
+
     // Validate coupon if provided
     let couponId: string | null = null
     let validatedDiscount = data.discount_amount
@@ -130,7 +137,7 @@ export async function POST(request: NextRequest) {
     const subtotal = data.items.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
     const discountAmount = Math.min(validatedDiscount, subtotal)
     const afterDiscount = subtotal - discountAmount
-    const taxAmount = Number((afterDiscount * 0.08).toFixed(2))
+    const taxAmount = 0
     const total = Number((afterDiscount + taxAmount + shippingMethod.price).toFixed(2))
 
     // Get product details for order items

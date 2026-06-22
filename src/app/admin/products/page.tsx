@@ -4,7 +4,7 @@ import { Plus, Edit, Trash2, Eye, EyeOff } from 'lucide-react'
 import { formatPrice } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { ProductBulkUpload } from '@/components/admin/product-bulk-upload'
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/ui/optimized-image'
 import { AdminProductDeleteButton } from '@/components/admin/AdminProductDeleteButton'
 
 async function getProducts() {
@@ -60,12 +60,12 @@ export default async function AdminProductsPage() {
                     <div className="flex items-center gap-3">
                       <div className="relative h-12 w-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
                         {product.images?.[0]?.url ? (
-                          <Image
+                          <OptimizedImage
                             src={product.images[0].url}
                             alt={product.name}
                             fill
+                            variant="adminThumb"
                             className="object-cover"
-                            sizes="40px"
                           />
                         ) : (
                           <div className="h-full w-full bg-gray-200" />

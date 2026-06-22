@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 import { forgotPasswordSchema, ForgotPasswordFormData } from '@/lib/validations/auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { BlockingContainer } from '@/components/ui/blocking-container'
 import toast from 'react-hot-toast'
 
 export default function ForgotPasswordPage() {
@@ -86,6 +87,7 @@ export default function ForgotPasswordPage() {
           </p>
         </div>
 
+        <BlockingContainer busy={isLoading} message="Sending reset link...">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <Input
             label="Email"
@@ -100,6 +102,7 @@ export default function ForgotPasswordPage() {
             Send Reset Link
           </Button>
         </form>
+        </BlockingContainer>
 
         <div className="text-center mt-6">
           <Link

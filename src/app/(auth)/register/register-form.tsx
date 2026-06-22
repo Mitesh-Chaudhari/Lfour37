@@ -16,6 +16,7 @@ import {
 } from '@/lib/validations/auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { BlockingContainer } from '@/components/ui/blocking-container'
 import toast from 'react-hot-toast'
 
 export default function RegisterForm() {
@@ -157,7 +158,7 @@ export default function RegisterForm() {
     }
     setIsLoading(true)
     try {
-        const { error } =
+        const { data: signUpData, error } =
         await supabase.auth.signUp({
             email: data.email,
             password:
@@ -171,8 +172,7 @@ export default function RegisterForm() {
                 phone:
                 data.phone,
 
-                phone_verified:
-                true,
+                phone_verified: true,
 
                 gender:
                 data.gender || null,
@@ -192,6 +192,31 @@ export default function RegisterForm() {
           toast.error(error.message)
         }
         return
+      }
+
+      if (signUpData.user?.id) {
+        const profileRes = await fetch('/api/auth/complete-registration', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: signUpData.user.id,
+            email: data.email,
+            full_name: data.full_name,
+            phone: data.phone,
+            phone_verified: true,
+            gender: data.gender || null,
+            dob: data.dob || null,
+          }),
+        })
+
+        if (!profileRes.ok) {
+          const profileError = await profileRes.json().catch(() => null)
+          toast.error(
+            profileError?.error ||
+              'Account created but profile setup failed. Please contact support.'
+          )
+          return
+        }
       }
 
       toast.success('Account created! Check your email to verify your account.')
@@ -409,6 +434,16 @@ export default function RegisterForm() {
             </div>
           </div> */}
 
+          <BlockingContainer
+            busy={isLoading || sendingOtp || verifyingOtp}
+            message={
+              isLoading
+                ? 'Creating your account...'
+                : sendingOtp
+                  ? 'Sending OTP...'
+                  : 'Verifying OTP...'
+            }
+          >
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <Input
               label="Full Name"
@@ -556,17 +591,13 @@ export default function RegisterForm() {
                     type="button"
                     variant="outline"
                     onClick={sendOtp}
+                    loading={sendingOtp}
                     disabled={
-                      sendingOtp ||
                       !isValidPhone ||
                       emailExists
                     }
                   >
-                    {sendingOtp
-                      ? 'Sending OTP...'
-                      : phoneVerified
-                        ? '✓ Verified'
-                        : 'Send OTP'}
+                    {phoneVerified ? '✓ Verified' : 'Send OTP'}
                   </Button>
                 )
               }
@@ -595,7 +626,7 @@ export default function RegisterForm() {
                   <Button
                     type="button"
                     onClick={verifyOtp}
-                    disabled={verifyingOtp}
+                    loading={verifyingOtp}
                   >
                     Verify
                   </Button>
@@ -663,6 +694,7 @@ export default function RegisterForm() {
               Create Account
             </Button>
           </form>
+          </BlockingContainer>
 
           <p className="text-center text-sm text-gray-600 mt-6">
             Already have an account?{' '}

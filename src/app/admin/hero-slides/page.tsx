@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { OptimizedImage } from '@/components/ui/optimized-image'
 import toast from 'react-hot-toast'
 
 interface Slide {
@@ -221,7 +222,15 @@ export default function HeroSlidesAdmin() {
                 }}
               />
               {slide.image_url && (
-                <img src={slide.image_url} className="h-32 mt-2 rounded" />
+                <div className="relative h-32 mt-2 rounded overflow-hidden">
+                  <OptimizedImage
+                    src={slide.image_url}
+                    alt={slide.title || 'Slide preview'}
+                    fill
+                    variant="categoryFeatured"
+                    className="object-cover"
+                  />
+                </div>
               )}
             </div>
 

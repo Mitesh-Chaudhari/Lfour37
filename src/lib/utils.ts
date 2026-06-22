@@ -56,14 +56,15 @@ export function calculateDiscount(price: number, comparePrice: number): number {
   return Math.round(((comparePrice - price) / comparePrice) * 100)
 }
 
-export function calculateTax(subtotal: number, taxRate: number = 0.08): number {
+export function calculateTax(subtotal: number, taxRate: number = 0): number {
   return Number((subtotal * taxRate).toFixed(2))
 }
 
 export function calculateOrderTotal(
   subtotal: number,
   discountAmount: number,
-  taxRate: number = 0.08,
+  // taxRate: number = 0.08,
+  taxRate: number = 0,
   shippingAmount: number = 0
 ): { taxAmount: number; total: number } {
   const afterDiscount = Math.max(0, subtotal - discountAmount)

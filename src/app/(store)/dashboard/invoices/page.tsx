@@ -19,7 +19,7 @@ export default async function InvoicesPage() {
     .from('orders')
     .select('id, order_number, created_at, total, status, payment_status, payment_method')
     .eq('user_id', user.id)
-    .in('payment_status', ['completed', 'refunded'])
+    .neq('status', 'pending')
     .order('created_at', { ascending: false })
 
   const statusVariant = (status: string) => {
@@ -80,7 +80,7 @@ export default async function InvoicesPage() {
                   <td className="px-6 py-4 text-right">
                     <a
                       href={`/api/invoices/${order.id}`}
-                      download={`invoice-${order.order_number}.html`}
+                      download={`invoice-${order.order_number}.pdf`}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-purple-600 hover:text-purple-700 border border-purple-200 hover:border-purple-300 rounded-lg transition-colors"
                     >
                       <Download className="h-3.5 w-3.5" />

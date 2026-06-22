@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Heart, ShoppingBag, Truck, RotateCcw, Shield, ChevronDown, ChevronUp, RectangleGoggles } from 'lucide-react'
+import { Heart, ShoppingBag, Truck, RotateCcw, Shield, ChevronDown, ChevronUp, RectangleGoggles, Loader2 } from 'lucide-react'
 import { Product, ProductVariant } from '@/types'
 import { useCartStore } from '@/store/cart-store'
 import { useWishlistStore } from '@/store/wishlist-store'
@@ -46,6 +46,7 @@ export function ProductInfo({ product, sizeOrder = [] }: ProductInfoProps) {
     )
 
   const [mounted, setMounted] = useState(false)
+  const [wishlistLoading, setWishlistLoading] = useState(false)
   useEffect(() => { setMounted(true) }, [])
 
   const updateUrl = (newColor: string | null, newSize: string | null) => {
@@ -187,6 +188,8 @@ export function ProductInfo({ product, sizeOrder = [] }: ProductInfoProps) {
   }
 
   const handleWishlist = async () => {
+    if (wishlistLoading) return
+
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -195,14 +198,22 @@ export function ProductInfo({ product, sizeOrder = [] }: ProductInfoProps) {
       return
     }
 
-    toggleWishlist(product.id)
+    setWishlistLoading(true)
+    try {
+      toggleWishlist(product.id)
 
-    if (!inWishlist) {
-      await supabase.from('wishlist').upsert({ user_id: user.id, product_id: product.id })
-      toast.success('Added to wishlist!')
-    } else {
-      await supabase.from('wishlist').delete().eq('user_id', user.id).eq('product_id', product.id)
-      toast.success('Removed from wishlist')
+      if (!inWishlist) {
+        await supabase.from('wishlist').upsert({ user_id: user.id, product_id: product.id })
+        toast.success('Added to wishlist!')
+      } else {
+        await supabase.from('wishlist').delete().eq('user_id', user.id).eq('product_id', product.id)
+        toast.success('Removed from wishlist')
+      }
+    } catch {
+      toggleWishlist(product.id)
+      toast.error('Failed to update wishlist')
+    } finally {
+      setWishlistLoading(false)
     }
   }
 
@@ -498,15 +509,20 @@ export function ProductInfo({ product, sizeOrder = [] }: ProductInfoProps) {
         </Button>
         <button
           onClick={handleWishlist}
+          disabled={wishlistLoading}
           className={cn(
-            'h-12 w-12 rounded-xl border-2 flex items-center justify-center transition-all',
+            'h-12 w-12 rounded-xl border-2 flex items-center justify-center transition-all disabled:opacity-70',
             inWishlist
               ? 'border-red-500 bg-red-50 text-red-500'
               : 'border-gray-300 text-gray-600 hover:border-red-400 hover:text-red-500'
           )}
           aria-label="Add to wishlist"
         >
-          <Heart className={cn('h-5 w-5', inWishlist && 'fill-current')} />
+          {wishlistLoading ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <Heart className={cn('h-5 w-5', inWishlist && 'fill-current')} />
+          )}
         </button>
       </div>
 

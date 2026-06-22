@@ -24,7 +24,7 @@ export const checkoutSchema = z.object({
   country: z.string().default('India'),
   shipping_method_id: z.string().uuid('Please select a shipping method'),
   coupon_code: z.string().optional(),
-  payment_method: z.enum(['razorpay']),
+  payment_method: z.enum(['razorpay', 'cod']),
   save_address: z.boolean().optional().default(false),
 })
 

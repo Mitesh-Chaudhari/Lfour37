@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import { useCartStore } from '@/store/cart-store'
+import { Button } from '@/components/ui/button'
+import { BlockingContainer } from '@/components/ui/blocking-container'
 
 declare global {
   interface Window {
@@ -12,8 +14,8 @@ declare global {
 
 export function RazorpayPaymentForm({ razorpayOrder, orderId, amount }: any) {
   const [isLoaded, setIsLoaded] = useState(false)
+  const [isVerifying, setIsVerifying] = useState(false)
 
-  // ✅ Load script properly
   useEffect(() => {
     const loadScript = async () => {
       if (window.Razorpay) {
@@ -38,10 +40,8 @@ export function RazorpayPaymentForm({ razorpayOrder, orderId, amount }: any) {
 
     loadScript()
   }, [])
-  const clearCart = useCartStore.getState().clearCart
 
   const handlePayment = () => {
-    // ❌ Prevent crash
     if (!isLoaded || !window.Razorpay) {
       toast.error('Payment system loading... please wait')
       return
@@ -57,9 +57,8 @@ export function RazorpayPaymentForm({ razorpayOrder, orderId, amount }: any) {
       description: 'Order Payment',
 
       handler: async function (response: any) {
+        setIsVerifying(true)
         try {
-          console.log("razorpayOrder FULL before fetch:", razorpayOrder)
-          console.log("razorpayOrder.id before fetch:", razorpayOrder?.id)
           const res = await fetch('/api/payments/razorpay/verify', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -77,10 +76,18 @@ export function RazorpayPaymentForm({ razorpayOrder, orderId, amount }: any) {
             window.location.href = '/dashboard/orders'
           } else {
             toast.error('Verification failed')
+            setIsVerifying(false)
           }
         } catch {
           toast.error('Verification error')
+          setIsVerifying(false)
         }
+      },
+
+      modal: {
+        ondismiss: () => {
+          setIsVerifying(false)
+        },
       },
 
       prefill: {
@@ -89,10 +96,9 @@ export function RazorpayPaymentForm({ razorpayOrder, orderId, amount }: any) {
         contact: '',
       },
 
-      // Custom theme colors configuration
       theme: {
-        color: "#c39c41 ",
-        backdrop_color: "#1a1a1ad2"
+        color: '#c39c41 ',
+        backdrop_color: '#1a1a1ad2',
       },
     }
 
@@ -101,12 +107,25 @@ export function RazorpayPaymentForm({ razorpayOrder, orderId, amount }: any) {
   }
 
   return (
-    <button
-      onClick={handlePayment}
-      disabled={!isLoaded}
-      className="w-full bg-purple-600 text-white py-3 rounded-lg disabled:opacity-50"
+    <BlockingContainer
+      busy={isVerifying}
+      message="Confirming your payment..."
+      className="w-full"
     >
-      {isLoaded ? `Pay ₹${amount}` : 'Loading Payment...'}
-    </button>
+      <Button
+        onClick={handlePayment}
+        disabled={!isLoaded}
+        loading={!isLoaded || isVerifying}
+        variant="brand"
+        size="lg"
+        className="w-full"
+      >
+        {isVerifying
+          ? 'Confirming payment...'
+          : isLoaded
+            ? `Pay ₹${amount}`
+            : 'Loading Payment...'}
+      </Button>
+    </BlockingContainer>
   )
 }

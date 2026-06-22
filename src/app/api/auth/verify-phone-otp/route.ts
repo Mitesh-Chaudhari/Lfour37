@@ -68,12 +68,12 @@ export async function POST(
       .eq('id', data.id)
 
     await supabase
-    .from('verified_phones')
-    .upsert({
+      .from('verified_phones')
+      .upsert({
         phone,
         verified_at:
-        new Date().toISOString(),
-    })
+          new Date().toISOString(),
+      })
 
     return NextResponse.json({
       success: true,

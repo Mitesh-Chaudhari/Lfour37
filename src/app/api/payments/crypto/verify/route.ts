@@ -8,6 +8,7 @@ import { sendOrderConfirmationEmail } from '@/lib/email'
 import logger from '@/lib/logger'
 import { z } from 'zod'
 import { type CryptoNetwork, type CryptoToken } from '@/types'
+import { createDelhiveryShipmentForOrder } from '@/lib/delhivery-shipping'
 
 const CHAINS = {
   ethereum: mainnet,
@@ -146,6 +147,21 @@ export async function POST(request: NextRequest) {
       .eq('order_id', data.order_id)
       .eq('payment_method', 'crypto')
 
+    try {
+      await createDelhiveryShipmentForOrder(order.id)
+    } catch (error) {
+      logger.error('Delhivery shipment creation failed after crypto payment', {
+        error,
+        orderId: order.id,
+      })
+    }
+
+    const { data: updatedOrder } = await supabase
+      .from('orders')
+      .select('tracking_number')
+      .eq('id', data.order_id)
+      .single()
+
     // Analytics
     await supabase.from('analytics_events').insert({
       event_type: 'crypto_payment_verified',
@@ -160,8 +176,23 @@ export async function POST(request: NextRequest) {
     })
 
     // Send confirmation email
-    if (order.user?.email) {
-      sendOrderConfirmationEmail(order, order.user.email).catch(() => {})
+    const orderUser = Array.isArray(order.user) ? order.user[0] : order.user
+    if (orderUser?.email) {
+      sendOrderConfirmationEmail(
+        {
+          ...order,
+          status: 'paid',
+          payment_status: 'completed',
+          tracking_number:
+            updatedOrder?.tracking_number || order.tracking_number,
+        },
+        orderUser.email
+      ).catch((error) =>
+        logger.error('Crypto order confirmation email failed', {
+          error,
+          orderId: order.id,
+        })
+      )
     }
 
     logger.info('Crypto payment verified', {

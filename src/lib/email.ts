@@ -1,17 +1,59 @@
 import nodemailer from 'nodemailer'
 import { Order } from '@/types'
-
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT) || 587,
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-})
+import logger from '@/lib/logger'
 
 const FROM = process.env.EMAIL_FROM || 'noreply@threadsmarket.com'
+
+function isEmailConfigured(): boolean {
+  return Boolean(
+    process.env.SMTP_HOST &&
+      process.env.SMTP_USER &&
+      process.env.SMTP_PASS
+  )
+}
+
+function getTransporter() {
+  if (!isEmailConfigured()) {
+    throw new Error(
+      'SMTP is not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS.'
+    )
+  }
+
+  const port = Number(process.env.SMTP_PORT) || 587
+  const secure =
+    process.env.SMTP_SECURE === 'true' || port === 465
+
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port,
+    secure,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  })
+}
+
+async function deliverMail(options: {
+  to: string
+  subject: string
+  html: string
+}): Promise<void> {
+  if (!isEmailConfigured()) {
+    logger.warn('Email skipped because SMTP is not configured', {
+      subject: options.subject,
+      to: options.to,
+    })
+    return
+  }
+
+  await getTransporter().sendMail({
+    from: FROM,
+    to: options.to,
+    subject: options.subject,
+    html: options.html,
+  })
+}
 const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || 'Lfour37'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
@@ -69,6 +111,11 @@ export async function sendOrderConfirmationEmail(order: Order, email: string): P
     <p>Thank you for your order. We're preparing it now.</p>
     <p><strong>Order Number:</strong> ${order.order_number}</p>
     <p><strong>Status:</strong> ${order.status.charAt(0).toUpperCase() + order.status.slice(1)}</p>
+    ${
+      order.tracking_number
+        ? `<p><strong>Tracking Number:</strong> ${order.tracking_number}</p>`
+        : ''
+    }
 
     <h3>Order Summary</h3>
     <table>
@@ -92,8 +139,7 @@ export async function sendOrderConfirmationEmail(order: Order, email: string): P
     <a href="${APP_URL}/dashboard/orders" class="button">Track Your Order</a>
   `
 
-  await transporter.sendMail({
-    from: FROM,
+  await deliverMail({
     to: email,
     subject: `Order Confirmed - ${order.order_number}`,
     html: baseTemplate(content),
@@ -132,10 +178,95 @@ export async function sendOrderStatusEmail(
     <a href="${APP_URL}/dashboard/orders/${order.id}" class="button">View Order</a>
   `
 
-  await transporter.sendMail({
-    from: FROM,
+  await deliverMail({
     to: email,
     subject,
+    html: baseTemplate(content),
+  })
+}
+
+export async function sendShipmentStatusEmail({
+  order,
+  email,
+  milestone,
+  carrierStatus,
+  trackingNumber,
+  expectedDeliveryDate,
+  instructions,
+}: {
+  order: Order
+  email: string
+  milestone: string
+  carrierStatus: string
+  trackingNumber: string
+  expectedDeliveryDate?: string | null
+  instructions?: string | null
+}): Promise<void> {
+  const messages: Record<string, { subject: string; heading: string; message: string }> = {
+    shipment_created: {
+      subject: `Shipment created for ${order.order_number}`,
+      heading: 'Your shipment is being prepared',
+      message: 'Delhivery has received the shipment details from us.',
+    },
+    picked_up: {
+      subject: `Order ${order.order_number} has been picked up`,
+      heading: 'Your package is on the move',
+      message: 'Delhivery has picked up your package from our facility.',
+    },
+    in_transit: {
+      subject: `Order ${order.order_number} is in transit`,
+      heading: 'Your package is travelling to you',
+      message: 'Your package is moving through the Delhivery network.',
+    },
+    out_for_delivery: {
+      subject: `Order ${order.order_number} is out for delivery`,
+      heading: 'Arriving today',
+      message: 'Please keep your phone available for the delivery agent.',
+    },
+    delivered: {
+      subject: `Order ${order.order_number} has been delivered`,
+      heading: 'Delivered',
+      message: 'Your order has been delivered. We hope you love it!',
+    },
+    delivery_exception: {
+      subject: `Delivery update for ${order.order_number}`,
+      heading: 'Your delivery needs attention',
+      message: instructions || 'Delhivery reported an issue while attempting delivery.',
+    },
+    return_to_origin: {
+      subject: `Return update for ${order.order_number}`,
+      heading: 'Package returning to sender',
+      message: 'Delhivery is returning this package to our facility.',
+    },
+  }
+
+  const copy = messages[milestone] || {
+    subject: `Shipping update for ${order.order_number}`,
+    heading: 'Shipping update',
+    message: `Delhivery updated your shipment to: ${carrierStatus}.`,
+  }
+  const trackingUrl = `${APP_URL}/dashboard/orders`
+  const eta = expectedDeliveryDate
+    ? new Date(expectedDeliveryDate).toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      })
+    : null
+
+  const content = `
+    <h2>${copy.heading}</h2>
+    <p>${copy.message}</p>
+    <p><strong>Order:</strong> ${order.order_number}</p>
+    <p><strong>Tracking number:</strong> ${trackingNumber}</p>
+    <p><strong>Current status:</strong> ${carrierStatus}</p>
+    ${eta ? `<p><strong>Expected delivery:</strong> ${eta}</p>` : ''}
+    <a href="${trackingUrl}" class="button">Track Your Order</a>
+  `
+
+  await deliverMail({
+    to: email,
+    subject: copy.subject,
     html: baseTemplate(content),
   })
 }
@@ -149,8 +280,7 @@ export async function sendPasswordResetEmail(email: string, resetUrl: string): P
     <p style="color:#888;font-size:14px;margin-top:24px;">If you didn't request this, you can safely ignore this email.</p>
   `
 
-  await transporter.sendMail({
-    from: FROM,
+  await deliverMail({
     to: email,
     subject: 'Reset Your Password',
     html: baseTemplate(content),
@@ -164,8 +294,7 @@ export async function sendWelcomeEmail(email: string, name: string): Promise<voi
     <a href="${APP_URL}/products" class="button">Start Shopping</a>
   `
 
-  await transporter.sendMail({
-    from: FROM,
+  await deliverMail({
     to: email,
     subject: `Welcome to ${APP_NAME}!`,
     html: baseTemplate(content),
@@ -179,8 +308,7 @@ export async function sendNewsletterConfirmationEmail(email: string): Promise<vo
     <a href="${APP_URL}/products" class="button">Explore New Arrivals</a>
   `
 
-  await transporter.sendMail({
-    from: FROM,
+  await deliverMail({
     to: email,
     subject: `Welcome to ${APP_NAME} Newsletter!`,
     html: baseTemplate(content),

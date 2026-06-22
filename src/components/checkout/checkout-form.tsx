@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { CreditCard, Wallet, Tag, MapPin, Truck, Check } from 'lucide-react'
+import { CreditCard, Tag, MapPin, Truck, Check, Banknote } from 'lucide-react'
 import { Address, ShippingMethod } from '@/types'
 import { useCartStore } from '@/store/cart-store'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,8 @@ import { Coupon } from '@/types'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
 import { RazorpayPaymentForm } from './razorpay-payment-form'
+import { BlockingContainer } from '@/components/ui/blocking-container'
+import { OptimizedImage } from '@/components/ui/optimized-image'
 
 interface CheckoutFormProps {
   addresses: Address[]
@@ -28,10 +30,11 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
   const router = useRouter()
   const { items, getSubtotal, discountAmount, couponCode, applyCoupon: applyCouponToCart, removeCoupon, setShipping } = useCartStore()
   // const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'crypto'>('stripe')
-  const [paymentMethod, setPaymentMethod] = useState<'razorpay'>('razorpay')
+  const [paymentMethod, setPaymentMethod] = useState<'razorpay' | 'cod'>('razorpay')
   const [couponInput, setCouponInput] = useState('')
   const [couponData, setCouponData] = useState<Coupon | null>(null)
   const [isApplyingCoupon, setIsApplyingCoupon] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [clientSecret, setClientSecret] = useState<{ id: string; amount: number; currency: string } | null>(null)
   const [orderId, setOrderId] = useState<string | null>(null)
   const [step, setStep] = useState<'details' | 'payment'>('details')
@@ -41,6 +44,9 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
 
   const subtotal = getSubtotal()
   const [localDiscount, setLocalDiscount] = useState(discountAmount)
+
+  const freeShippingMethod =
+    shippingMethods.find((method) => method.price === 0) || shippingMethods[0]
 
   const {
     register,
@@ -53,19 +59,19 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
     defaultValues: {
       country: 'India',
       payment_method: 'razorpay',
-      shipping_method_id: shippingMethods[0]?.id,
+      shipping_method_id: freeShippingMethod?.id,
     },
   })
 
-  const selectedShippingId = watch('shipping_method_id')
-  const selectedShipping = shippingMethods.find((m) => m.id === selectedShippingId)
-  const shippingAmount = selectedShipping?.price || 0
-
   useEffect(() => {
-    if (selectedShipping) {
-      setShipping(selectedShipping.id, selectedShipping.price)
+    if (freeShippingMethod?.id) {
+      setValue('shipping_method_id', freeShippingMethod.id)
+      setShipping(freeShippingMethod.id, 0)
     }
-  }, [selectedShippingId])
+  }, [freeShippingMethod?.id, setShipping, setValue])
+
+  const selectedShippingId = watch('shipping_method_id')
+  const shippingAmount = 0
 
   // Fill form from selected saved address
   useEffect(() => {
@@ -83,7 +89,7 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
   }, [selectedAddressId, addresses])
 
   const afterDiscount = Math.max(0, subtotal - localDiscount)
-  const taxAmount = Number((afterDiscount * 0.08).toFixed(2))
+  const taxAmount = 0
   const total = afterDiscount + taxAmount + shippingAmount
 
   const handleApplyCoupon = async () => {
@@ -126,6 +132,7 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
       return
     }
 
+    setIsSubmitting(true)
     try {
       const orderRes = await fetch('/api/orders', {
         method: 'POST',
@@ -168,21 +175,32 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
       const { order_id } = await orderRes.json()
       setOrderId(order_id)
 
-      // if (paymentMethod === 'stripe') {
-      //   const paymentRes = await fetch('/api/payments/stripe/create-intent', {
-      //     method: 'POST',
-      //     headers: { 'Content-Type': 'application/json' },
-      //     body: JSON.stringify({ order_id }),
-      //   })
+      if (paymentMethod === 'cod') {
+        const confirmRes = await fetch('/api/payments/cod/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_id }),
+        })
+        const confirmData = await confirmRes.json()
 
-      //   if (!paymentRes.ok) {
-      //     toast.error('Failed to initialize payment')
-      //     return
-      //   }
+        if (!confirmRes.ok) {
+          toast.error(confirmData.error || 'Failed to place COD order')
+          return
+        }
 
-      //   const { client_secret } = await paymentRes.json()
-      //   setClientSecret(client_secret)
-      // }
+        if (confirmData.shipment && !confirmData.shipment.ok) {
+          toast.error(
+            confirmData.shipment.error ||
+              'Order placed, but shipment could not be created yet.'
+          )
+        } else {
+          toast.success('Order placed! Pay when your package arrives.')
+        }
+
+        router.push('/dashboard/orders')
+        return
+      }
+
       if (paymentMethod === 'razorpay') {
         const paymentRes = await fetch('/api/payments/razorpay/create-order', {
           method: 'POST',
@@ -207,6 +225,8 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
       setStep('payment')
     } catch {
       toast.error('Something went wrong. Please try again.')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -220,7 +240,15 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <BlockingContainer
+      busy={isSubmitting}
+      message={
+        paymentMethod === 'cod'
+          ? 'Placing your order...'
+          : 'Preparing payment...'
+      }
+      className="grid grid-cols-1 lg:grid-cols-3 gap-8"
+    >
       {/* Left: Form */}
       <div className="lg:col-span-2 space-y-6">
         {step === 'details' ? (
@@ -294,37 +322,29 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
                 <Truck className="h-5 w-5 text-purple-600" />
                 <h2 className="text-lg font-semibold">Shipping Method</h2>
               </div>
-              <div className="space-y-3">
-                {shippingMethods.map((method) => (
-                  <label
-                    key={method.id}
-                    className={cn(
-                      'flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all',
-                      selectedShippingId === method.id
-                        ? 'border-purple-600 bg-purple-50'
-                        : 'border-gray-200 hover:border-purple-300'
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="radio"
-                        value={method.id}
-                        className="accent-primary-600"
-                        {...register('shipping_method_id')}
-                      />
-                      <div>
-                        <p className="font-medium text-sm text-gray-900">{method.name}</p>
-                        <p className="text-xs text-gray-500">
-                          {method.estimated_days_min}–{method.estimated_days_max} business days
-                        </p>
-                      </div>
-                    </div>
-                    <span className="font-semibold text-sm">
-                      {method.price === 0 ? 'Free' : formatPrice(method.price)}
-                    </span>
-                  </label>
-                ))}
-              </div>
+              {freeShippingMethod ? (
+                <div className="flex items-center justify-between p-4 rounded-xl border-2 border-purple-600 bg-purple-50">
+                  <div>
+                    <p className="font-medium text-sm text-gray-900">
+                      {freeShippingMethod.name}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {freeShippingMethod.description ||
+                        `${freeShippingMethod.estimated_days_min}-${freeShippingMethod.estimated_days_max} business days`}
+                    </p>
+                  </div>
+                  <span className="font-semibold text-sm text-green-600">Free</span>
+                </div>
+              ) : (
+                <p className="text-sm text-red-600">
+                  Free shipping is not available right now.
+                </p>
+              )}
+              <input
+                type="hidden"
+                value={freeShippingMethod?.id || ''}
+                {...register('shipping_method_id')}
+              />
               {errors.shipping_method_id && (
                 <p className="text-xs text-red-500 mt-1">{errors.shipping_method_id.message}</p>
               )}
@@ -333,10 +353,13 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
             {/* Payment method selection */}
             <div className="bg-white rounded-xl border border-gray-200 p-6">
               <h2 className="text-lg font-semibold mb-4">Payment Method</h2>
-              <div className="grid grid-cols-1 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => setPaymentMethod('razorpay')}
+                  onClick={() => {
+                    setPaymentMethod('razorpay')
+                    setValue('payment_method', 'razorpay')
+                  }}
                   className={cn(
                     'flex items-center justify-center gap-2 p-4 rounded-xl border-2 transition-all',
                     paymentMethod === 'razorpay'
@@ -347,30 +370,40 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
                   <CreditCard className={cn('h-5 w-5', paymentMethod === 'razorpay' ? 'text-purple-600' : 'text-gray-500')} />
                   <div className="text-left">
                     <p className="font-medium text-sm text-gray-900">Card / Wallet</p>
-                    <p className="text-xs text-gray-500">Visa, Phone Pay, Google Pay</p>
+                    <p className="text-xs text-gray-500">Visa, PhonePe, Google Pay</p>
                   </div>
                 </button>
-                {/* <button
+                <button
                   type="button"
-                  onClick={() => setPaymentMethod('crypto')}
+                  onClick={() => {
+                    setPaymentMethod('cod')
+                    setValue('payment_method', 'cod')
+                  }}
                   className={cn(
                     'flex items-center justify-center gap-2 p-4 rounded-xl border-2 transition-all',
-                    paymentMethod === 'crypto'
+                    paymentMethod === 'cod'
                       ? 'border-purple-600 bg-purple-50'
                       : 'border-gray-200 hover:border-purple-300'
                   )}
                 >
-                  <Wallet className={cn('h-5 w-5', paymentMethod === 'crypto' ? 'text-purple-600' : 'text-gray-500')} />
+                  <Banknote className={cn('h-5 w-5', paymentMethod === 'cod' ? 'text-purple-600' : 'text-gray-500')} />
                   <div className="text-left">
-                    <p className="font-medium text-sm text-gray-900">Crypto</p>
-                    <p className="text-xs text-gray-500">USDT / USDC</p>
+                    <p className="font-medium text-sm text-gray-900">Cash on Delivery</p>
+                    <p className="text-xs text-gray-500">Pay when your order arrives</p>
                   </div>
-                </button> */}
+                </button>
               </div>
+              <input type="hidden" value={paymentMethod} {...register('payment_method')} />
             </div>
 
-            <Button type="submit" variant="brand" size="lg" className="w-full">
-              Continue to Payment
+            <Button
+              type="submit"
+              variant="brand"
+              size="lg"
+              className="w-full"
+              loading={isSubmitting}
+            >
+              {paymentMethod === 'cod' ? 'Place Order' : 'Continue to Payment'}
             </Button>
           </form>
         ) : (
@@ -414,7 +447,13 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
               <div key={item.id} className="flex items-center gap-3">
                 <div className="relative h-14 w-11 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100">
                   {item.variant.image_url && (
-                    <img src={item.variant.image_url} alt={item.product.name} className="h-full w-full object-cover" />
+                    <OptimizedImage
+                      src={item.variant.image_url}
+                      alt={item.product.name}
+                      fill
+                      variant="thumbnail"
+                      className="object-cover"
+                    />
                   )}
                   <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-purple-600 text-white text-[9px] font-bold flex items-center justify-center">
                     {item.quantity}
@@ -470,10 +509,10 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
                 <span>-{formatPrice(localDiscount)}</span>
               </div>
             )}
-            <div className="flex justify-between">
-              <span className="text-gray-600">Tax (8%)</span>
+            {/* <div className="flex justify-between">
+              <span className="text-gray-600">Tax (5%)</span>
               <span>{formatPrice(taxAmount)}</span>
-            </div>
+            </div> */}
             <div className="flex justify-between">
               <span className="text-gray-600">Shipping</span>
               <span>{shippingAmount === 0 ? <span className="text-green-600">Free</span> : formatPrice(shippingAmount)}</span>
@@ -485,6 +524,6 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
           </div>
         </div>
       </div>
-    </div>
+    </BlockingContainer>
   )
 }

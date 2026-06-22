@@ -1,17 +1,15 @@
 'use client'
 
 import { useState } from 'react'
-import { Order, OrderStatus } from '@/types'
+import { Order, OrderItem, OrderStatus } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatPrice, formatDate } from '@/lib/utils'
-import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
 import {
   Truck,
   PackageCheck,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
 const STATUS_OPTIONS: { value: OrderStatus; label: string }[] = [
   { value: 'pending', label: 'Pending' },
@@ -38,8 +36,62 @@ const STATUS_BADGE: Record<OrderStatus, 'success' | 'warning' | 'info' | 'defaul
   exchanged: 'success',
 }
 
+type AdminOrderItem = OrderItem & {
+  status?: string
+  return_status?: string | null
+  return_type?: string | null
+  refund_method?: string | null
+  refund_status?: string | null
+  refunded_amount?: number | null
+  exchange_size?: string | null
+  exchange_color?: string | null
+  return_custom_reason?: string | null
+  cancel_custom_reason?: string | null
+  cancel_reason?: { label?: string } | null
+  variant?: { sku?: string | null } | null
+  product?: { sku?: string | null } | null
+}
+
+function getItemSku(item: AdminOrderItem): string | null {
+  const variantSku = item.variant?.sku?.trim()
+  if (variantSku) return variantSku
+
+  const productSku = item.product?.sku?.trim()
+  if (productSku) return productSku
+
+  return null
+}
+
+function formatItemVariant(item: AdminOrderItem): string {
+  const parts = [item.variant_size, item.variant_color].filter(Boolean)
+  return parts.length ? parts.join(' / ') : '—'
+}
+
+function canProcessItemRefund(
+  order: AdminOrder,
+  item: AdminOrderItem
+): boolean {
+  if (item.refund_status === 'completed') return false
+
+  const refundableState =
+    (item.return_status === 'return_approved' &&
+      item.return_type === 'return') ||
+    item.status === 'cancelled'
+
+  if (!refundableState) return false
+
+  if (order.payment_method === 'cod') return true
+
+  return order.payment_status === 'completed'
+}
+
+type AdminOrder = Omit<Order, 'items'> & {
+  items?: AdminOrderItem[]
+  user?: { full_name: string | null; email: string }
+}
+
 interface AdminOrdersTableProps {
-  orders: (Order & { user?: { full_name: string | null; email: string } })[]
+  orders: AdminOrder[]
 }
 
 export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProps) {
@@ -47,8 +99,6 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
   const [selectedStatus, setSelectedStatus] = useState<string>('all')
   const [search, setSearch] = useState('')
   const [updatingId, setUpdatingId] = useState<string | null>(null)
-  const supabase = createClient()
-
   const filtered = orders.filter((o) => {
     if (selectedStatus !== 'all' && o.status !== selectedStatus) return false
     if (search && !o.order_number.toLowerCase().includes(search.toLowerCase()) &&
@@ -59,20 +109,18 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
   const updateStatus = async (orderId: string, status: OrderStatus) => {
     setUpdatingId(orderId)
     try {
-      const { error } = await supabase.from('orders').update({ status }).eq('id', orderId)
-      if (error) {
-        toast.error('Failed to update status')
+      const res = await fetch('/api/admin/orders/status', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: orderId, status }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to update status')
         return
       }
       setOrders(orders.map((o) => o.id === orderId ? { ...o, status } : o))
       toast.success('Order status updated')
-
-      // Send status email
-      await fetch('/api/admin/orders/status-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: orderId, status }),
-      })
     } catch {
       toast.error('Error updating order')
     } finally {
@@ -80,13 +128,19 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
     }
   }
 
-  const handleRefund = async (order: Order) => {
-    if (!order.payment?.stripe_payment_intent_id) {
-      toast.error('No Stripe payment intent found')
+  const handleRefund = async (order: AdminOrder) => {
+    if (order.payment_status !== 'completed' && order.payment_method !== 'cod') {
+      toast.error('Only paid orders can be refunded')
       return
     }
 
-    if (!confirm(`Refund ${formatPrice(order.total)} for order ${order.order_number}?`)) return
+    if (
+      !confirm(
+        `Refund all remaining items for order ${order.order_number}? The amount will be returned to the original payment method in 5-7 business days.`
+      )
+    ) {
+      return
+    }
 
     try {
       const res = await fetch('/api/admin/orders/refund', {
@@ -95,13 +149,90 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
         body: JSON.stringify({ order_id: order.id }),
       })
 
-      if (res.ok) {
-        toast.success('Refund initiated successfully')
-        setOrders(orders.map((o) => o.id === order.id ? { ...o, status: 'refunded', payment_status: 'refunded' } : o))
-      } else {
-        const data = await res.json()
+      const data = await res.json()
+
+      if (!res.ok) {
         toast.error(data.error || 'Refund failed')
+        return
       }
+
+      toast.success(data.message || 'Refund initiated successfully')
+      setOrders(
+        orders.map((o) =>
+          o.id === order.id
+            ? {
+                ...o,
+                status: 'refunded',
+                payment_status: 'refunded',
+                items: o.items?.map((item) => ({
+                  ...item,
+                  refund_status: 'completed',
+                  refunded_amount: item.total_price,
+                })),
+              }
+            : o
+        )
+      )
+    } catch {
+      toast.error('Refund request failed')
+    }
+  }
+
+  const processItemRefund = async (orderId: string, item: AdminOrderItem) => {
+    const refundTarget =
+      item.refund_method === 'bank'
+        ? 'the customer bank account'
+        : 'the original payment method'
+
+    if (
+      !confirm(
+        `Refund ${formatPrice(item.total_price)} for ${item.product_name} to ${refundTarget}?`
+      )
+    ) {
+      return
+    }
+
+    try {
+      const res = await fetch('/api/admin/orders/refund-item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_id: item.id }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        toast.error(data.error || 'Refund failed')
+        return
+      }
+
+      toast.success(
+        data.message ||
+          'Refund initiated. Amount will reflect in 5-7 business days.'
+      )
+
+      setOrders((current) =>
+        current.map((order) =>
+          order.id === orderId
+            ? {
+                ...order,
+                items: order.items?.map((row) =>
+                  row.id === item.id
+                    ? {
+                        ...row,
+                        refund_status: 'completed',
+                        refunded_amount: item.total_price,
+                        status:
+                          row.return_type === 'exchange'
+                            ? row.status
+                            : 'returned',
+                      }
+                    : row
+                ),
+              }
+            : order
+        )
+      )
     } catch {
       toast.error('Refund request failed')
     }
@@ -139,7 +270,7 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
         orders.map((order) => ({
           ...order,
           items: order.items?.map(
-            (item: any) =>
+            (item: AdminOrderItem) =>
               item.id === itemId
                 ? {
                   ...item,
@@ -193,7 +324,7 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
         orders.map((order) => ({
           ...order,
           items: order.items?.map(
-            (item: any) =>
+            (item: AdminOrderItem) =>
               item.id === itemId
                 ? {
                   ...item,
@@ -223,20 +354,35 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
         body: JSON.stringify({ item_id: itemId }),
       })
 
+      const data = await res.json()
+
       if (!res.ok) {
-        const data = await res.json()
         toast.error(data.error || 'Failed to approve')
         return
       }
 
-      toast.success('Cancellation approved')
+      if (data.refund_error) {
+        toast.error(`Cancellation approved, but refund failed: ${data.refund_error}`)
+      } else if (data.refund) {
+        toast.success('Cancellation approved and refund initiated')
+      } else {
+        toast.success('Cancellation approved')
+      }
 
-      // UPDATE UI
       setOrders((prev) =>
         prev.map((order) => ({
           ...order,
-          items: order.items?.map((item: any) =>
-            item.id === itemId ? { ...item, status: 'cancelled' } : item
+          items: order.items?.map((item: AdminOrderItem) =>
+            item.id === itemId
+              ? {
+                  ...item,
+                  status: 'cancelled',
+                  refund_status: data.refund ? 'completed' : item.refund_status,
+                  refunded_amount: data.refund
+                    ? item.total_price
+                    : item.refunded_amount,
+                }
+              : item
           ),
         }))
       )
@@ -265,7 +411,7 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
       setOrders((prev) =>
         prev.map((order) => ({
           ...order,
-          items: order.items?.map((item: any) =>
+          items: order.items?.map((item: AdminOrderItem) =>
             item.id === itemId ? { ...item, status: 'active' } : item
           ),
         }))
@@ -275,77 +421,58 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
     }
   }
 
-  const markShipped = async (
-  orderId: string
-) => {
+  const handleShipment = async (order: Order) => {
+    const shipment = Array.isArray(order.delhivery_shipment)
+      ? order.delhivery_shipment[0]
+      : order.delhivery_shipment
+    const action = shipment?.awb ? 'sync' : 'create'
 
-  const trackingNumber =
-    prompt(
-      'Enter tracking number'
-    )
-
-  if (!trackingNumber) {
-    return
-  }
-
-  try {
-
-    setUpdatingId(orderId)
-
-    const res = await fetch(
-      '/api/admin/orders/mark-shipped',
-      {
+    try {
+      setUpdatingId(order.id)
+      const res = await fetch('/api/admin/orders/shipment', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: order.id, action }),
+      })
+      const data = await res.json()
 
-        headers: {
-          'Content-Type':
-            'application/json',
-        },
-
-        body: JSON.stringify({
-          orderId,
-          trackingNumber,
-        }),
+      if (!res.ok) {
+        toast.error(data.error || 'Delhivery action failed')
+        return
       }
-    )
 
-    const data =
-      await res.json()
+      const awb = data.shipment?.awb || data.tracking?.awb || shipment?.awb
+      const carrierStatus =
+        data.shipment?.status || data.tracking?.currentStatus || shipment?.status
 
-    if (!res.ok) {
-      toast.error(
-        data.error ||
-        'Failed to mark shipped'
+      setOrders((current) =>
+        current.map((item) =>
+          item.id === order.id
+            ? {
+                ...item,
+                tracking_number: awb || item.tracking_number,
+                status:
+                  data.tracking?.currentStatus?.toLowerCase().includes('delivered')
+                    ? 'delivered'
+                    : awb && item.status === 'paid'
+                      ? 'processing'
+                      : item.status,
+                delhivery_shipment: {
+                  ...(shipment || {}),
+                  awb,
+                  status: carrierStatus,
+                },
+              }
+            : item
+        )
       )
-      return
+      toast.success(action === 'create' ? `Shipment created: ${awb}` : 'Tracking synced')
+    } catch {
+      toast.error('Delhivery action failed')
+    } finally {
+      setUpdatingId(null)
     }
-
-    setOrders(
-      orders.map((o) =>
-        o.id === orderId
-          ? {
-              ...o,
-              status: 'shipped',
-            }
-          : o
-      )
-    )
-
-    toast.success(
-      'Order marked as shipped'
-    )
-
-  } catch (err) {
-
-    toast.error(
-      'Failed to update order'
-    )
-
-  } finally {
-
-    setUpdatingId(null)
   }
-}
 
 const markDelivered =
   async (orderId: string) => {
@@ -399,7 +526,7 @@ const markDelivered =
         'Order marked as delivered'
       )
 
-    } catch (err) {
+    } catch {
 
       toast.error(
         'Failed to update order'
@@ -453,7 +580,7 @@ const markDelivered =
             <tbody className="divide-y divide-gray-100">
               {filtered.map((order) => (
                 <tr key={order.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 min-w-[200px]">
                     <p className="font-medium text-gray-900">{order.order_number}</p>
                     <p className="text-xs text-gray-400">{formatDate(order.created_at)}</p>
                   </td>
@@ -473,10 +600,27 @@ const markDelivered =
                     <Badge variant={STATUS_BADGE[order.status]}>
                       {order.status}
                     </Badge>
+                    {(() => {
+                      const shipment = Array.isArray(order.delhivery_shipment)
+                        ? order.delhivery_shipment[0]
+                        : order.delhivery_shipment
+                      return shipment ? (
+                        <div className="mt-2 text-xs text-gray-500">
+                          <p>{shipment.status}</p>
+                          {shipment.awb && <p className="font-mono">{shipment.awb}</p>}
+                          {shipment.error_message && (
+                            <p className="text-red-600">{shipment.error_message}</p>
+                          )}
+                        </div>
+                      ) : null
+                    })()}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 min-w-[250px]">
                     <div className="space-y-2">
-                      {order.items?.map((item: any) => (
+                      {order.items?.map((item: AdminOrderItem) => {
+                        const sku = getItemSku(item)
+
+                        return (
                         <div key={item.id} className="text-xs border rounded p-2 bg-gray-50">
                           {
                             item.status === 'cancelled' ? (
@@ -489,9 +633,45 @@ const markDelivered =
                             {item.product_name}
                           </p>
 
+                          {sku && (
+                            <p className="bg-black p-1 w-max text-white font-bold font-mono text-[11px] mt-0.5">
+                              SKU: {sku}
+                            </p>
+                          )}
+
+                          <p className="text-gray-500">
+                            Size / Color: <br />{formatItemVariant(item)}
+                          </p>
+
                           <p className="text-gray-500">
                             Qty: {item.quantity} • {formatPrice(item.total_price)}
                           </p>
+
+                          {item.refund_status && (
+                            <p
+                              className={`mt-1 font-medium ${
+                                item.refund_status === 'completed'
+                                  ? 'text-green-600'
+                                  : item.refund_status === 'failed'
+                                    ? 'text-red-600'
+                                    : 'text-orange-600'
+                              }`}
+                            >
+                              Refund: {item.refund_status.replace(/_/g, ' ')}
+                              {item.refunded_amount
+                                ? ` • ${formatPrice(item.refunded_amount)}`
+                                : ''}
+                            </p>
+                          )}
+
+                          {item.refund_method && (
+                            <p className="text-gray-500">
+                              Refund to:{' '}
+                              {item.refund_method === 'bank'
+                                ? 'Bank account'
+                                : 'Original payment source'}
+                            </p>
+                          )}
 
                           {/* CANCEL REASON */}
                           {item.status === 'cancelled' && (
@@ -612,10 +792,41 @@ const markDelivered =
                                   </Button>
                                 </div>
                               )}
+
+                              {canProcessItemRefund(order, item) && (
+                                <div className="mt-3">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8 text-red-600 border-red-200"
+                                    onClick={() =>
+                                      processItemRefund(order.id, item)
+                                    }
+                                  >
+                                    Process Refund
+                                  </Button>
+                                </div>
+                              )}
                             </div>
                           )}
+
+                          {!item.return_status &&
+                            canProcessItemRefund(order, item) && (
+                              <div className="mt-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 text-red-600 border-red-200"
+                                  onClick={() =>
+                                    processItemRefund(order.id, item)
+                                  }
+                                >
+                                  Process Refund
+                                </Button>
+                              </div>
+                            )}
                         </div>
-                      ))}
+                      )})}
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -640,9 +851,10 @@ const markDelivered =
 
                     <div className="flex items-center justify-end gap-2 flex-wrap">
 
-                      {/* MARK SHIPPED */}
+                      {/* CREATE OR SYNC DELHIVERY SHIPMENT */}
                       {(order.status === 'processing' ||
-                        order.status === 'paid') && (
+                        order.status === 'paid' ||
+                        order.status === 'shipped') && (
                         <Button
                           size="sm"
                           variant="outline"
@@ -650,11 +862,11 @@ const markDelivered =
                             updatingId === order.id
                           }
                           onClick={() =>
-                            markShipped(order.id)
+                            handleShipment(order)
                           }
                         >
                           <Truck className="h-4 w-4 mr-1" />
-                          Ship
+                          {order.tracking_number ? 'Sync' : 'Create Shipment'}
                         </Button>
                       )}
 
@@ -674,22 +886,19 @@ const markDelivered =
                         </Button>
                       )}
 
-                      {/* REFUND */}
-                      {order.payment_method ===
-                        'razorpay' &&
-                        order.payment_status ===
-                          'completed' &&
-                        order.status !==
-                          'refunded' && (
+                      {/* FULL ORDER REFUND */}
+                      {order.payment_status === 'completed' &&
+                        order.status !== 'refunded' &&
+                        order.items?.some(
+                          (item) => item.refund_status !== 'completed'
+                        ) && (
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() =>
-                            handleRefund(order)
-                          }
+                          onClick={() => handleRefund(order)}
                           className="text-red-600 hover:bg-red-50 text-xs"
                         >
-                          Refund
+                          Refund All
                         </Button>
                       )}
 

@@ -10,6 +10,7 @@ import {
 } from 'react'
 
 import Image from 'next/image'
+import { OptimizedImage } from '@/components/ui/optimized-image'
 
 import toast from 'react-hot-toast'
 
@@ -214,11 +215,11 @@ export default function TryOnPageContent() {
                             <>
                                 <div className="relative aspect-[3/4] rounded-2xl overflow-hidden bg-gray-100">
 
-                                    <Image
+                                    <OptimizedImage
                                         src={decodeURIComponent(productImage)}
                                         alt="Product"
                                         fill
-                                        unoptimized
+                                        variant="gallery"
                                         className="object-cover"
                                     />
                                 </div>

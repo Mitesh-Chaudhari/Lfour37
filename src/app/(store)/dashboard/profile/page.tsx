@@ -10,6 +10,8 @@ import { Input } from '@/components/ui/input'
 import { User } from '@/types'
 import toast from 'react-hot-toast'
 
+import { BlockingContainer } from '@/components/ui/blocking-container'
+
 const profileSchema = z.object({
   full_name: z.string().min(2, 'Name is required').max(100),
   phone: z.string().max(20).optional(),
@@ -22,6 +24,7 @@ export default function ProfilePage() {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [isSendingReset, setIsSendingReset] = useState(false)
   const supabase = createClient()
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<ProfileFormData>({
@@ -85,7 +88,11 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-xl">
+    <BlockingContainer
+      busy={isSaving || isSendingReset}
+      message={isSaving ? 'Saving profile...' : 'Sending reset email...'}
+      className="container mx-auto px-4 py-8 max-w-xl"
+    >
       <h1 className="text-3xl font-bold text-gray-900 mb-8">Profile Settings</h1>
 
       <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -138,18 +145,24 @@ export default function ProfilePage() {
         </p>
         <Button
           variant="outline"
+          loading={isSendingReset}
           onClick={async () => {
             if (!user) return
-            const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
-              redirectTo: `${window.location.origin}/reset-password`,
-            })
-            if (!error) toast.success('Password reset email sent!')
-            else toast.error(error.message)
+            setIsSendingReset(true)
+            try {
+              const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
+                redirectTo: `${window.location.origin}/reset-password`,
+              })
+              if (!error) toast.success('Password reset email sent!')
+              else toast.error(error.message)
+            } finally {
+              setIsSendingReset(false)
+            }
           }}
         >
           Send Reset Email
         </Button>
       </div>
-    </div>
+    </BlockingContainer>
   )
 }

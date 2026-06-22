@@ -12,3 +12,15 @@ export async function createRazorpayOrder(amount: number, receipt: string) {
     receipt,
   })
 }
+
+export async function createRazorpayRefund(
+  paymentId: string,
+  amountInRupees: number,
+  notes?: Record<string, string>
+) {
+  return razorpay.payments.refund(paymentId, {
+    amount: Math.round(amountInRupees * 100),
+    speed: 'normal',
+    notes,
+  })
+}

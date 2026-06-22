@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createRazorpayOrder } from '@/lib/razorpay'
+import logger from '@/lib/logger'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -38,8 +39,7 @@ export async function POST(request: NextRequest) {
 
     const razorpayOrder = await createRazorpayOrder(order.total, order_id)
 
-    // Save payment
-    await supabase.from('payments').insert({
+    const { error: paymentError } = await supabase.from('payments').insert({
       order_id,
       payment_method: 'razorpay',
       status: 'pending',
@@ -48,6 +48,18 @@ export async function POST(request: NextRequest) {
       razorpay_order_id: razorpayOrder.id,
     })
 
+    if (paymentError) {
+      logger.error('Failed to save Razorpay payment record', {
+        paymentError,
+        orderId: order_id,
+        razorpayOrderId: razorpayOrder.id,
+      })
+      return NextResponse.json(
+        { error: 'Failed to save payment record' },
+        { status: 500 }
+      )
+    }
+
     return NextResponse.json({
       id: razorpayOrder.id,          // ✅ FIXED
       amount: razorpayOrder.amount,
@@ -55,6 +67,7 @@ export async function POST(request: NextRequest) {
       key: process.env.RAZORPAY_KEY_ID,
     })
   } catch (error) {
+    logger.error('Razorpay create-order failed', { error })
     return NextResponse.json({ error: 'Failed to create order' }, { status: 500 })
   }
 }

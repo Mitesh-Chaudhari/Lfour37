@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/ui/optimized-image'
 import Link from 'next/link'
 import { Trash2, ShoppingBag } from 'lucide-react'
 import { useCartStore } from '@/store/cart-store'
@@ -9,6 +9,7 @@ import { useWishlistStore } from '@/store/wishlist-store'
 import { createClient } from '@/lib/supabase/client'
 import { formatPrice } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import toast from 'react-hot-toast'
 
 interface WishlistProduct {
@@ -30,21 +31,30 @@ interface WishlistItemData {
 
 export function WishlistClient({ items: initialItems, userId }: { items: WishlistItemData[]; userId: string }) {
   const [items, setItems] = useState(initialItems)
+  const [removingId, setRemovingId] = useState<string | null>(null)
+  const [addingId, setAddingId] = useState<string | null>(null)
   const { removeFromWishlist } = useWishlistStore()
   const { addItem } = useCartStore()
   const supabase = createClient()
 
   const removeItem = async (wishlistId: string, productId: string) => {
-    const { error } = await supabase
-      .from('wishlist')
-      .delete()
-      .eq('id', wishlistId)
-      .eq('user_id', userId)
+    setRemovingId(wishlistId)
+    try {
+      const { error } = await supabase
+        .from('wishlist')
+        .delete()
+        .eq('id', wishlistId)
+        .eq('user_id', userId)
 
-    if (!error) {
-      setItems(items.filter((i) => i.id !== wishlistId))
-      removeFromWishlist(productId)
-      toast.success('Removed from wishlist')
+      if (!error) {
+        setItems(items.filter((i) => i.id !== wishlistId))
+        removeFromWishlist(productId)
+        toast.success('Removed from wishlist')
+      } else {
+        toast.error('Failed to remove item')
+      }
+    } finally {
+      setRemovingId(null)
     }
   }
 
@@ -58,9 +68,13 @@ export function WishlistClient({ items: initialItems, userId }: { items: Wishlis
       return
     }
 
-    addItem(product as any, availableVariant as any, 1)
-
-    toast.success('Added to cart!')
+    setAddingId(item.id)
+    try {
+      addItem(product as any, availableVariant as any, 1)
+      toast.success('Added to cart!')
+    } finally {
+      setAddingId(null)
+    }
   }
 
   const isOutOfStock = (product: WishlistProduct) =>
@@ -73,19 +87,28 @@ export function WishlistClient({ items: initialItems, userId }: { items: Wishlis
         if (!product) return null
         const image = product.images?.[0]
         const outOfStock = isOutOfStock(product)
+        const isRemoving = removingId === item.id
+        const isAdding = addingId === item.id
+        const isBusy = isRemoving || isAdding
         const discount = product.compare_price
           ? Math.round(((product.compare_price - product.price) / product.compare_price) * 100)
           : 0
 
         return (
-          <div key={item.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden group">
+          <div key={item.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden group relative">
+            {isBusy && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-purple-600 border-t-transparent" />
+              </div>
+            )}
             <div className="relative aspect-[3/4] bg-gray-50">
               <Link href={`/products/${product.slug}`}>
                 {image ? (
-                  <Image
+                  <OptimizedImage
                     src={image.url}
                     alt={image.alt || product.name}
                     fill
+                    variant="card"
                     className="object-cover group-hover:scale-105 transition-transform duration-300"
                   />
                 ) : (
@@ -104,7 +127,8 @@ export function WishlistClient({ items: initialItems, userId }: { items: Wishlis
               )}
               <button
                 onClick={() => removeItem(item.id, product.id)}
-                className="absolute top-2 right-2 p-1.5 bg-white rounded-full shadow-sm text-gray-400 hover:text-red-500 transition-colors"
+                disabled={isBusy}
+                className="absolute top-2 right-2 p-1.5 bg-white rounded-full shadow-sm text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50"
               >
                 <Trash2 className="h-4 w-4" />
               </button>
@@ -122,14 +146,16 @@ export function WishlistClient({ items: initialItems, userId }: { items: Wishlis
                   <span className="text-xs text-gray-400 line-through">{formatPrice(product.compare_price)}</span>
                 )}
               </div>
-              <button
+              <Button
                 onClick={() => moveToCart(item)}
-                disabled={outOfStock}
-                className="mt-3 w-full flex items-center justify-center gap-2 py-2 px-3 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
+                disabled={outOfStock || isBusy}
+                loading={isAdding}
+                className="mt-3 w-full"
+                size="sm"
               >
                 <ShoppingBag className="h-4 w-4" />
                 {outOfStock ? 'Out of Stock' : 'Add to Cart'}
-              </button>
+              </Button>
             </div>
           </div>
         )

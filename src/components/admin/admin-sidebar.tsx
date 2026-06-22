@@ -19,7 +19,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/ui/optimized-image'
 
 interface AdminSidebarProps {
   user: { full_name: string | null; email: string; role: string }
@@ -66,13 +66,14 @@ export function AdminSidebar({ user }: AdminSidebarProps) {
             <p className="text-xs text-gray-400">Admin Panel</p>
           </div> */}
           <div>
-            <Image
+            <OptimizedImage
               src={LOGO_IMAGE[0]}
-              alt={"Lfour37"}
-              height={60}
+              alt="Lfour37"
               width={60}
+              height={60}
+              variant="logo"
+              priority
               className="object-cover transition-transform duration-700 group-hover:scale-105"
-              sizes="(max-width: 768px) 100vw, 50vw"
             />
             <p className="text-xs text-gray-400">Admin Panel</p>
           </div>

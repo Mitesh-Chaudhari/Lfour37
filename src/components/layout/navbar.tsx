@@ -14,7 +14,7 @@ import {
   useCategoryDrawerStore,
 } from '@/store/category-drawer-store'
 import { cn } from '@/lib/utils'
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/ui/optimized-image'
 import { CategoryDrawer } from './category-drawer'
 
 const STATIC_LINKS = [
@@ -35,6 +35,7 @@ export function Navbar() {
   const { isCartOpen, toggleCart, isMobileMenuOpen, openMobileMenu, closeMobileMenu, isSearchOpen, toggleSearch } = useUIStore()
   const [user, setUser] = useState<UserType | null>(null)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [isSigningOut, setIsSigningOut] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [mounted, setMounted] = useState(false)
   const [categories, setCategories] =
@@ -78,7 +79,9 @@ export function Navbar() {
               name,
               slug,
               parent_id,
-              sort_order
+              sort_order,
+              is_active,
+              image_url
             `)
             .eq('is_active', true)
             .order('sort_order', {
@@ -123,9 +126,14 @@ export function Navbar() {
   }
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut()
-    setUser(null)
-    router.push('/')
+    setIsSigningOut(true)
+    try {
+      await supabase.auth.signOut()
+      setUser(null)
+      router.push('/')
+    } finally {
+      setIsSigningOut(false)
+    }
   }
 
   const handleSearch = (e: React.FormEvent) => {
@@ -144,246 +152,267 @@ export function Navbar() {
     <>
       <header className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm">
         <div className="container mx-auto px-4">
-          <div className="flex h-16 items-center justify-between">
+          <div className="flex h-20 items-center justify-between">
             <button
-            onClick={open}
-            className="
-              p-2
-              text-gray-600
-              hover:text-purple-600
-            "
-          >
-            <Menu className="h-6 w-6" />
-          </button>
+              onClick={open}
+              className="
+                hidden
+                sm:block
+                absolute
+                inset-y-0
+                left-[10px]
+                p-2
+                text-gray-600
+                hover:text-purple-600
+              "
+            >
+              <Menu className="h-6 w-6" />
+            </button>
+
             {/* Logo */}
-            <Link href="/" className="flex items-center gap-2">
+            <Link href="/" className="ml-0 sm:ml-[50px] flex items-center gap-2">
               {/* <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
                 <span className="text-white font-bold text-sm">TM</span>
               </div>
               <span className="font-bold text-xl text-gray-900 hidden sm:block">Lfour37</span> */}
-              <Image
+              <OptimizedImage
                 src={LOGO_IMAGE[0]}
-                alt={"Lfour37"}
-                height={60}
-                width={60}
+                alt="Lfour37"
+                width={70}
+                height={70}
+                variant="logo"
+                priority
                 className="object-cover transition-transform duration-700 group-hover:scale-105"
-                sizes="(max-width: 768px) 100vw, 50vw"
               />
             </Link>
 
-            {/* Desktop Navigation */}
-            <nav className="hidden md:flex items-center gap-6">
 
-              {/* ALL PRODUCTS */}
-              <Link
-                href="/products"
-                className="text-sm font-medium text-gray-600 hover:text-purple-600 transition-colors"
-              >
-                All Products
-              </Link>
+              {/* Desktop Navigation */}
+              <nav className="hidden md:flex items-center gap-6">
 
-              {/* DYNAMIC CATEGORIES */}
-              {parentCategories.map(
-                (category) => {
+                {/* ALL PRODUCTS */}
+                <Link
+                  href="/products"
+                  className="text-sm font-medium text-gray-600 hover:text-purple-600 transition-colors"
+                >
+                  All Products
+                </Link>
 
-                  const subCategories =
-                    getSubCategories(
-                      category.id
-                    )
+                {/* DYNAMIC CATEGORIES */}
+                {parentCategories.map(
+                  (category) => {
 
-                  return (
+                    const subCategories =
+                      getSubCategories(
+                        category.id
+                      )
 
-                    <div
-                      key={category.id}
-                      className="relative group"
-                    >
+                    return (
 
-                      {/* PARENT */}
-                      <Link
-                        href={`/products?category=${category.slug}`}
-                        className="text-sm font-medium text-gray-600 hover:text-purple-600 transition-colors"
+                      <div
+                        key={category.id}
+                        className="relative group"
                       >
-                        {category.name}
-                      </Link>
 
-                      {/* DROPDOWN */}
-                      {subCategories.length >
-                        0 && (
-                        <div
-                          className="
-                            absolute
-                            left-0
-                            top-full
-                            pt-4
-                            opacity-0
-                            invisible
-                            group-hover:opacity-100
-                            group-hover:visible
-                            transition-all
-                            duration-200
-                            z-50
-                          "
+                        {/* PARENT */}
+                        <Link
+                          href={`/products?category=${category.slug}`}
+                          className="text-sm font-medium text-gray-600 hover:text-purple-600 transition-colors"
                         >
+                          {category.name}
+                        </Link>
 
+                        {/* DROPDOWN */}
+                        {subCategories.length >
+                          0 && (
                           <div
                             className="
-                              min-w-[220px]
-                              rounded-2xl
-                              bg-white
-                              shadow-xl
-                              p-3
+                              absolute
+                              left-0
+                              top-full
+                              pt-4
+                              opacity-0
+                              invisible
+                              group-hover:opacity-100
+                              group-hover:visible
+                              transition-all
+                              duration-200
+                              z-50
                             "
                           >
 
-                            <div className="space-y-1">
+                            <div
+                              className="
+                                min-w-[220px]
+                                rounded-2xl
+                                bg-white
+                                shadow-xl
+                                p-3
+                              "
+                            >
 
-                              {subCategories.map(
-                                (sub) => (
+                              <div className="space-y-1">
 
-                                  <Link
-                                    key={sub.id}
-                                    href={`/products?category=${sub.slug}`}
-                                    className="
-                                      block
-                                      px-3
-                                      py-2
-                                      rounded-lg
-                                      text-sm
-                                      text-gray-700
-                                      hover:bg-purple-600
-                                      hover:text-white
-                                      transition-colors
-                                    "
-                                  >
-                                    {sub.name}
-                                  </Link>
-                                )
-                              )}
+                                {subCategories.map(
+                                  (sub) => (
 
+                                    <Link
+                                      key={sub.id}
+                                      href={`/products?category=${sub.slug}`}
+                                      className="
+                                        block
+                                        px-3
+                                        py-2
+                                        rounded-lg
+                                        text-sm
+                                        text-gray-700
+                                        hover:bg-purple-600
+                                        hover:text-white
+                                        transition-colors
+                                      "
+                                    >
+                                      {sub.name}
+                                    </Link>
+                                  )
+                                )}
+
+                              </div>
                             </div>
                           </div>
+                        )}
+                      </div>
+                    )
+                  }
+                )}
+
+                {/* CUSTOM PRINTING */}
+                <Link
+                  href="/custom-printing"
+                  className="text-sm font-medium text-gray-600 hover:text-purple-600 transition-colors"
+                >
+                  Custom Printing
+                </Link>
+
+              </nav>
+
+              {/* Actions */}
+              <div className="flex items-center gap-2">
+                {/* Search */}
+                <button
+                  onClick={toggleSearch}
+                  className="p-2 text-gray-600 hover:text-purple-600 transition-colors"
+                  aria-label="Search"
+                >
+                  <Search className="h-5 w-5" />
+                </button>
+
+                {/* Wishlist */}
+                <Link href="/wishlist" className="relative p-2 text-gray-600 hover:text-purple-600 transition-colors">
+                  <Heart className="h-5 w-5" />
+                  {mounted && wishlistCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                      {wishlistCount > 9 ? '9+' : wishlistCount}
+                    </span>
+                  )}
+                </Link>
+
+                {/* Cart */}
+                <button
+                  onClick={toggleCart}
+                  className="relative p-2 text-gray-600 hover:text-purple-600 transition-colors"
+                  aria-label="Cart"
+                >
+                  <ShoppingBag className="h-5 w-5" />
+                  {mounted && cartCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-purple-600 text-white text-[10px] font-bold flex items-center justify-center">
+                      {cartCount > 9 ? '9+' : cartCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* User menu */}
+                {user ? (
+                  <div className="relative">
+                    <button
+                      onClick={() => setUserMenuOpen(!userMenuOpen)}
+                      className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                    >
+                      {user.avatar_url ? (
+                        <OptimizedImage
+                          src={user.avatar_url}
+                          alt={user.full_name || ''}
+                          width={32}
+                          height={32}
+                          variant="avatar"
+                          className="rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="h-8 w-8 rounded-full bg-purple-100 flex items-center justify-center">
+                          <span className="text-purple-600 text-xs font-bold">
+                            {user.full_name?.charAt(0) || user.email.charAt(0)}
+                          </span>
                         </div>
                       )}
-                    </div>
-                  )
-                }
-              )}
-
-              {/* CUSTOM PRINTING */}
-              <Link
-                href="/custom-printing"
-                className="text-sm font-medium text-gray-600 hover:text-purple-600 transition-colors"
-              >
-                Custom Printing
-              </Link>
-
-            </nav>
-
-            {/* Actions */}
-            <div className="flex items-center gap-2">
-              {/* Search */}
-              <button
-                onClick={toggleSearch}
-                className="p-2 text-gray-600 hover:text-purple-600 transition-colors"
-                aria-label="Search"
-              >
-                <Search className="h-5 w-5" />
-              </button>
-
-              {/* Wishlist */}
-              <Link href="/wishlist" className="relative p-2 text-gray-600 hover:text-purple-600 transition-colors">
-                <Heart className="h-5 w-5" />
-                {mounted && wishlistCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
-                    {wishlistCount > 9 ? '9+' : wishlistCount}
-                  </span>
-                )}
-              </Link>
-
-              {/* Cart */}
-              <button
-                onClick={toggleCart}
-                className="relative p-2 text-gray-600 hover:text-purple-600 transition-colors"
-                aria-label="Cart"
-              >
-                <ShoppingBag className="h-5 w-5" />
-                {mounted && cartCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-purple-600 text-white text-[10px] font-bold flex items-center justify-center">
-                    {cartCount > 9 ? '9+' : cartCount}
-                  </span>
-                )}
-              </button>
-
-              {/* User menu */}
-              {user ? (
-                <div className="relative">
-                  <button
-                    onClick={() => setUserMenuOpen(!userMenuOpen)}
-                    className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-                  >
-                    {user.avatar_url ? (
-                      <Image src={user.avatar_url} alt={user.full_name || ''} width={32} height={32} className="rounded-full object-cover" />
-                    ) : (
-                      <div className="h-8 w-8 rounded-full bg-purple-100 flex items-center justify-center">
-                        <span className="text-purple-600 text-xs font-bold">
-                          {user.full_name?.charAt(0) || user.email.charAt(0)}
-                        </span>
-                      </div>
-                    )}
-                  </button>
-                  {userMenuOpen && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setUserMenuOpen(false)} />
-                      <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-20">
-                        <div className="px-4 py-2 border-b border-gray-100">
-                          <p className="text-sm font-medium text-gray-900 truncate">{user.full_name}</p>
-                          <p className="text-xs text-gray-500 truncate">{user.email}</p>
-                        </div>
-                        <Link href="/dashboard" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setUserMenuOpen(false)}>
-                          <Package className="h-4 w-4" /> My Orders
-                        </Link>
-                        <Link href="/wishlist" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setUserMenuOpen(false)}>
-                          <Heart className="h-4 w-4" /> Wishlist
-                        </Link>
-                        <Link href="/dashboard/profile" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setUserMenuOpen(false)}>
-                          <Settings className="h-4 w-4" /> Settings
-                        </Link>
-                        {(user.role === 'admin' || user.role === 'super_admin') && (
-                          <Link href="/admin" className="flex items-center gap-2 px-4 py-2 text-sm text-purple-600 hover:bg-purple-50" onClick={() => setUserMenuOpen(false)}>
-                            <Settings className="h-4 w-4" /> Admin Panel
+                    </button>
+                    {userMenuOpen && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setUserMenuOpen(false)} />
+                        <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-20">
+                          <div className="px-4 py-2 border-b border-gray-100">
+                            <p className="text-sm font-medium text-gray-900 truncate">{user.full_name}</p>
+                            <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                          </div>
+                          <Link href="/dashboard" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setUserMenuOpen(false)}>
+                            <Package className="h-4 w-4" /> My Orders
                           </Link>
-                        )}
-                        <hr className="my-1 border-gray-100" />
-                        <button
-                          onClick={handleSignOut}
-                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                        >
-                          <LogOut className="h-4 w-4" /> Sign Out
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ) : (
-                <div className="hidden sm:flex items-center gap-2">
-                  <Link href="/login">
-                    <Button variant="ghost" size="sm">Sign In</Button>
-                  </Link>
-                  <Link href="/register">
-                    <Button size="sm">Sign Up</Button>
-                  </Link>
-                </div>
-              )}
+                          <Link href="/wishlist" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setUserMenuOpen(false)}>
+                            <Heart className="h-4 w-4" /> Wishlist
+                          </Link>
+                          <Link href="/dashboard/profile" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setUserMenuOpen(false)}>
+                            <Settings className="h-4 w-4" /> Profile Settings
+                          </Link>
+                          {(user.role === 'admin' || user.role === 'super_admin') && (
+                            <Link href="/admin" className="flex items-center gap-2 px-4 py-2 text-sm text-purple-600 hover:bg-purple-50" onClick={() => setUserMenuOpen(false)}>
+                              <Settings className="h-4 w-4" /> Admin Panel
+                            </Link>
+                          )}
+                          <hr className="my-1 border-gray-100" />
+                          <button
+                            onClick={handleSignOut}
+                            disabled={isSigningOut}
+                            className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+                          >
+                            {isSigningOut ? (
+                              <span className="h-4 w-4 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
+                            ) : (
+                              <LogOut className="h-4 w-4" />
+                            )}
+                            {isSigningOut ? 'Signing out...' : 'Sign Out'}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div className="hidden sm:flex items-center gap-2">
+                    <Link href="/login">
+                      <Button variant="ghost" size="sm">Sign In</Button>
+                    </Link>
+                    <Link href="/register">
+                      <Button size="sm">Sign Up</Button>
+                    </Link>
+                  </div>
+                )}
 
-              {/* Mobile menu */}
-              <button
-                onClick={openMobileMenu}
-                className="md:hidden p-2 text-gray-600"
-                aria-label="Menu"
-              >
-                <Menu className="h-5 w-5" />
-              </button>
-            </div>
+                {/* Mobile menu */}
+                <button
+                  onClick={openMobileMenu}
+                  className="md:hidden p-2 text-gray-600"
+                  aria-label="Menu"
+                >
+                  <Menu className="h-5 w-5" />
+                </button>
+              </div>
           </div>
         </div>
 

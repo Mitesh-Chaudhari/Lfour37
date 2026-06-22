@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/ui/optimized-image'
 import { Star, ThumbsUp } from 'lucide-react'
 import { Review } from '@/types'
 import { StarRating } from '@/components/ui/star-rating'
@@ -162,7 +162,14 @@ export function ProductReviews({ productId, reviews, averageRating, reviewCount 
               <div className="flex items-start gap-4">
                 <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
                   {review.user?.avatar_url ? (
-                    <Image src={review.user.avatar_url} alt="" width={40} height={40} className="object-cover" />
+                    <OptimizedImage
+                      src={review.user.avatar_url}
+                      alt=""
+                      width={40}
+                      height={40}
+                      variant="avatar"
+                      className="object-cover rounded-full"
+                    />
                   ) : (
                     <span className="text-purple-600 text-sm font-bold">
                       {getInitials(review.user?.full_name || 'A')}

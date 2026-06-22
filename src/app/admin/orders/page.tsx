@@ -21,6 +21,8 @@ async function getOrders() {
         return_status,
         return_type,
         refund_method,
+        refund_status,
+        refunded_amount,
         exchange_size,
         exchange_color,
         return_custom_reason,
@@ -28,14 +30,31 @@ async function getOrders() {
 
         product_name,
         quantity,
-        total_price
+        unit_price,
+        total_price,
+        variant_size,
+        variant_color,
+        variant:product_variants(sku),
+        product:products(sku)
       ),
 
       payment:payments(
         id,
         status,
         payment_method,
-        stripe_payment_intent_id
+        razorpay_payment_id,
+        stripe_payment_intent_id,
+        refunded_amount
+      ),
+
+      delhivery_shipment:delhivery_shipments(
+        id,
+        awb,
+        status,
+        status_code,
+        expected_delivery_date,
+        last_synced_at,
+        error_message
       )
     `)
     .order('created_at', {

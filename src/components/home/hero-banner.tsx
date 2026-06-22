@@ -2,8 +2,10 @@
 
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { OptimizedImage } from '@/components/ui/optimized-image'
 import { ArrowRight } from 'lucide-react'
 import { useState, useEffect } from 'react'
+import { cn } from '@/lib/utils'
 
 interface Slide {
   id: string
@@ -76,19 +78,28 @@ export function HeroBanner() {
   }
   if (!slide) return null
 
-  const words = slide.title.split(' ');
-  const hasImage = slide.image_url && slide.image_url.trim() !== '';
+  const words = slide.title.split(' ')
 
   return (
-    <section
-      className={`relative overflow-hidden text-white min-h-[90vh] flex flex-col justify-center bg-cover bg-center ${!hasImage ? 'bg-gray-950' : ''
-        }`}
-      style={
-        hasImage
-          ? { backgroundImage: `url(${slide.image_url})` }
-          : undefined
-      }
-    >
+    <section className="relative overflow-hidden text-white min-h-[90vh] flex flex-col justify-center bg-gray-950">
+      {slides.map((s, index) =>
+        s.image_url?.trim() ? (
+          <OptimizedImage
+            key={s.id}
+            src={s.image_url}
+            alt=""
+            fill
+            variant="hero"
+            priority={index === 0}
+            className={cn(
+              'object-cover transition-opacity duration-500',
+              index === current ? 'opacity-100' : 'opacity-0'
+            )}
+            aria-hidden={index !== current}
+          />
+        ) : null
+      )}
+
       {/* Dark overlay */}
       <div className="absolute inset-0 bg-black/60" />
 
@@ -120,7 +131,6 @@ export function HeroBanner() {
                   <span key={i} className="inline-block pr-2">{word}</span>
                 )
               )}
-              {/* <span className="block">{slide.title}</span> */}
             </h1>
           </div>
 

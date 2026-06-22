@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { BlockingContainer } from '@/components/ui/blocking-container'
 import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
 
@@ -14,6 +15,7 @@ export default function ReturnModal({
   const supabase = createClient()
 
   const [loading, setLoading] = useState(false)
+  const [loadingReasons, setLoadingReasons] = useState(true)
 
   const [reasons, setReasons] = useState<any[]>([])
 
@@ -36,12 +38,17 @@ export default function ReturnModal({
   }, [])
 
   const loadReasons = async () => {
-    const { data } = await supabase
-      .from('return_reasons')
-      .select('*')
-      .eq('is_active', true)
+    setLoadingReasons(true)
+    try {
+      const { data } = await supabase
+        .from('return_reasons')
+        .select('*')
+        .eq('is_active', true)
 
-    setReasons(data || [])
+      setReasons(data || [])
+    } finally {
+      setLoadingReasons(false)
+    }
   }
 
   const handleSubmit = async () => {
@@ -52,7 +59,8 @@ export default function ReturnModal({
 
     setLoading(true)
 
-    const res = await fetch('/api/orders/return-request', {
+    try {
+      const res = await fetch('/api/orders/return-request', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -82,7 +90,6 @@ export default function ReturnModal({
 
     if (!res.ok) {
       toast.error(data.error || 'Failed')
-      setLoading(false)
       return
     }
 
@@ -90,13 +97,18 @@ export default function ReturnModal({
 
     onClose()
     router.refresh()
-
-    setLoading(false)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
-      <div className="bg-white rounded-2xl w-full max-w-lg p-6 space-y-5">
+      <BlockingContainer
+        busy={loading}
+        message="Submitting your request..."
+        className="bg-white rounded-2xl w-full max-w-lg p-6 space-y-5"
+      >
 
         <h2 className="text-xl font-semibold">
           Return / Exchange
@@ -125,11 +137,14 @@ export default function ReturnModal({
           </label>
 
           <select
-            className="w-full border rounded-lg p-2 mt-1"
+            className="w-full border rounded-lg p-2 mt-1 disabled:bg-gray-50"
             value={reasonId}
             onChange={(e) => setReasonId(e.target.value)}
+            disabled={loadingReasons || loading}
           >
-            <option value="">Select reason</option>
+            <option value="">
+              {loadingReasons ? 'Loading reasons...' : 'Select reason'}
+            </option>
 
             {reasons.map((r) => (
               <option key={r.id} value={r.id}>
@@ -234,11 +249,12 @@ export default function ReturnModal({
           <Button
             onClick={handleSubmit}
             loading={loading}
+            disabled={loadingReasons}
           >
             Submit Request
           </Button>
         </div>
-      </div>
+      </BlockingContainer>
     </div>
   )
 }

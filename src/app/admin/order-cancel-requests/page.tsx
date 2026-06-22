@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import CancelRequestActions from '@/components/admin/order-cancel-request-actions'
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/ui/optimized-image'
 
 export default async function CancelRequestsPage() {
   const supabase = await createClient()
@@ -29,10 +29,11 @@ export default async function CancelRequestsPage() {
           <div className="flex gap-4 items-center">
             <div className="w-12 h-12 relative">
               {item.product_image && (
-                <Image
+                <OptimizedImage
                   src={item.product_image}
                   alt=""
                   fill
+                  variant="adminThumb"
                   className="object-cover rounded"
                 />
               )}

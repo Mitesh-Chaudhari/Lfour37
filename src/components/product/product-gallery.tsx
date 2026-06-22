@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/ui/optimized-image'
 import { ChevronLeft, ChevronRight, ZoomIn, Share2, Check } from 'lucide-react'
 import { ProductImage } from '@/types'
 import { cn } from '@/lib/utils'
@@ -101,10 +101,12 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
         onTouchEnd={handleTouchEnd}
       >
         {currentImage && (
-          <Image
+          <OptimizedImage
             src={currentImage.url}
             alt={currentImage.alt || productName}
             fill
+            variant="gallery"
+            priority
             className={cn(
               'object-contain transition-transform duration-200 select-none',
               isZoomed && 'scale-200'
@@ -114,8 +116,6 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
                 ? { transformOrigin: `${mousePosition.x}% ${mousePosition.y}%` }
                 : undefined
             }
-            sizes="(max-width: 768px) 100vw, 50vw"
-            priority
           />
         )}
 
@@ -180,12 +180,12 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
                 i === selectedIndex ? 'border-purple-600' : 'border-transparent hover:border-gray-300'
               )}
             >
-              <Image
+              <OptimizedImage
                 src={img.url}
                 alt={img.alt || `Image ${i + 1}`}
                 fill
+                variant="galleryThumb"
                 className="object-cover"
-                sizes="64px"
               />
             </button>
           ))}

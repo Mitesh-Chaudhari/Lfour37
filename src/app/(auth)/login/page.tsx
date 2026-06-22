@@ -10,6 +10,7 @@ import { createClient } from '@/lib/supabase/client'
 import { loginSchema, LoginFormData } from '@/lib/validations/auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { BlockingContainer } from '@/components/ui/blocking-container'
 import toast from 'react-hot-toast'
 
 function LoginForm() {
@@ -114,6 +115,7 @@ function LoginForm() {
           <p className="text-gray-500 mt-1">Sign in to your account</p>
         </div>
 
+        <BlockingContainer busy={isLoading} message="Signing you in...">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <Input
             label="Email"
@@ -166,6 +168,7 @@ function LoginForm() {
             Sign In
           </Button>
         </form>
+        </BlockingContainer>
 
         <p className="text-center text-sm text-gray-600 mt-6">
           Don&apos;t have an account?{' '}

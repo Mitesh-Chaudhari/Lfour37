@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/ui/optimized-image'
 import { ArrowRight } from 'lucide-react'
 import { Category } from '@/types'
 
@@ -53,20 +53,21 @@ export function CategoryGrid({ categories }: CategoryGridProps) {
               className="col-span-2 row-span-2 group relative overflow-hidden rounded-3xl aspect-square"
             >
               {featured.image_url ? (
-                <Image
+                <OptimizedImage
                   src={featured.image_url}
                   alt={featured.name}
                   fill
+                  variant="categoryFeatured"
                   className="object-cover transition-transform duration-700 group-hover:scale-105"
-                  sizes="(max-width: 768px) 100vw, 50vw"
                 />
               ) : (
-                <Image
+                <OptimizedImage
                   src={FALLBACK_IMAGES[0]}
                   alt={featured.name}
                   fill
+                  variant="categoryFeatured"
+                  priority
                   className="object-cover transition-transform duration-700 group-hover:scale-105"
-                  sizes="(max-width: 768px) 100vw, 50vw"
                 />
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
@@ -92,20 +93,20 @@ export function CategoryGrid({ categories }: CategoryGridProps) {
                 className="group relative overflow-hidden rounded-2xl aspect-square"
               >
                 {category.image_url ? (
-                  <Image
+                  <OptimizedImage
                     src={category.image_url}
                     alt={category.name}
                     fill
+                    variant="category"
                     className="object-cover transition-transform duration-500 group-hover:scale-110"
-                    sizes="(max-width: 768px) 50vw, 25vw"
                   />
                 ) : (
-                  <Image
+                  <OptimizedImage
                     src={FALLBACK_IMAGES[(index + 1) % FALLBACK_IMAGES.length]}
                     alt={category.name}
                     fill
+                    variant="category"
                     className="object-cover transition-transform duration-500 group-hover:scale-110"
-                    sizes="(max-width: 768px) 50vw, 25vw"
                   />
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />

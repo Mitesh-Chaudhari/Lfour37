@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 import { resetPasswordSchema, ResetPasswordFormData } from '@/lib/validations/auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { BlockingContainer } from '@/components/ui/blocking-container'
 import toast from 'react-hot-toast'
 
 export default function ResetPasswordPage() {
@@ -53,6 +54,7 @@ export default function ResetPasswordPage() {
           <p className="text-gray-500 mt-1">Your new password must be at least 8 characters</p>
         </div>
 
+        <BlockingContainer busy={isLoading} message="Updating password...">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <Input
             label="New Password"
@@ -86,6 +88,7 @@ export default function ResetPasswordPage() {
             Reset Password
           </Button>
         </form>
+        </BlockingContainer>
       </div>
     </div>
   )

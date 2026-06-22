@@ -1,7 +1,7 @@
 'use client'
 import { useEffect } from 'react'
 import Link from 'next/link'
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/ui/optimized-image'
 import { X, ShoppingBag, Plus, Minus, Trash2 } from 'lucide-react'
 import { useCartStore } from '@/store/cart-store'
 import { useUIStore } from '@/store/ui-store'
@@ -91,12 +91,12 @@ export function CartDrawer() {
                     {/* Image */}
                     <div className="relative h-20 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
                       {item.variant.image_url ? (
-                        <Image
+                        <OptimizedImage
                           src={item.variant.image_url}
                           alt={item.product.name}
                           fill
+                          variant="cartDrawer"
                           className="object-cover"
-                          sizes="64px"
                         />
                       ) : (
                         <div className="flex h-full items-center justify-center">
@@ -166,7 +166,13 @@ export function CartDrawer() {
                     <div key={item.id} className="flex gap-3 py-2 border-b last:border-0">
                       <div className="relative h-14 w-11 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
                         {item.product.images[0] && (
-                          <Image src={item.product.images[0].url} alt={item.product.name} fill className="object-cover" sizes="44px" />
+                          <OptimizedImage
+                            src={item.product.images[0].url}
+                            alt={item.product.name}
+                            fill
+                            variant="thumbnail"
+                            className="object-cover"
+                          />
                         )}
                       </div>
                       <div className="flex-1">
@@ -189,7 +195,7 @@ export function CartDrawer() {
         {items.length > 0 && (
           <div className="border-t px-6 py-4 space-y-3">
             <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">Subtotal</span>
+              <span className="text-sm text-gray-600">Subtotal (Inclusive 5% Tax)</span>
               <span className="text-lg font-bold text-gray-900">{formatPrice(subtotal)}</span>
             </div>
             <p className="text-xs text-gray-400">Taxes and shipping calculated at checkout</p>

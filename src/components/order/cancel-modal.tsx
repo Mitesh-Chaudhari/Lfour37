@@ -2,26 +2,32 @@
 
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { BlockingContainer } from '@/components/ui/blocking-container'
 import { useRouter } from 'next/navigation'
 
 export default function CancelModal({ itemId, onClose }: any) {
   const [reasonId, setReasonId] = useState('')
   const [customReason, setCustomReason] = useState('')
   const [reasons, setReasons] = useState<any[]>([])
+  const [loadingReasons, setLoadingReasons] = useState(true)
   const [loading, setLoading] = useState(false)
 
   const router = useRouter()
 
   useEffect(() => {
     const fetchReasons = async () => {
-      const res = await fetch('/api/admin/cancel-reasons')
-      const data = await res.json()
+      setLoadingReasons(true)
+      try {
+        const res = await fetch('/api/admin/cancel-reasons')
+        const data = await res.json()
 
-      // Add "Other"
-      setReasons([
-        ...data,
-        { id: 'other', label: 'Other' },
-      ])
+        setReasons([
+          ...data,
+          { id: 'other', label: 'Other' },
+        ])
+      } finally {
+        setLoadingReasons(false)
+      }
     }
 
     fetchReasons()
@@ -36,40 +42,49 @@ export default function CancelModal({ itemId, onClose }: any) {
 
     setLoading(true)
 
-    const res = await fetch('/api/orders/cancel-item', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        order_item_id: itemId,
-        reason_id: reasonId === 'other' ? null : reasonId,
-        custom_reason: reasonId === 'other' ? customReason : null,
-      }),
-    })
+    try {
+      const res = await fetch('/api/orders/cancel-item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_item_id: itemId,
+          reason_id: reasonId === 'other' ? null : reasonId,
+          custom_reason: reasonId === 'other' ? customReason : null,
+        }),
+      })
 
-    const data = await res.json()
+      const data = await res.json()
 
-    if (!res.ok) {
-      alert(data.error || 'Failed to cancel')
+      if (!res.ok) {
+        alert(data.error || 'Failed to cancel')
+        return
+      }
+
+      onClose()
+      router.refresh()
+    } finally {
       setLoading(false)
-      return
     }
-
-    onClose()
-    router.refresh()
-    setLoading(false)
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center">
-      <div className="bg-white p-6 rounded-xl w-[400px] space-y-4">
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
+      <BlockingContainer
+        busy={loading}
+        message="Submitting cancellation..."
+        className="bg-white p-6 rounded-xl w-[400px] space-y-4"
+      >
         <h2 className="font-semibold text-lg">Cancel Item</h2>
 
         <select
-          className="w-full border p-2 rounded"
+          className="w-full border p-2 rounded disabled:bg-gray-50"
           value={reasonId}
           onChange={(e) => setReasonId(e.target.value)}
+          disabled={loadingReasons || loading}
         >
-          <option value="">Select reason</option>
+          <option value="">
+            {loadingReasons ? 'Loading reasons...' : 'Select reason'}
+          </option>
           {reasons.map((r) => (
             <option key={r.id} value={r.id}>
               {r.label}
@@ -77,7 +92,6 @@ export default function CancelModal({ itemId, onClose }: any) {
           ))}
         </select>
 
-        {/* Show textarea when OTHER */}
         {reasonId === 'other' && (
           <textarea
             placeholder="Enter reason..."
@@ -95,11 +109,12 @@ export default function CancelModal({ itemId, onClose }: any) {
             variant="destructive"
             onClick={handleCancel}
             loading={loading}
+            disabled={loadingReasons}
           >
             Confirm Cancel
           </Button>
         </div>
-      </div>
+      </BlockingContainer>
     </div>
   )
 }

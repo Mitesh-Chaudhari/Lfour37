@@ -1,4 +1,4 @@
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/ui/optimized-image'
 import Link from 'next/link'
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
@@ -14,13 +14,14 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             <span className="text-white font-bold text-sm">TM</span>
           </div>
           <span className="font-bold text-xl text-gray-900">Lfour37</span> */}
-          <Image
+          <OptimizedImage
             src={LOGO_IMAGE[0]}
-            alt={"Lfour37"}
-            height={60}
+            alt="Lfour37"
             width={60}
+            height={60}
+            variant="logo"
+            priority
             className="object-cover transition-transform duration-700 group-hover:scale-105"
-            sizes="(max-width: 768px) 100vw, 50vw"
           />
         </Link>
       </header>

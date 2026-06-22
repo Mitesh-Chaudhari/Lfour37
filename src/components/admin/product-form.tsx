@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ProductImage } from '@/types'
 import { slugify } from '@/lib/utils'
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/ui/optimized-image'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 
@@ -665,7 +665,7 @@ export function ProductForm({ categories, initialData, colorGroups = [], sizes =
         <div className="flex flex-wrap gap-3 mb-4">
           {images.map((img, i) => (
             <div key={i} className="relative h-24 w-20 rounded-lg overflow-hidden bg-gray-100 group">
-              <Image src={img.url} alt="" fill className="object-cover" sizes="80px" />
+              <OptimizedImage src={img.url} alt="" fill variant="galleryThumb" className="object-cover" />
               <button
                 type="button"
                 onClick={() => removeImage(i)}

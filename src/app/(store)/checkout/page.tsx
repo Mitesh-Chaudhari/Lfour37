@@ -18,6 +18,7 @@ async function getCheckoutData() {
       .from('shipping_methods')
       .select('*')
       .eq('is_active', true)
+      .eq('price', 0)
       .order('price', { ascending: true }),
   ])
 

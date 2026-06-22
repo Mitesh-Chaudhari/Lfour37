@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Facebook, Instagram, Twitter, Youtube } from 'lucide-react'
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/ui/optimized-image'
 
 const FOOTER_LINKS = {
   Shop: [
@@ -49,13 +49,13 @@ export function Footer() {
                 <span className="text-white font-bold text-sm">TM</span>
               </div>
               <span className="font-bold text-xl text-white">Lfour37</span> */}
-              <Image
+              <OptimizedImage
                 src={LOGO_IMAGE[0]}
-                alt={"Lfour37"}
-                height={100}
+                alt="Lfour37"
                 width={100}
+                height={100}
+                variant="logo"
                 className="object-cover transition-transform duration-700 group-hover:scale-105"
-                sizes="(max-width: 768px) 100vw, 50vw"
               />
             </Link>
             <p className="text-sm text-gray-400 mb-4">

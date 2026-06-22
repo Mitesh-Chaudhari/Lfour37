@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
+import { BlockingContainer } from '@/components/ui/blocking-container'
 import toast from 'react-hot-toast'
 import { Pencil, Trash2, X, Check } from 'lucide-react'
 
@@ -16,6 +17,7 @@ export default function BankAccounts({
     useState(initialAccounts)
 
   const [loading, setLoading] = useState(false)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
 
   const [editingId, setEditingId] =
     useState<string | null>(null)
@@ -119,8 +121,8 @@ export default function BankAccounts({
   const setDefaultAccount = async (
     accountId: string
   ) => {
+    setActionLoading(`default-${accountId}`)
     try {
-      // remove old default
       await supabase
         .from('user_bank_accounts')
         .update({
@@ -128,7 +130,6 @@ export default function BankAccounts({
         })
         .eq('user_id', userId)
 
-      // set new default
       const { error } = await supabase
         .from('user_bank_accounts')
         .update({
@@ -156,6 +157,8 @@ export default function BankAccounts({
       toast.error(
         'Failed to set default'
       )
+    } finally {
+      setActionLoading(null)
     }
   }
 
@@ -179,23 +182,28 @@ export default function BankAccounts({
 
     if (!confirmed) return
 
-    const { error } = await supabase
-      .from('user_bank_accounts')
-      .delete()
-      .eq('id', acc.id)
+    setActionLoading(`delete-${acc.id}`)
+    try {
+      const { error } = await supabase
+        .from('user_bank_accounts')
+        .delete()
+        .eq('id', acc.id)
 
-    if (error) {
-      toast.error(error.message)
-      return
-    }
+      if (error) {
+        toast.error(error.message)
+        return
+      }
 
-    setAccounts(
-      accounts.filter(
-        (a: any) => a.id !== acc.id
+      setAccounts(
+        accounts.filter(
+          (a: any) => a.id !== acc.id
+        )
       )
-    )
 
-    toast.success('Deleted')
+      toast.success('Deleted')
+    } finally {
+      setActionLoading(null)
+    }
   }
 
   // =========================
@@ -230,8 +238,20 @@ export default function BankAccounts({
     })
   }
 
+  const isBusy = loading || actionLoading !== null
+
   return (
-    <div className="container mx-auto px-4 py-8">
+    <BlockingContainer
+      busy={isBusy}
+      message={
+        loading
+          ? editingId
+            ? 'Updating account...'
+            : 'Saving account...'
+          : 'Updating bank accounts...'
+      }
+      className="container mx-auto px-4 py-8"
+    >
 
       {/* HEADER */}
       <div className='mb-8'>
@@ -406,6 +426,7 @@ export default function BankAccounts({
                     onClick={() =>
                       setDefaultAccount(acc.id)
                     }
+                    loading={actionLoading === `default-${acc.id}`}
                   >
                     <Check className="h-4 w-4" />
                     Set Default
@@ -418,6 +439,7 @@ export default function BankAccounts({
                   onClick={() =>
                     startEdit(acc)
                   }
+                  disabled={isBusy}
                 >
                   <Pencil className="h-4 w-4" />
                 </Button>
@@ -428,6 +450,7 @@ export default function BankAccounts({
                   onClick={() =>
                     deleteAccount(acc)
                   }
+                  loading={actionLoading === `delete-${acc.id}`}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -437,6 +460,6 @@ export default function BankAccounts({
           </div>
         ))}
       </div>
-    </div>
+    </BlockingContainer>
   )
 }

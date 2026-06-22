@@ -4,6 +4,7 @@ import { retrievePaymentIntent } from '@/lib/stripe'
 import { sendOrderConfirmationEmail } from '@/lib/email'
 import logger from '@/lib/logger'
 import { z } from 'zod'
+import { createDelhiveryShipmentForOrder } from '@/lib/delhivery-shipping'
 
 const schema = z.object({
   payment_intent_id: z.string(),
@@ -82,8 +83,30 @@ export async function POST(request: NextRequest) {
       properties: { payment_method: 'stripe', amount: order.total },
     })
 
-    // Send confirmation email (non-blocking)
-    sendOrderConfirmationEmail(order, user.email ?? "").catch((err) =>
+    try {
+      await createDelhiveryShipmentForOrder(order_id)
+    } catch (error) {
+      logger.error('Delhivery shipment creation failed after Stripe payment', {
+        error,
+        orderId: order_id,
+      })
+    }
+
+    const { data: updatedOrder } = await supabase
+      .from('orders')
+      .select('tracking_number')
+      .eq('id', order_id)
+      .single()
+
+    sendOrderConfirmationEmail(
+      {
+        ...order,
+        status: 'paid',
+        payment_status: 'completed',
+        tracking_number: updatedOrder?.tracking_number || order.tracking_number,
+      },
+      user.email ?? ''
+    ).catch((err) =>
       logger.error('Failed to send order email', { err, orderId: order_id })
     )
 

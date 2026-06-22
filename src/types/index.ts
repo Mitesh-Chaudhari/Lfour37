@@ -1,6 +1,6 @@
 export type UserRole = 'customer' | 'admin' | 'super_admin'
 export type OrderStatus = 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded' | 'return_requested' | 'return_initiated' | 'returned' | 'exchange_initiated' | 'exchanged'
-export type PaymentMethod = 'stripe' | 'crypto' | 'razorpay'
+export type PaymentMethod = 'stripe' | 'crypto' | 'razorpay' | 'cod'
 export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'refunded'
 export type CryptoNetwork = 'ethereum' | 'polygon' | 'bsc' | 'base'
 export type CryptoToken = 'USDT' | 'USDC'
@@ -171,6 +171,36 @@ export interface Order {
   payment?: Payment
   user?: User
   shipping_method?: ShippingMethod
+  delhivery_shipment?: DelhiveryShipment | null
+}
+
+export interface DelhiveryShipment {
+  id: string
+  order_id: string
+  awb: string | null
+  status: string
+  status_code: string | null
+  status_type: string | null
+  instructions: string | null
+  expected_delivery_date: string | null
+  last_event_at: string | null
+  last_synced_at: string | null
+  error_message: string | null
+  created_at: string
+  updated_at: string
+  events?: DelhiveryTrackingEvent[]
+}
+
+export interface DelhiveryTrackingEvent {
+  id: string
+  shipment_id: string
+  status: string
+  status_code: string | null
+  status_type: string | null
+  location: string | null
+  instructions: string | null
+  occurred_at: string | null
+  created_at: string
 }
 
 export interface OrderItem {

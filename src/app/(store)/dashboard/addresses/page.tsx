@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Address } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { BlockingContainer } from '@/components/ui/blocking-container'
 import { addressSchema, AddressFormData } from '@/lib/validations/checkout'
 import toast from 'react-hot-toast'
 
@@ -16,6 +17,7 @@ export default function AddressesPage() {
   const [showForm, setShowForm] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [busyAction, setBusyAction] = useState<string | null>(null)
   const supabase = createClient()
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<AddressFormData>({
@@ -72,25 +74,45 @@ export default function AddressesPage() {
   }
 
   const handleDelete = async (id: string) => {
-    const { error } = await supabase.from('addresses').delete().eq('id', id)
-    if (!error) {
-      toast.success('Address deleted')
-      setAddresses(addresses.filter((a) => a.id !== id))
+    setBusyAction(`delete-${id}`)
+    try {
+      const { error } = await supabase.from('addresses').delete().eq('id', id)
+      if (!error) {
+        toast.success('Address deleted')
+        setAddresses(addresses.filter((a) => a.id !== id))
+      } else {
+        toast.error('Failed to delete address')
+      }
+    } finally {
+      setBusyAction(null)
     }
   }
 
   const handleSetDefault = async (id: string) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    setBusyAction(`default-${id}`)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
 
-    await supabase.from('addresses').update({ is_default: false }).eq('user_id', user.id)
-    await supabase.from('addresses').update({ is_default: true }).eq('id', id)
-    await loadAddresses()
-    toast.success('Default address updated')
+      await supabase.from('addresses').update({ is_default: false }).eq('user_id', user.id)
+      await supabase.from('addresses').update({ is_default: true }).eq('id', id)
+      await loadAddresses()
+      toast.success('Default address updated')
+    } catch {
+      toast.error('Failed to update default address')
+    } finally {
+      setBusyAction(null)
+    }
   }
 
+  const isBusy = isSaving || busyAction !== null
+
   return (
-    <div className="container mx-auto px-4 py-8 max-w-2xl">
+    <BlockingContainer
+      busy={isBusy}
+      message={isSaving ? 'Saving address...' : 'Updating addresses...'}
+      className="container mx-auto px-4 py-8 max-w-2xl"
+    >
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Saved Addresses</h1>
         <Button onClick={() => setShowForm(!showForm)} size="sm">
@@ -162,25 +184,33 @@ export default function AddressesPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   {!addr.is_default && (
-                    <button
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={() => handleSetDefault(addr.id)}
-                      className="text-xs text-purple-600 hover:underline"
+                      loading={busyAction === `default-${addr.id}`}
+                      className="text-xs text-purple-600 h-auto px-0 hover:bg-transparent hover:underline"
                     >
                       Set Default
-                    </button>
+                    </Button>
                   )}
-                  <button
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
                     onClick={() => handleDelete(addr.id)}
-                    className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
+                    loading={busyAction === `delete-${addr.id}`}
+                    className="text-gray-400 hover:text-red-500"
                   >
                     <Trash2 className="h-4 w-4" />
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </BlockingContainer>
   )
 }

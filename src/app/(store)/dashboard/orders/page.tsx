@@ -5,7 +5,7 @@ import { Package, FileDown } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { formatPrice, formatDate } from '@/lib/utils'
 import { OrderStatus } from '@/types'
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/ui/optimized-image'
 import OrderItemActions from '@/components/order/order-item-actions'
 import ReturnItemActions from '@/components/order/return-item-action'
 
@@ -106,6 +106,22 @@ export default async function OrdersPage() {
         variant_color
       ),
       shipping_method:shipping_methods(name, estimated_days_min, estimated_days_max)
+      ,
+      delhivery_shipment:delhivery_shipments(
+        id,
+        awb,
+        status,
+        instructions,
+        expected_delivery_date,
+        last_synced_at,
+        events:delhivery_tracking_events(
+          id,
+          status,
+          location,
+          instructions,
+          occurred_at
+        )
+      )
     `)
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
@@ -131,6 +147,16 @@ export default async function OrdersPage() {
           <div className="space-y-4">
             {orders.map((order) => {
               const statusConfig = STATUS_CONFIG[order.status as OrderStatus] || STATUS_CONFIG.pending
+              const shipment = Array.isArray(order.delhivery_shipment)
+                ? order.delhivery_shipment[0]
+                : order.delhivery_shipment
+              const trackingEvents = [...(shipment?.events || [])]
+                .sort(
+                  (a, b) =>
+                    new Date(b.occurred_at || 0).getTime() -
+                    new Date(a.occurred_at || 0).getTime()
+                )
+                .slice(0, 4)
               return (
                 <div key={order.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                   {/* Header */}
@@ -151,12 +177,13 @@ export default async function OrdersPage() {
                     </div>
                     <div className="flex items-center gap-3">
                       <Badge variant={statusConfig.color}>{statusConfig.label}</Badge>
-                      <Link
+                      <a
                         href={`/api/invoices/${order.id}`}
+                        download={`invoice-${order.order_number}.pdf`}
                         className="flex items-center gap-1 text-sm text-gray-600 hover:text-purple-600 transition-colors"
                       >
                         <FileDown className="h-4 w-4" /> Invoice
-                      </Link>
+                      </a>
                     </div>
                   </div>
 
@@ -180,12 +207,12 @@ export default async function OrdersPage() {
                           {/* IMAGE */}
                           <div className="relative h-12 w-12 rounded-md overflow-hidden bg-gray-100 flex-shrink-0">
                             {item.product_image ? (
-                              <Image
-                                width={200}
-                                height={200}
+                              <OptimizedImage
                                 src={item.product_image}
                                 alt={item.product_name}
-                                className="h-full w-full object-cover"
+                                fill
+                                variant="order"
+                                className="object-cover"
                               />
                             ) : (
                               <div className="h-full w-full bg-gray-200" />
@@ -269,10 +296,45 @@ export default async function OrdersPage() {
 
                   {/* Tracking */}
                   {order.tracking_number && (
-                    <div className="px-4 pb-4">
-                      <p className="text-sm text-gray-600">
-                        Tracking: <span className="font-mono font-medium">{order.tracking_number}</span>
-                      </p>
+                    <div className="mx-4 mb-4 rounded-xl border border-purple-100 bg-purple-50 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-purple-600">
+                            Delhivery tracking
+                          </p>
+                          <p className="mt-1 font-medium text-gray-900">
+                            {shipment?.status || order.status}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            AWB <span className="font-mono">{order.tracking_number}</span>
+                          </p>
+                        </div>
+                        {shipment?.expected_delivery_date && (
+                          <div className="text-right">
+                            <p className="text-xs text-gray-500">Expected delivery</p>
+                            <p className="text-sm font-medium">
+                              {formatDate(shipment.expected_delivery_date)}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {trackingEvents.length > 0 && (
+                        <div className="mt-4 space-y-3 border-l-2 border-purple-200 pl-4">
+                          {trackingEvents.map((event) => (
+                            <div key={event.id}>
+                              <p className="text-sm font-medium text-gray-800">
+                                {event.status}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {[event.location, event.occurred_at ? formatDate(event.occurred_at) : null]
+                                  .filter(Boolean)
+                                  .join(' · ')}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
 

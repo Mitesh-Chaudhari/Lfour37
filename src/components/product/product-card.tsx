@@ -1,9 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/ui/optimized-image'
 import { useState, useEffect } from 'react'
-import { Heart, ShoppingBag, Star } from 'lucide-react'
+import { Heart, ShoppingBag, Star, Loader2 } from 'lucide-react'
 import { Product } from '@/types'
 import { useWishlistStore } from '@/store/wishlist-store'
 import { Badge } from '@/components/ui/badge'
@@ -20,6 +20,8 @@ interface ProductCardProps {
 export function ProductCard({ product, className }: ProductCardProps) {
   const { isInWishlist, toggleWishlist } = useWishlistStore()
   const [mounted, setMounted] = useState(false)
+  const [wishlistLoading, setWishlistLoading] = useState(false)
+  const [showSecondary, setShowSecondary] = useState(false)
   useEffect(() => { setMounted(true) }, [])
   const inWishlist = mounted && isInWishlist(product.id)
 const discount =
@@ -39,6 +41,8 @@ const discount =
     e.preventDefault()
     e.stopPropagation()
 
+    if (wishlistLoading) return
+
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -47,31 +51,43 @@ const discount =
       return
     }
 
-    toggleWishlist(product.id)
+    setWishlistLoading(true)
+    try {
+      toggleWishlist(product.id)
 
-    if (!inWishlist) {
-      await supabase.from('wishlist').upsert({ user_id: user.id, product_id: product.id })
-      toast.success('Added to wishlist')
-    } else {
-      await supabase.from('wishlist').delete().eq('user_id', user.id).eq('product_id', product.id)
-      toast.success('Removed from wishlist')
+      if (!inWishlist) {
+        await supabase.from('wishlist').upsert({ user_id: user.id, product_id: product.id })
+        toast.success('Added to wishlist')
+      } else {
+        await supabase.from('wishlist').delete().eq('user_id', user.id).eq('product_id', product.id)
+        toast.success('Removed from wishlist')
+      }
+    } catch {
+      toggleWishlist(product.id)
+      toast.error('Failed to update wishlist')
+    } finally {
+      setWishlistLoading(false)
     }
   }
 
   return (
     <Link href={`/products/${product.slug}`} className={cn('group block', className)}>
-      <div className="relative overflow-hidden rounded-xl bg-gray-100 aspect-[3/4]">
+      <div
+        className="relative overflow-hidden rounded-xl bg-gray-100 aspect-[3/4]"
+        onMouseEnter={() => setShowSecondary(true)}
+        onFocus={() => setShowSecondary(true)}
+      >
         {/* Main image */}
         {primaryImage ? (
-          <Image
+          <OptimizedImage
             src={primaryImage}
             alt={product.name}
             fill
+            variant="card"
             className={cn(
               'object-cover transition-all duration-500',
               secondaryImage ? 'group-hover:opacity-0' : 'group-hover:scale-105'
             )}
-            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
           />
         ) : (
           <div className="flex h-full items-center justify-center">
@@ -79,14 +95,14 @@ const discount =
           </div>
         )}
 
-        {/* Secondary image on hover */}
-        {secondaryImage && (
-          <Image
+        {/* Secondary image on hover — loaded only after first hover */}
+        {secondaryImage && showSecondary && (
+          <OptimizedImage
             src={secondaryImage}
             alt={product.name}
             fill
+            variant="card"
             className="object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100"
-            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
           />
         )}
 
@@ -109,16 +125,22 @@ const discount =
         {/* Wishlist button */}
         <button
           onClick={handleWishlistToggle}
+          disabled={wishlistLoading}
           className={cn(
             'absolute top-2 right-2 h-8 w-8 rounded-full bg-white shadow flex items-center justify-center transition-all duration-200',
             'opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0',
-            inWishlist && 'opacity-100 translate-y-0'
+            inWishlist && 'opacity-100 translate-y-0',
+            wishlistLoading && 'opacity-100 translate-y-0'
           )}
           aria-label={inWishlist ? 'Remove from wishlist' : 'Add to wishlist'}
         >
-          <Heart
-            className={cn('h-4 w-4', inWishlist ? 'fill-red-500 text-red-500' : 'text-gray-600')}
-          />
+          {wishlistLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin text-purple-600" />
+          ) : (
+            <Heart
+              className={cn('h-4 w-4', inWishlist ? 'fill-red-500 text-red-500' : 'text-gray-600')}
+            />
+          )}
         </button>
 
         {/* Quick view on hover (bottom) */}

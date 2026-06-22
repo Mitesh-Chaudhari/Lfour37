@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import Image from 'next/image'
+import { OptimizedImage } from '@/components/ui/optimized-image'
 import { ShoppingBag, Plus, Minus, Trash2, Bookmark, ArrowRight } from 'lucide-react'
 import { useCartStore } from '@/store/cart-store'
 import { Button } from '@/components/ui/button'
@@ -18,16 +18,12 @@ export default function CartPage() {
     moveToCart,
     removeSavedItem,
     getSubtotal,
-    getTaxAmount,
     getTotal,
     discountAmount,
-    shippingAmount,
   } = useCartStore()
 
   const subtotal = getSubtotal()
-  const taxAmount = getTaxAmount()
   const total = getTotal()
-  const FREE_SHIPPING_THRESHOLD = 75
 
   if (items.length === 0 && savedForLater.length === 0) {
     return (
@@ -55,12 +51,12 @@ export default function CartPage() {
               <div key={item.id} className="flex gap-4 bg-white rounded-xl border border-gray-200 p-4">
                 <div className="relative h-28 w-24 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
                   {item.variant.image_url ? (
-                    <Image
+                    <OptimizedImage
                       src={item.variant.image_url}
                       alt={item.product.name}
                       fill
+                      variant="cart"
                       className="object-cover"
-                      sizes="96px"
                     />
                   ) : (
                     <div className="h-full w-full bg-gray-200" />
@@ -139,12 +135,12 @@ export default function CartPage() {
                 <div key={item.id} className="flex gap-4 bg-white rounded-xl border border-gray-200 p-4 mb-3">
                   <div className="relative h-20 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
                     {item.variant.image_url ? (
-                      <Image
+                      <OptimizedImage
                         src={item.variant.image_url}
                         alt={item.product.name}
                         fill
+                        variant="cartDrawer"
                         className="object-cover"
-                        sizes="64px"
                       />
                     ) : (
                       <div className="h-full w-full bg-gray-200" />
@@ -174,21 +170,6 @@ export default function CartPage() {
           <div className="bg-white rounded-xl border border-gray-200 p-6 sticky top-24">
             <h2 className="text-lg font-semibold text-gray-900 mb-6">Order Summary</h2>
 
-            {/* Free shipping progress */}
-            {subtotal < FREE_SHIPPING_THRESHOLD && (
-              <div className="mb-6 p-3 bg-purple-50 rounded-lg">
-                <p className="text-xs text-purple-700 mb-2">
-                  Add <strong>{formatPrice(FREE_SHIPPING_THRESHOLD - subtotal)}</strong> for free shipping
-                </p>
-                <div className="h-2 bg-purple-100 rounded-full">
-                  <div
-                    className="h-2 bg-purple-600 rounded-full transition-all"
-                    style={{ width: `${Math.min((subtotal / FREE_SHIPPING_THRESHOLD) * 100, 100)}%` }}
-                  />
-                </div>
-              </div>
-            )}
-
             <div className="space-y-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-600">Subtotal</span>
@@ -201,18 +182,8 @@ export default function CartPage() {
                 </div>
               )}
               <div className="flex justify-between">
-                <span className="text-gray-600">Tax (8%)</span>
-                <span className="font-medium">{formatPrice(taxAmount)}</span>
-              </div>
-              <div className="flex justify-between">
                 <span className="text-gray-600">Shipping</span>
-                <span className="font-medium">
-                  {shippingAmount === 0 ? (
-                    <span className="text-green-600">Free</span>
-                  ) : (
-                    formatPrice(shippingAmount)
-                  )}
-                </span>
+                <span className="font-medium text-green-600">Free</span>
               </div>
               <div className="border-t border-gray-200 pt-3 flex justify-between font-bold text-lg">
                 <span>Total</span>

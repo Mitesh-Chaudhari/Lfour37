@@ -1,7 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { ChevronDown, ChevronUp, X } from 'lucide-react'
+import { X } from 'lucide-react'
+import { OptimizedImage } from '@/components/ui/optimized-image'
+import { getCategorySectionGroups } from '@/lib/categories'
+import { buildCategoryPreviewMap } from '@/lib/product-images'
 import { createClient } from '@/lib/supabase/client'
 import { Category } from '@/types'
 import { useCategoryDrawerStore } from '@/store/category-drawer-store'
@@ -10,348 +13,164 @@ import { useEffect, useMemo, useState } from 'react'
 interface Props {
   categories: Category[]
 }
-type CategoryWithPreview = Category & {
-  previewImage?: string | null
-}
 
-export function CategoryDrawer({
-  categories,
-}: Props) {
-  const { isOpen, close } =
-    useCategoryDrawerStore()
-    const supabase = createClient()
-  const [activeTab, setActiveTab] =
-    useState('Men')
-    const [expandedSection, setExpandedSection] =
-  useState<string | null>(null)
-  const [categoryImages, setCategoryImages] =
-  useState<Record<string, string>>({})
+export function CategoryDrawer({ categories }: Props) {
+  const { isOpen, close } = useCategoryDrawerStore()
+  const supabase = createClient()
+  const [activeTab, setActiveTab] = useState('Men')
+  const [categoryImages, setCategoryImages] = useState<Record<string, string>>({})
+  const [loadingImages, setLoadingImages] = useState(true)
 
-  const parentCategories =
-        useMemo(
-            () =>
-            categories.filter(
-                (c) =>
-                !c.parent_id &&
-                ['men', 'women']
-                    .includes(
-                    c.slug.toLowerCase()
-                    )
-            ),
-            [categories]
+  const parentCategories = useMemo(
+    () =>
+      categories
+        .filter(
+          (category) =>
+            !category.parent_id &&
+            category.is_active !== false &&
+            ['men', 'women'].includes(category.slug.toLowerCase())
         )
+        .sort((a, b) => a.sort_order - b.sort_order),
+    [categories]
+  )
 
-  const activeParent =
-    parentCategories.find(
-      (c) =>
-        c.name.toLowerCase() ===
-        activeTab.toLowerCase()
-    )
+  const activeParent = parentCategories.find(
+    (category) => category.name.toLowerCase() === activeTab.toLowerCase()
+  )
 
-  const getChildren = (
-    parentId: string
-  ) =>
-    categories.filter(
-      (c) =>
-        c.parent_id === parentId
-    )
+  const sectionGroups = useMemo(
+    () => (activeParent ? getCategorySectionGroups(activeParent.id, categories) : []),
+    [activeParent, categories]
+  )
 
-    useEffect(() => {
-        const loadCategoryImages =
-            async () => {
+  useEffect(() => {
+    if (!isOpen || categories.length === 0) return
 
-            const {
-                data,
-                error,
-            } =
-                await supabase
-                .from(
-                    'product_categories'
-                )
-                .select(`
-                    category_id,
-                    products!product_categories_product_id_fkey (
-                    images
-                    )
-                `)
-            console.log(data)
-            if (error) {
-                console.error(error)
-                return
-            }
-
-            const previews:
-                Record<
-                string,
-                string
-                > = {}
-
-            data?.forEach((row: any) => {
-                const product =
-                    Array.isArray(row.products)
-                    ? row.products[1]
-                    : row.products
-
-                const images =
-                    product?.images
-
-                if (
-                    !previews[row.category_id] &&
-                    Array.isArray(images) &&
-                    images.length > 0
-                ) {
-                    const firstImage =
-                    typeof images[1] === 'string'
-                        ? images[1]
-                        : images[1]?.url
-
-                    if (firstImage) {
-                    previews[row.category_id] =
-                        firstImage
-                    }
-                }
-                })
-
-            setCategoryImages(
-                previews
+    const loadCategoryImages = async () => {
+      setLoadingImages(true)
+      try {
+        const { data, error } = await supabase
+          .from('product_categories')
+          .select(`
+            category_id,
+            products!inner (
+              images,
+              status,
+              is_featured,
+              created_at,
+              variants:product_variants (
+                image_url,
+                is_active
+              )
             )
-            }
+          `)
+          .eq('products.status', 'active')
 
-        loadCategoryImages()
-        }, [])
+        if (error) {
+          console.error(error)
+          return
+        }
+
+        setCategoryImages(buildCategoryPreviewMap(data || [], categories))
+      } finally {
+        setLoadingImages(false)
+      }
+    }
+
+    loadCategoryImages()
+  }, [isOpen, categories])
 
   if (!isOpen) return null
 
   return (
     <>
-      <div
-        className="
-          fixed
-          inset-0
-          bg-black/40
-          z-[100]
-        "
-        onClick={close}
-      />
+      <div className="fixed inset-0 bg-black/40 z-[100]" onClick={close} />
 
-      <div
-        className="
-          fixed
-          top-0
-          left-0
-          h-full
-          w-full
-          max-w-[900px]
-          bg-white
-          z-[101]
-          overflow-y-auto
-          shadow-2xl
-        "
-      >
-        <div
-          className="
-            flex
-            items-center
-            justify-between
-            px-6
-            py-4
-            border-b
-          "
-        >
-          <h2
-            className="
-              text-xl
-              font-bold
-            "
-          >
-            Categories
-          </h2>
-
-          <button
-            onClick={close}
-          >
+      <div className="fixed top-0 left-0 h-full w-full max-w-[900px] bg-white z-[101] overflow-y-auto shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <h2 className="text-xl font-bold">Categories</h2>
+          <button onClick={close} aria-label="Close categories">
             <X />
           </button>
         </div>
 
-        {/* Tabs */}
-
-        <div
-          className="
-            flex
-            border-b
-          "
-        >
-          {parentCategories.map(
-            (cat) => (
-              <button
-                key={cat.id}
-                onClick={() =>
-                  setActiveTab(
-                    cat.name
-                  )
-                }
-                className={`
-                  flex-1
-                  py-4
-                  text-sm
-                  font-semibold
-                  border-b-2
-                  ${
-                    activeTab ===
-                    cat.name
-                      ? 'border-purple-600 text-white bg-purple-600'
-                      : 'border-transparent text-gray-500'
-                  }
-                `}
-              >
-                {cat.name}
-              </button>
-            )
-          )}
+        <div className="flex border-b">
+          {parentCategories.map((category) => (
+            <button
+              key={category.id}
+              onClick={() => setActiveTab(category.name)}
+              className={`flex-1 py-4 text-sm font-semibold border-b-2 ${
+                activeTab === category.name
+                  ? 'border-purple-600 text-white bg-purple-600'
+                  : 'border-transparent text-gray-500'
+              }`}
+            >
+              {category.name}
+            </button>
+          ))}
         </div>
 
-        {/* Content */}
-
         {activeParent && (
-          <div className="p-6">
-            {getChildren(activeParent.id).map(
-            (section) => {
-                const subItems =
-                getChildren(section.id)
-
-                const expanded =
-                expandedSection ===
-                section.id
+          <div className="p-6 space-y-8">
+            {sectionGroups.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-8">
+                No categories available yet.
+              </p>
+            ) : (
+              sectionGroups.map(({ section, items }) => {
+                const showSectionHeader =
+                  items.length > 1 || items[0]?.id !== section.id
 
                 return (
-                <div
-                    key={section.id}
-                    className="
-                    border-b
-                    border-gray-100
-                    "
-                >
-                    <button
-                    onClick={() =>
-                        setExpandedSection(
-                        expanded
-                            ? null
-                            : section.id
-                        )
-                    }
-                    className="
-                        w-full
-                        flex
-                        items-center
-                        justify-between
-                        py-4
-                    "
-                    >
-                    <span
-                        className="
-                        font-semibold
-                        text-lg
-                        "
-                    >
-                        {section.name}
-                    </span>
-
-                    <span>
-                        {expanded
-                        ? <ChevronUp />
-                        : <ChevronDown />}
-                    </span>
-                    </button>
-
-                    {expanded && (
-                    <div
-                        className="
-                        pb-6
-                        grid
-                        grid-cols-2
-                        md:grid-cols-4
-                        gap-4
-                        "
-                    >
-                        {subItems.map(
-                        (item) => (
-                            <Link
-                            key={item.id}
-                            href={`/products?category=${item.slug}`}
-                            onClick={close}
-                            className="
-                            group
-                            border
-                            rounded-xl
-                            overflow-hidden
-                            bg-white
-                            transition-all
-                            hover:shadow-lg
-                            hover:border-purple-600
-                            "
-                            >
-                            <div
-                            className="
-                            aspect-square
-                            rounded-lg
-                            bg-gray-100
-                            mb-2
-                            overflow-hidden
-                            flex
-                            items-center
-                            justify-center
-                            "
-                            >
-                            {categoryImages[
-                            item.id
-                            ] ? (
-                            <img
-                                src={
-                                categoryImages[
-                                    item.id
-                                ]
-                                }
-                                alt={
-                                item.name
-                                }
-                                className="
-                                h-full
-                                w-full
-                                object-cover
-                                "
-                            />
-                            ) : (
-                            <div
-                                className="
-                                text-center
-                                text-xs
-                                text-gray-400
-                                px-2
-                                "
-                            >
-                                {item.name}
-                            </div>
-                            )}
-                            </div>
-
-                            <p
-                                className="
-                                text-sm
-                                font-medium
-                                p-3
-                                "
-                            >
-                                {item.name}
-                            </p>
-                            </Link>
-                        )
-                        )}
-                    </div>
+                  <section key={section.id}>
+                    {showSectionHeader && (
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-bold text-gray-900">
+                          {section.name}
+                        </h3>
+                        <Link
+                          href={`/products?category=${section.slug}`}
+                          onClick={close}
+                          className="text-sm font-medium text-purple-600 hover:text-purple-700"
+                        >
+                          View all
+                        </Link>
+                      </div>
                     )}
-                </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                      {items.map((item) => (
+                        <Link
+                          key={item.id}
+                          href={`/products?category=${item.slug}`}
+                          onClick={close}
+                          className="group border rounded-xl overflow-hidden bg-white transition-all hover:shadow-lg hover:border-purple-600"
+                        >
+                          <div className="aspect-square rounded-lg bg-gray-100 mb-2 overflow-hidden relative flex items-center justify-center mx-2 mt-2">
+                            {loadingImages ? (
+                              <div className="h-full w-full animate-pulse bg-gray-200" />
+                            ) : categoryImages[item.id] ? (
+                              <OptimizedImage
+                                src={categoryImages[item.id]}
+                                alt={item.name}
+                                fill
+                                variant="category"
+                                className="object-cover"
+                              />
+                            ) : (
+                              <div className="text-center text-xs text-gray-400 px-2">
+                                {item.name}
+                              </div>
+                            )}
+                          </div>
+
+                          <p className="text-sm font-medium p-3 pt-1">{item.name}</p>
+                        </Link>
+                      ))}
+                    </div>
+                  </section>
                 )
-            }
+              })
             )}
           </div>
         )}
