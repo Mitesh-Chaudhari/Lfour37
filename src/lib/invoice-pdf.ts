@@ -12,6 +12,7 @@ const BEIGE = [245, 236, 220] as const
 const TEXT = [31, 41, 55] as const
 const MUTED = [107, 114, 128] as const
 
+//get config
 function getCompanyConfig() {
   return {
     name:
