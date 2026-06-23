@@ -7,12 +7,11 @@ import { Button } from '../ui/button'
 export default function OrderItemActions({ item }: any) {
     const [open, setOpen] = useState(false)
 
-    if (item.status === 'cancelled') {
-        return (
-            <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded">
-                Cancelled
-            </span>
-        )
+    if (
+        item.status === 'cancelled' ||
+        item.status === 'cancel_requested'
+    ) {
+        return null
     }
 
     return (

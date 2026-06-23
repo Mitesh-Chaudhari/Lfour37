@@ -367,10 +367,10 @@ export function Navbar() {
                             <p className="text-xs text-gray-500 truncate">{user.email}</p>
                           </div>
                           <Link href="/dashboard" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setUserMenuOpen(false)}>
-                            <Package className="h-4 w-4" /> My Orders
+                            <Package className="h-4 w-4" /> My Dashboard
                           </Link>
                           <Link href="/wishlist" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setUserMenuOpen(false)}>
-                            <Heart className="h-4 w-4" /> Wishlist
+                            <Heart className="h-4 w-4" /> My Wishlist
                           </Link>
                           <Link href="/dashboard/profile" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setUserMenuOpen(false)}>
                             <Settings className="h-4 w-4" /> Profile Settings

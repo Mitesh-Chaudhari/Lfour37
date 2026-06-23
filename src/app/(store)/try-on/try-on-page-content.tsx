@@ -18,6 +18,7 @@ import {
     Upload,
     Sparkles,
     RefreshCcw,
+    Info,
 } from 'lucide-react'
 
 import { Button }
@@ -197,6 +198,22 @@ export default function TryOnPageContent() {
                     <p className="text-gray-500 mt-2">
                         Upload your image and preview the outfit instantly
                     </p>
+                </div>
+
+                <div className="mb-8 rounded-2xl border border-purple-100 bg-purple-50/60 p-5">
+                    <div className="flex items-start gap-3">
+                        <Info className="h-5 w-5 text-purple-600 mt-0.5 shrink-0" />
+                        <div>
+                            <h2 className="text-sm font-semibold text-gray-900">
+                                How to get the best Virtual Try-On results
+                            </h2>
+                            <ul className="mt-2 space-y-1 text-sm text-gray-600 list-disc list-inside">
+                                <li>Upload a clear front-facing photo</li>
+                                <li>Avoid filters, sunglasses, or busy backgrounds</li>
+                                <li>AI preview may vary slightly from the actual product</li>
+                            </ul>
+                        </div>
+                    </div>
                 </div>
 
                 {/* GRID */}

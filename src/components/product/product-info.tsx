@@ -13,15 +13,19 @@ import { StarRating } from '@/components/ui/star-rating'
 import { createClient } from '@/lib/supabase/client'
 import { formatPrice, calculateDiscount } from '@/lib/utils'
 import { cn } from '@/lib/utils'
+import { isVirtualTryOnEnabled } from '@/lib/virtual-try-on'
+import type { SizeGuide } from '@/lib/size-guides'
+import { SizeGuideList } from '@/components/size-guide/size-guide-section'
 import toast from 'react-hot-toast'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 interface ProductInfoProps {
   product: Product
   sizeOrder?: string[]
+  sizeGuides?: SizeGuide[]
 }
 
-export function ProductInfo({ product, sizeOrder = [] }: ProductInfoProps) {
+export function ProductInfo({ product, sizeOrder = [], sizeGuides = [] }: ProductInfoProps) {
   const { addItem } = useCartStore()
   const { isInWishlist, toggleWishlist } = useWishlistStore()
   const { openCart } = useUIStore()
@@ -47,6 +51,7 @@ export function ProductInfo({ product, sizeOrder = [] }: ProductInfoProps) {
 
   const [mounted, setMounted] = useState(false)
   const [wishlistLoading, setWishlistLoading] = useState(false)
+  const [sizeGuideOpen, setSizeGuideOpen] = useState(false)
   useEffect(() => { setMounted(true) }, [])
 
   const updateUrl = (newColor: string | null, newSize: string | null) => {
@@ -69,6 +74,7 @@ export function ProductInfo({ product, sizeOrder = [] }: ProductInfoProps) {
 
   const inWishlist = mounted && isInWishlist(product.id)
   const discount = calculateDiscount(product.price, product.compare_price || 0)
+  const showVirtualTryOn = isVirtualTryOnEnabled(product)
 
   // Get unique sizes and colors from active variants
   const variants = product.variants?.filter((v) => v.is_active) || []
@@ -347,10 +353,30 @@ export function ProductInfo({ product, sizeOrder = [] }: ProductInfoProps) {
               <span className="text-sm font-semibold text-gray-900">Size:</span>
               {selectedSize && <span className="text-sm text-gray-600">{selectedSize}</span>}
             </div>
-            <Link href="/size-guide" className="text-xs text-purple-600 hover:underline">
-              Size Guide
-            </Link>
+            {sizeGuides.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setSizeGuideOpen((value) => !value)}
+                className="inline-flex items-center gap-1 text-xs font-medium text-purple-600 hover:underline"
+              >
+                Size Guide
+                {sizeGuideOpen ? (
+                  <ChevronUp className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                )}
+              </button>
+            ) : (
+              <Link href="/size-guide" className="text-xs text-purple-600 hover:underline">
+                Size Guide
+              </Link>
+            )}
           </div>
+          {sizeGuideOpen && sizeGuides.length > 0 && (
+            <div className="mb-3">
+              <SizeGuideList guides={sizeGuides} />
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             {sizes.map((size) => {
               const available = isSizeAvailable(size)
@@ -442,6 +468,7 @@ export function ProductInfo({ product, sizeOrder = [] }: ProductInfoProps) {
 
       {/* Actions */}
       <div className="flex flex-col sm:flex-row gap-3 w-full">
+        {showVirtualTryOn && (
         <Button
         disabled={isProductOutOfStock}
           onClick={() => {
@@ -494,6 +521,7 @@ export function ProductInfo({ product, sizeOrder = [] }: ProductInfoProps) {
           <RectangleGoggles className="h-5 w-5" />
           Virtual Try On
         </Button>
+        )}
 
         <Button
           onClick={handleAddToCart}

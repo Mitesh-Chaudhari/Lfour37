@@ -133,7 +133,7 @@ export default async function DashboardPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">My Account</h1>
+        <h1 className="text-3xl font-bold text-gray-900">My Dashboard</h1>
         <p className="text-gray-500 mt-1">Welcome back, {profile?.full_name || profile?.email}!</p>
       </div>
 

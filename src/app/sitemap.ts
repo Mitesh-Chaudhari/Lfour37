@@ -19,6 +19,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     .select('slug, updated_at')
     .eq('is_active', true)
 
+  const { data: cmsPages } = await supabase
+    .from('pages')
+    .select('slug, page_type, updated_at')
+    .eq('is_published', true)
+
   const staticPages: MetadataRoute.Sitemap = [
     {
       url: BASE_URL,
@@ -50,6 +55,24 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'never',
       priority: 0.4,
     },
+    {
+      url: `${BASE_URL}/blogs`,
+      lastModified: new Date(),
+      changeFrequency: 'weekly',
+      priority: 0.7,
+    },
+    {
+      url: `${BASE_URL}/size-guide`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.5,
+    },
+    {
+      url: `${BASE_URL}/site-map`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.4,
+    },
   ]
 
   const productPages: MetadataRoute.Sitemap = (products || []).map((product) => ({
@@ -66,5 +89,29 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.7,
   }))
 
-  return [...staticPages, ...productPages, ...categoryPages]
+  const cmsContentPages: MetadataRoute.Sitemap = (cmsPages || [])
+    .filter((page) => page.page_type === 'page')
+    .map((page) => ({
+      url: `${BASE_URL}/${page.slug}`,
+      lastModified: new Date(page.updated_at),
+      changeFrequency: 'monthly' as const,
+      priority: 0.5,
+    }))
+
+  const blogPages: MetadataRoute.Sitemap = (cmsPages || [])
+    .filter((page) => page.page_type === 'blog')
+    .map((page) => ({
+      url: `${BASE_URL}/blogs/${page.slug}`,
+      lastModified: new Date(page.updated_at),
+      changeFrequency: 'weekly' as const,
+      priority: 0.6,
+    }))
+
+  return [
+    ...staticPages,
+    ...productPages,
+    ...categoryPages,
+    ...cmsContentPages,
+    ...blogPages,
+  ]
 }

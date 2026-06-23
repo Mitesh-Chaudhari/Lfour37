@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { ensureDelhiveryShipmentForPaidOrder } from '@/lib/delhivery-shipping'
-import { sendOrderConfirmationEmail } from '@/lib/email'
+import { sendOrderConfirmationEmail, sendNewOrderOwnerNotificationEmail } from '@/lib/email'
 import logger from '@/lib/logger'
 import { z } from 'zod'
 
@@ -92,15 +92,27 @@ export async function POST(request: NextRequest) {
       .single()
 
     const orderUser = Array.isArray(order.user) ? order.user[0] : order.user
+    const confirmedOrder = {
+      ...order,
+      status: 'processing',
+      payment_status: 'pending',
+      tracking_number:
+        updatedOrder?.tracking_number || order.tracking_number,
+    }
+
+    sendNewOrderOwnerNotificationEmail(
+      confirmedOrder as typeof order,
+      orderUser?.email
+    ).catch((error) =>
+      logger.error('Owner new order notification failed', {
+        error,
+        orderId: order_id,
+      })
+    )
+
     if (orderUser?.email) {
       sendOrderConfirmationEmail(
-        {
-          ...order,
-          status: 'processing',
-          payment_status: 'pending',
-          tracking_number:
-            updatedOrder?.tracking_number || order.tracking_number,
-        },
+        confirmedOrder,
         orderUser.email
       ).catch((error) =>
         logger.error('COD order confirmation email failed', {

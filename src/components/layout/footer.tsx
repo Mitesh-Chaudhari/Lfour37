@@ -6,49 +6,41 @@ const FOOTER_LINKS = {
   Shop: [
     { label: 'Men', href: '/products?category=men' },
     { label: 'Women', href: '/products?category=women' },
-    { label: 'Kids', href: '/products?category=kids' },
+    // { label: 'Kids', href: '/products?category=kids' },
     { label: 'New Arrivals', href: '/products?filter=new' },
     { label: 'Sale', href: '/products?filter=sale' },
   ],
   Help: [
     { label: 'FAQ', href: '/faq' },
     { label: 'Size Guide', href: '/size-guide' },
-    { label: 'Shipping & Returns', href: '/shipping' },
-    { label: 'Contact Us', href: '/contact' },
+    // { label: 'Shipping & Returns', href: '/shipping' },
+    // { label: 'Contact Us', href: '/contact' },
     { label: 'Track Order', href: '/dashboard/orders' },
+    { label: 'Store Near Me', href: '/store-near-me' },
   ],
   Company: [
     { label: 'About Us', href: '/about' },
-    // { label: 'Careers', href: '/careers' },
-    // { label: 'Press', href: '/press' },
-    // { label: 'Sustainability', href: '/sustainability' },
+    { label: 'Careers', href: '/careers' },
+    { label: 'Blog', href: '/blogs' },
+    { label: 'Sitemap', href: '/site-map' },
   ],
   Legal: [
     { label: 'Privacy Policy', href: '/privacy-policy' },
     { label: 'Returns & Refunds', href: '/return-refund' },
-    { label: 'FAQ', href: '/faq' },
     { label: 'Terms of Service', href: '/terms' },
-    // { label: 'Cookie Policy', href: '/cookies' },
   ],
 }
 
 const PAYMENT_METHODS = ['Visa', 'Mastercard']
-const LOGO_IMAGE = [
-'/images/logo.png',
-]
+const LOGO_IMAGE = ['/images/logo.png']
 
 export function Footer() {
   return (
     <footer className="bg-gray-900 text-gray-300">
       <div className="container mx-auto px-4 py-12">
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8 mb-10">
-          {/* Brand */}
           <div className="col-span-2 md:col-span-4 lg:col-span-1">
             <Link href="/" className="flex items-center gap-2 mb-4">
-              {/* <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
-                <span className="text-white font-bold text-sm">TM</span>
-              </div>
-              <span className="font-bold text-xl text-white">Lfour37</span> */}
               <OptimizedImage
                 src={LOGO_IMAGE[0]}
                 alt="Lfour37"
@@ -80,7 +72,6 @@ export function Footer() {
             </div>
           </div>
 
-          {/* Links */}
           {Object.entries(FOOTER_LINKS).map(([title, links]) => (
             <div key={title}>
               <h3 className="text-sm font-semibold text-white mb-3">{title}</h3>
@@ -97,7 +88,6 @@ export function Footer() {
           ))}
         </div>
 
-        {/* Bottom bar */}
         <div className="border-t border-gray-800 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-sm text-gray-500">
             &copy; {new Date().getFullYear()} Yadevi Lifestyle Private Limited. All rights reserved.

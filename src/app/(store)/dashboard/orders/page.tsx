@@ -8,6 +8,7 @@ import { OrderStatus } from '@/types'
 import { OptimizedImage } from '@/components/ui/optimized-image'
 import OrderItemActions from '@/components/order/order-item-actions'
 import ReturnItemActions from '@/components/order/return-item-action'
+import { OrderItemStatusBadge } from '@/components/order/order-item-status-badge'
 
 const STATUS_CONFIG: Record<
   OrderStatus,
@@ -96,7 +97,8 @@ export default async function OrdersPage() {
         id,
         status,
         return_status,
-        cancel_reason,
+        cancel_custom_reason,
+        cancel_reason:cancel_reasons(label),
         cancelled_at,
         product_name,
         product_image,
@@ -189,7 +191,7 @@ export default async function OrdersPage() {
 
                   {/* Items */}
                   <div className="p-4">
-                    {order.items?.slice(0, 3).map((item: {
+                    {order.items?.map((item: {
                       id: string
                       product_name: string
                       product_image?: string
@@ -199,11 +201,20 @@ export default async function OrdersPage() {
                       total_price: number
                       status?: string
                       return_status?: string
-                    }) => (
+                      cancel_custom_reason?: string | null
+                      cancel_reason?: { label?: string } | null
+                    }) => {
+                      const isItemCancelled =
+                        item.status === 'cancelled' ||
+                        item.status === 'cancel_requested'
+                      const cancelReasonLabel =
+                        item.cancel_reason?.label || item.cancel_custom_reason
+
+                      return (
                       <div key={item.id} className="flex items-center justify-between gap-3 py-2">
 
                         {/* LEFT SIDE */}
-                        <Link className="flex items-center gap-3" href={`/products/${item.product_name.toLowerCase().replace(/\s+/g, '-')}/?size=${item.variant_size || ''}${item.variant_color ? `&color=${item.variant_color}` : ''}`}>
+                        <Link className="flex items-center gap-3 min-w-0 flex-1" href={`/products/${item.product_name.toLowerCase().replace(/\s+/g, '-')}/?size=${item.variant_size || ''}${item.variant_color ? `&color=${item.variant_color}` : ''}`}>
                           {/* IMAGE */}
                           <div className="relative h-12 w-12 rounded-md overflow-hidden bg-gray-100 flex-shrink-0">
                             {item.product_image ? (
@@ -220,7 +231,7 @@ export default async function OrdersPage() {
                           </div>
 
                           {/* DETAILS */}
-                          <div className="text-sm">
+                          <div className="text-sm min-w-0">
                             <p className="text-gray-800 font-medium line-clamp-1">
                               {item.product_name}
                             </p>
@@ -231,24 +242,28 @@ export default async function OrdersPage() {
                               {' ×'}{item.quantity}
                             </p>
 
-                            {item.return_status && (
-                              <p className="text-xs text-blue-600 mt-1">
-                                Return Status: {item.return_status}
+                            {isItemCancelled && cancelReasonLabel && (
+                              <p className="text-xs text-gray-500 mt-1 line-clamp-1">
+                                Reason: {cancelReasonLabel}
                               </p>
                             )}
                           </div>
                         </Link>
 
                         {/* PRICE */}
-                        <span className="text-sm font-medium text-gray-900">
+                        <span className="text-sm font-medium text-gray-900 flex-shrink-0">
                           {formatPrice(item.total_price)}
                         </span>
 
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-shrink-0 items-center">
+                          <OrderItemStatusBadge
+                            status={item.status}
+                            returnStatus={item.return_status}
+                          />
 
                           {/* CANCEL */}
                           {['pending', 'paid', 'processing', 'shipped'].includes(order.status) &&
-                            item.status !== 'cancelled' &&
+                            !isItemCancelled &&
                             !item.return_status && (
                               <OrderItemActions item={item} />
                             )}
@@ -261,37 +276,13 @@ export default async function OrdersPage() {
                             'exchange_initiated',
                             'returned',
                           ].includes(order.status) &&
-                            item.status !== 'cancelled' && (
-                              <>
-                                {!item.return_status ? (
-                                  <ReturnItemActions item={item} />
-                                ) : (
-                                  <span
-                                    className={`text-xs px-2 py-1 rounded ${item.return_status === 'return_requested'
-                                      ? 'bg-orange-100 text-orange-700'
-                                      : item.return_status === 'return_approved'
-                                        ? 'bg-green-100 text-green-700'
-                                        : item.return_status === 'return_rejected'
-                                          ? 'bg-red-100 text-red-700'
-                                          : 'bg-gray-100 text-gray-700'
-                                      }`}
-                                  >
-                                    {item.return_status
-                                      .replace(/_/g, ' ')
-                                      .replace(/\b\w/g, (c) =>
-                                        c.toUpperCase()
-                                      )}
-                                  </span>
-                                )}
-                              </>
+                            !isItemCancelled &&
+                            !item.return_status && (
+                              <ReturnItemActions item={item} />
                             )}
-
                         </div>
                       </div>
-                    ))}
-                    {order.items && order.items.length > 3 && (
-                      <p className="text-xs text-gray-400 mt-1">+{order.items.length - 3} more items</p>
-                    )}
+                    )})}
                   </div>
 
                   {/* Tracking */}

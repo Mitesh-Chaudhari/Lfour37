@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { BlockingContainer } from '@/components/ui/blocking-container'
 import { useRouter } from 'next/navigation'
+import toast from 'react-hot-toast'
 
 export default function CancelModal({ itemId, onClose }: any) {
   const [reasonId, setReasonId] = useState('')
@@ -37,7 +38,7 @@ export default function CancelModal({ itemId, onClose }: any) {
     if (!reasonId) return alert('Select reason')
 
     if (reasonId === 'other' && !customReason.trim()) {
-      return alert('Please enter custom reason')
+      return toast.error('Please enter reason')
     }
 
     setLoading(true)
@@ -77,7 +78,7 @@ export default function CancelModal({ itemId, onClose }: any) {
         <h2 className="font-semibold text-lg">Cancel Item</h2>
 
         <select
-          className="w-full border p-2 rounded disabled:bg-gray-50"
+          className="w-full border p-2 rounded disabled:bg-gray-50 mb-5"
           value={reasonId}
           onChange={(e) => setReasonId(e.target.value)}
           disabled={loadingReasons || loading}
