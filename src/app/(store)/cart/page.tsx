@@ -6,6 +6,7 @@ import { ShoppingBag, Plus, Minus, Trash2, Bookmark, ArrowRight } from 'lucide-r
 import { useCartStore } from '@/store/cart-store'
 import { Button } from '@/components/ui/button'
 import { formatPrice } from '@/lib/utils'
+import { persistAuthRedirect } from '@/lib/auth-redirect'
 import type { Metadata } from 'next'
 
 export default function CartPage() {
@@ -192,7 +193,11 @@ export default function CartPage() {
             </div>
 
             <Button variant="brand" size="lg" className="w-full mt-6" asChild>
-              <Link href="/checkout" className="flex items-center justify-center gap-2">
+              <Link
+                href="/checkout"
+                className="flex items-center justify-center gap-2"
+                onClick={() => persistAuthRedirect('/checkout')}
+              >
                 Proceed to Checkout <ArrowRight className="h-5 w-5" />
               </Link>
             </Button>

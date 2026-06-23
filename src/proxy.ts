@@ -41,13 +41,27 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.set('redirectTo', pathname)
-    return NextResponse.redirect(url)
+    const response = NextResponse.redirect(url)
+    response.cookies.set('auth_redirect', pathname, {
+      path: '/',
+      maxAge: 60 * 10,
+      sameSite: 'lax',
+      secure: request.nextUrl.protocol === 'https:',
+    })
+    return response
   }
 
   // Redirect authenticated users away from auth pages
   if (user && isAuthRoute) {
+    const redirectTo = request.nextUrl.searchParams.get('redirectTo')
+    const safePath =
+      redirectTo && redirectTo.startsWith('/') && !redirectTo.startsWith('//')
+        ? redirectTo
+        : '/'
+
     const url = request.nextUrl.clone()
-    url.pathname = '/'
+    url.pathname = safePath
+    url.search = ''
     return NextResponse.redirect(url)
   }
 

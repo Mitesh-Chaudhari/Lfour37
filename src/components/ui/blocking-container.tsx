@@ -19,9 +19,13 @@ export function BlockingContainer({
   children,
 }: BlockingContainerProps) {
   return (
-    <div className={cn('relative', className)}>
+    <div className={cn('relative', className)} aria-busy={busy}>
       <LoadingOverlay show={busy} message={message} fullScreen={fullScreen} />
-      <fieldset disabled={busy} className="min-w-0 border-0 p-0 m-0">
+      {/* display:contents keeps children in the parent grid/flex/spacing flow */}
+      <fieldset
+        disabled={busy}
+        className="contents min-w-0 border-0 p-0 m-0 disabled:pointer-events-none"
+      >
         {children}
       </fieldset>
     </div>

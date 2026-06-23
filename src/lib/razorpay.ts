@@ -24,3 +24,7 @@ export async function createRazorpayRefund(
     notes,
   })
 }
+
+export async function fetchRazorpayPayment(paymentId: string) {
+  return razorpay.payments.fetch(paymentId)
+}

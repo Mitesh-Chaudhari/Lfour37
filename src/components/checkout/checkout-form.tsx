@@ -210,14 +210,16 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
 
         const data = await paymentRes.json()
 
-        // ✅ Normalize response (CRITICAL FIX)
+        if (!paymentRes.ok || !data.id) {
+          toast.error(data.error || 'Failed to initialize payment')
+          return
+        }
+
         const normalizedOrder = {
-          id: data.id || data.order_id,   // supports both formats safely
+          id: data.id,
           amount: data.amount,
           currency: data.currency,
         }
-
-        console.log("RAZORPAY ORDER (normalized):", normalizedOrder)
 
         setClientSecret(normalizedOrder as { id: string; amount: number; currency: string })
       }

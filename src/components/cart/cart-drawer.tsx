@@ -7,6 +7,7 @@ import { useCartStore } from '@/store/cart-store'
 import { useUIStore } from '@/store/ui-store'
 import { Button } from '@/components/ui/button'
 import { formatPrice } from '@/lib/utils'
+import { persistAuthRedirect } from '@/lib/auth-redirect'
 
 export function CartDrawer() {
   const { isCartOpen, closeCart } = useUIStore()
@@ -206,7 +207,12 @@ export function CartDrawer() {
               asChild
               onClick={closeCart}
             >
-              <Link href="/checkout">Proceed to Checkout</Link>
+              <Link
+                href="/checkout"
+                onClick={() => persistAuthRedirect('/checkout')}
+              >
+                Proceed to Checkout
+              </Link>
             </Button>
             <Link
               href="/cart"

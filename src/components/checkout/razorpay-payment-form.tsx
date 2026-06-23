@@ -47,6 +47,11 @@ export function RazorpayPaymentForm({ razorpayOrder, orderId, amount }: any) {
       return
     }
 
+    if (!razorpayOrder?.id) {
+      toast.error('Payment session expired. Please go back and try again.')
+      return
+    }
+
     const options = {
       key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
       amount: razorpayOrder.amount,
@@ -56,26 +61,46 @@ export function RazorpayPaymentForm({ razorpayOrder, orderId, amount }: any) {
       name: 'YadeviLifestyle',
       description: 'Order Payment',
 
-      handler: async function (response: any) {
+      handler: async function (response: {
+        razorpay_payment_id?: string
+        razorpay_order_id?: string
+        razorpay_signature?: string
+      }) {
         setIsVerifying(true)
         try {
+          const razorpayOrderId =
+            response.razorpay_order_id || razorpayOrder?.id
+
+          if (!response.razorpay_payment_id || !razorpayOrderId) {
+            console.error('Incomplete Razorpay handler response', response)
+            toast.error(
+              'Payment completed but verification data is missing. Please contact support with your payment ID.'
+            )
+            setIsVerifying(false)
+            return
+          }
+
           const res = await fetch('/api/payments/razorpay/verify', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
-              razorpay_order_id: razorpayOrder?.id || razorpayOrder?.order_id,
+              razorpay_order_id: razorpayOrderId,
+              ...(response.razorpay_signature
+                ? { razorpay_signature: response.razorpay_signature }
+                : {}),
               order_id: orderId,
             }),
           })
+
+          const data = await res.json().catch(() => null)
 
           if (res.ok) {
             toast.success('Payment successful!')
             useCartStore.getState().clearCart()
             window.location.href = '/dashboard/orders'
           } else {
-            toast.error('Verification failed')
+            toast.error(data?.error || 'Verification failed')
             setIsVerifying(false)
           }
         } catch {

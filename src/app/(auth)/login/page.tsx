@@ -2,7 +2,7 @@
 
 import { useState, Suspense, useEffect } from 'react'
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Eye, EyeOff, Mail, Lock } from 'lucide-react'
@@ -11,12 +11,17 @@ import { loginSchema, LoginFormData } from '@/lib/validations/auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { BlockingContainer } from '@/components/ui/blocking-container'
+import {
+  clearAuthRedirect,
+  clearAuthRedirectCookie,
+  persistAuthRedirect,
+  resolveAuthRedirect,
+} from '@/lib/auth-redirect'
 import toast from 'react-hot-toast'
 
 function LoginForm() {
-  const router = useRouter()
   const searchParams = useSearchParams()
-  const redirectTo = searchParams.get('redirectTo') || '/'
+  const redirectTo = resolveAuthRedirect(searchParams.get('redirectTo'))
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [emailExists, setEmailExists] = useState(true)
@@ -32,6 +37,13 @@ function LoginForm() {
     resolver: zodResolver(loginSchema) as any,
   })
   const email = watch('email')
+
+  useEffect(() => {
+    const queryRedirect = searchParams.get('redirectTo')
+    if (queryRedirect) {
+      persistAuthRedirect(queryRedirect)
+    }
+  }, [searchParams])
 
   useEffect(() => {
     if (
@@ -98,8 +110,9 @@ function LoginForm() {
       }
 
       toast.success('Welcome back!')
-      router.push(redirectTo)
-      router.refresh()
+      clearAuthRedirect()
+      clearAuthRedirectCookie()
+      window.location.assign(redirectTo)
     } catch {
       toast.error('An unexpected error occurred')
     } finally {

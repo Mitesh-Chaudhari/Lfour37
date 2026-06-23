@@ -17,15 +17,16 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { BlockingContainer } from '@/components/ui/blocking-container'
+import {
+  persistAuthRedirect,
+  resolveAuthRedirect,
+} from '@/lib/auth-redirect'
 import toast from 'react-hot-toast'
 
 export default function RegisterForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const redirectTo =
-    searchParams.get(
-      'redirectTo'
-    ) || '/'
+  const redirectTo = resolveAuthRedirect(searchParams.get('redirectTo'))
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -67,6 +68,13 @@ export default function RegisterForm() {
     /^[0-9]{10}$/.test(
       phone || ''
     )
+
+  useEffect(() => {
+    const queryRedirect = searchParams.get('redirectTo')
+    if (queryRedirect) {
+      persistAuthRedirect(queryRedirect)
+    }
+  }, [searchParams])
 
   useEffect(() => {
 
@@ -233,10 +241,11 @@ export default function RegisterForm() {
   }
 
   const handleGoogleSignUp = async () => {
+    persistAuthRedirect(redirectTo)
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/api/auth/callback`,
+        redirectTo: `${window.location.origin}/api/auth/callback?next=${encodeURIComponent(redirectTo)}`,
       },
     })
     if (error) toast.error(error.message)

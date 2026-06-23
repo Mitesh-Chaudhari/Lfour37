@@ -4,14 +4,68 @@ import { createClient } from '@/lib/supabase/server'
 import { ensureDelhiveryShipmentForPaidOrder } from '@/lib/delhivery-shipping'
 import { sendOrderConfirmationEmail } from '@/lib/email'
 import logger from '@/lib/logger'
+import { fetchRazorpayPayment } from '@/lib/razorpay'
 import { z } from 'zod'
 
 const schema = z.object({
-  razorpay_order_id: z.string().min(1),
   razorpay_payment_id: z.string().min(1),
-  razorpay_signature: z.string().regex(/^[a-f0-9]{64}$/i),
   order_id: z.string().uuid(),
+  razorpay_order_id: z.string().min(1).optional(),
+  razorpay_signature: z.string().min(1).optional(),
 })
+
+function verifyRazorpaySignature(
+  razorpayOrderId: string,
+  razorpayPaymentId: string,
+  razorpaySignature: string
+): boolean {
+  const generatedSignature = crypto
+    .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET!)
+    .update(`${razorpayOrderId}|${razorpayPaymentId}`)
+    .digest('hex')
+
+  try {
+    const expected = Buffer.from(generatedSignature, 'hex')
+    const received = Buffer.from(razorpaySignature, 'hex')
+    return (
+      expected.length === received.length &&
+      crypto.timingSafeEqual(expected, received)
+    )
+  } catch {
+    return false
+  }
+}
+
+async function resolveVerifiedRazorpayOrderId(
+  razorpayPaymentId: string,
+  razorpayOrderId?: string,
+  razorpaySignature?: string
+): Promise<string> {
+  if (razorpayOrderId && razorpaySignature) {
+    if (
+      !verifyRazorpaySignature(
+        razorpayOrderId,
+        razorpayPaymentId,
+        razorpaySignature
+      )
+    ) {
+      throw new Error('INVALID_SIGNATURE')
+    }
+    return razorpayOrderId
+  }
+
+  const payment = await fetchRazorpayPayment(razorpayPaymentId)
+
+  if (!['captured', 'authorized'].includes(payment.status)) {
+    throw new Error('PAYMENT_NOT_CAPTURED')
+  }
+
+  if (!payment.order_id) {
+    throw new Error('PAYMENT_MISSING_ORDER')
+  }
+
+  return payment.order_id
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,30 +78,49 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const parsed = schema.safeParse(await request.json())
+    const body = await request.json()
+    const parsed = schema.safeParse(body)
     if (!parsed.success) {
+      logger.warn('Razorpay verify validation failed', {
+        issues: parsed.error.issues,
+        receivedKeys: Object.keys(body || {}),
+      })
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
     }
 
     const {
-      razorpay_order_id,
+      razorpay_order_id: clientRazorpayOrderId,
       razorpay_payment_id,
       razorpay_signature,
       order_id,
     } = parsed.data
 
-    const generatedSignature = crypto
-      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET!)
-      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-      .digest('hex')
-    const expected = Buffer.from(generatedSignature, 'hex')
-    const received = Buffer.from(razorpay_signature, 'hex')
-
-    if (
-      expected.length !== received.length ||
-      !crypto.timingSafeEqual(expected, received)
-    ) {
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
+    let verifiedRazorpayOrderId: string
+    try {
+      verifiedRazorpayOrderId = await resolveVerifiedRazorpayOrderId(
+        razorpay_payment_id,
+        clientRazorpayOrderId,
+        razorpay_signature
+      )
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'VERIFY_FAILED'
+      if (code === 'INVALID_SIGNATURE') {
+        return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
+      }
+      if (code === 'PAYMENT_NOT_CAPTURED') {
+        return NextResponse.json(
+          { error: 'Payment is not completed yet' },
+          { status: 400 }
+        )
+      }
+      if (code === 'PAYMENT_MISSING_ORDER') {
+        return NextResponse.json(
+          { error: 'Payment is not linked to a Razorpay order' },
+          { status: 400 }
+        )
+      }
+      logger.error('Razorpay payment resolution failed', { error, order_id })
+      return NextResponse.json({ error: 'Verification failed' }, { status: 500 })
     }
 
     const { data: order } = await supabase
@@ -70,14 +143,14 @@ export async function POST(request: NextRequest) {
       .from('payments')
       .select('id, razorpay_order_id, amount, status')
       .eq('order_id', order_id)
-      .eq('razorpay_order_id', razorpay_order_id)
+      .eq('razorpay_order_id', verifiedRazorpayOrderId)
       .maybeSingle()
 
     if (paymentLookupError) {
       logger.error('Failed to load Razorpay payment record', {
         paymentLookupError,
         orderId: order_id,
-        razorpayOrderId: razorpay_order_id,
+        razorpayOrderId: verifiedRazorpayOrderId,
       })
       return NextResponse.json(
         { error: 'Could not load payment record' },
@@ -112,7 +185,7 @@ export async function POST(request: NextRequest) {
         .update({
           status: 'completed',
           razorpay_payment_id,
-          razorpay_order_id,
+          razorpay_order_id: verifiedRazorpayOrderId,
         })
         .eq('id', payment.id),
     ])

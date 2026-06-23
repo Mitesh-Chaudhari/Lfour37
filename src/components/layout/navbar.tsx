@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { ShoppingBag, Heart, Search, Menu, X, User, LogOut, Settings, Package } from 'lucide-react'
 import { useCartStore } from '@/store/cart-store'
 import { useUIStore } from '@/store/ui-store'
@@ -14,6 +14,7 @@ import {
   useCategoryDrawerStore,
 } from '@/store/category-drawer-store'
 import { cn } from '@/lib/utils'
+import { buildAuthHref } from '@/lib/auth-redirect'
 import { OptimizedImage } from '@/components/ui/optimized-image'
 import { CategoryDrawer } from './category-drawer'
 
@@ -30,6 +31,9 @@ const STATIC_LINKS = [
 
 export function Navbar() {
   const router = useRouter()
+  const pathname = usePathname()
+  const loginHref = buildAuthHref('/login', pathname)
+  const registerHref = buildAuthHref('/register', pathname)
   const cartCount = useCartStore((s) => s.getItemCount())
   const wishlistCount = useWishlistStore((s) => s.productIds.length)
   const { isCartOpen, toggleCart, isMobileMenuOpen, openMobileMenu, closeMobileMenu, isSearchOpen, toggleSearch } = useUIStore()
@@ -395,10 +399,10 @@ export function Navbar() {
                   </div>
                 ) : (
                   <div className="hidden sm:flex items-center gap-2">
-                    <Link href="/login">
+                    <Link href={loginHref}>
                       <Button variant="ghost" size="sm">Sign In</Button>
                     </Link>
-                    <Link href="/register">
+                    <Link href={registerHref}>
                       <Button size="sm">Sign Up</Button>
                     </Link>
                   </div>
@@ -555,10 +559,10 @@ export function Navbar() {
             </nav>
             {!user && (
               <div className="p-4 border-t space-y-2">
-                <Link href="/login" className="block w-full" onClick={closeMobileMenu}>
+                <Link href={loginHref} className="block w-full" onClick={closeMobileMenu}>
                   <Button variant="outline" className="w-full">Sign In</Button>
                 </Link>
-                <Link href="/register" className="block w-full" onClick={closeMobileMenu}>
+                <Link href={registerHref} className="block w-full" onClick={closeMobileMenu}>
                   <Button className="w-full">Sign Up</Button>
                 </Link>
               </div>
