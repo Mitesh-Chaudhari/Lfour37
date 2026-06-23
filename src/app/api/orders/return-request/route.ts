@@ -49,6 +49,27 @@ export async function POST(req: NextRequest) {
                 ? return_custom_reason
                 : null
 
+        const { data: item } = await supabase
+            .from('order_items')
+            .select('id, order_id, orders!inner(user_id)')
+            .eq('id', order_item_id)
+            .single()
+
+        if (!item) {
+            return NextResponse.json(
+                { error: 'Order item not found' },
+                { status: 404 }
+            )
+        }
+
+        const orderOwnerId = Array.isArray(item.orders)
+            ? item.orders[0]?.user_id
+            : (item.orders as { user_id?: string } | null)?.user_id
+
+        if (orderOwnerId !== user.id) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+        }
+
         // UPDATE ITEM
         const { error } = await supabase
             .from('order_items')
@@ -95,7 +116,7 @@ export async function POST(req: NextRequest) {
 
         // SEND RETURN MESSAGE
         try {
-            const { data: item } =
+            const { data: itemDetails } =
                 await supabase
                     .from('order_items')
                     .select(`
@@ -115,15 +136,15 @@ export async function POST(req: NextRequest) {
                 `LFOUR37
 
     Order ID:
-    ${(item as any)?.orders?.order_number}
+    ${(itemDetails as any)?.orders?.order_number}
 
     📦 ${return_type === 'exchange'
                     ? 'EXCHANGE REQUEST'
                     : 'RETURN REQUEST'} RECEIVED
 
-    • ${item?.product_name}
+    • ${itemDetails?.product_name}
 
-    ${item?.variant_size || '-'} / ${item?.variant_color || '-'}
+    ${itemDetails?.variant_size || '-'} / ${itemDetails?.variant_color || '-'}
 
     Status:
     RETURN REQUESTED
@@ -137,7 +158,7 @@ export async function POST(req: NextRequest) {
 
             await sendWhatsAppTemplate({
                 phone:
-                    (item as any)?.orders
+                    (itemDetails as any)?.orders
                         ?.shipping_address
                         ?.phone,
 
@@ -145,7 +166,7 @@ export async function POST(req: NextRequest) {
                     user.id,
 
                 orderId:
-                    (item as any)?.order_id,
+                    (itemDetails as any)?.order_id,
 
                 templateName:
                     return_type === 'exchange'
@@ -153,12 +174,12 @@ export async function POST(req: NextRequest) {
                         : 'return_requested',
 
                 variables: [
-                    (item as any)?.orders
+                    (itemDetails as any)?.orders
                         ?.order_number || '',
 
-                    item?.product_name || '',
+                    itemDetails?.product_name || '',
 
-                    `${item?.variant_size || '-'} / ${item?.variant_color || '-'}`,
+                    `${itemDetails?.variant_size || '-'} / ${itemDetails?.variant_color || '-'}`,
 
                     `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/orders`,
                 ],

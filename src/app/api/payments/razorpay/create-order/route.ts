@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { createRazorpayOrder } from '@/lib/razorpay'
 import logger from '@/lib/logger'
 import { z } from 'zod'
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
 
     const { data: order } = await supabase
       .from('orders')
-      .select('*')
+      .select('id, total, payment_status')
       .eq('id', order_id)
       .eq('user_id', user.id)
       .single()
@@ -37,9 +37,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     }
 
+    const admin = createAdminClient()
+
+    const { data: existingPayment } = await admin
+      .from('payments')
+      .select('razorpay_order_id, amount')
+      .eq('order_id', order_id)
+      .eq('payment_method', 'razorpay')
+      .eq('status', 'pending')
+      .not('razorpay_order_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (existingPayment?.razorpay_order_id) {
+      return NextResponse.json({
+        id: existingPayment.razorpay_order_id,
+        amount: Math.round(Number(existingPayment.amount) * 100),
+        currency: 'INR',
+        key: process.env.RAZORPAY_KEY_ID,
+      })
+    }
+
     const razorpayOrder = await createRazorpayOrder(order.total, order_id)
 
-    const { error: paymentError } = await supabase.from('payments').insert({
+    const { error: paymentError } = await admin.from('payments').insert({
       order_id,
       payment_method: 'razorpay',
       status: 'pending',
@@ -54,14 +76,22 @@ export async function POST(request: NextRequest) {
         orderId: order_id,
         razorpayOrderId: razorpayOrder.id,
       })
+
+      const hint = paymentError.message?.includes('razorpay')
+        ? 'Apply database migration 005_razorpay_payments.sql'
+        : undefined
+
       return NextResponse.json(
-        { error: 'Failed to save payment record' },
+        {
+          error: 'Failed to save payment record',
+          ...(hint ? { hint } : {}),
+        },
         { status: 500 }
       )
     }
 
     return NextResponse.json({
-      id: razorpayOrder.id,          // ✅ FIXED
+      id: razorpayOrder.id,
       amount: razorpayOrder.amount,
       currency: razorpayOrder.currency,
       key: process.env.RAZORPAY_KEY_ID,

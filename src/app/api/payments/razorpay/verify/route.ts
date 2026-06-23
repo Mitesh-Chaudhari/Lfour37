@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { ensureDelhiveryShipmentForPaidOrder } from '@/lib/delhivery-shipping'
 import { sendOrderConfirmationEmail } from '@/lib/email'
 import logger from '@/lib/logger'
@@ -139,7 +139,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, shipment })
     }
 
-    const { data: payment, error: paymentLookupError } = await supabase
+    const admin = createAdminClient()
+
+    const { data: payment, error: paymentLookupError } = await admin
       .from('payments')
       .select('id, razorpay_order_id, amount, status')
       .eq('order_id', order_id)
@@ -176,11 +178,11 @@ export async function POST(request: NextRequest) {
     }
 
     await Promise.all([
-      supabase
+      admin
         .from('orders')
         .update({ status: 'paid', payment_status: 'completed' })
         .eq('id', order_id),
-      supabase
+      admin
         .from('payments')
         .update({
           status: 'completed',
@@ -190,7 +192,7 @@ export async function POST(request: NextRequest) {
         .eq('id', payment.id),
     ])
 
-    await supabase.from('order_tracking').insert({
+    await admin.from('order_tracking').insert({
       order_id,
       status: 'placed',
       description: 'Order placed successfully',
@@ -198,7 +200,7 @@ export async function POST(request: NextRequest) {
 
     const shipment = await ensureDelhiveryShipmentForPaidOrder(order_id)
 
-    const { data: updatedOrder } = await supabase
+    const { data: updatedOrder } = await admin
       .from('orders')
       .select('tracking_number')
       .eq('id', order_id)

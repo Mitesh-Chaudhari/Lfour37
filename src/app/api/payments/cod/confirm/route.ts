@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { ensureDelhiveryShipmentForPaidOrder } from '@/lib/delhivery-shipping'
 import { sendOrderConfirmationEmail } from '@/lib/email'
 import logger from '@/lib/logger'
@@ -54,19 +54,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true })
     }
 
-    await supabase
+    const admin = createAdminClient()
+
+    await admin
       .from('orders')
       .update({ status: 'processing', payment_status: 'pending' })
       .eq('id', order_id)
 
-    const { data: existingPayment } = await supabase
+    const { data: existingPayment } = await admin
       .from('payments')
       .select('id')
       .eq('order_id', order_id)
       .maybeSingle()
 
     if (!existingPayment) {
-      await supabase.from('payments').insert({
+      await admin.from('payments').insert({
         order_id,
         payment_method: 'cod',
         status: 'pending',
@@ -75,7 +77,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    await supabase.from('order_tracking').insert({
+    await admin.from('order_tracking').insert({
       order_id,
       status: 'placed',
       description: 'COD order placed successfully',
