@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { apiRateLimit } from '@/lib/rate-limit'
-import { sendWhatsAppTemplate } from '@/lib/whatsapp'
 import logger from '@/lib/logger'
 import { z } from 'zod'
 import { resolveHsnFromCategories, mappingsArrayToRecord } from '@/lib/hsn'
@@ -266,64 +265,6 @@ export async function POST(request: NextRequest) {
     })
 
     logger.info('Order created', { orderId: order.id, userId: user.id, total })
-
-
-    // SEND ORDER TEMPLATE MESSAGE
-    try {
-
-      const orderItemsText =
-        orderItems
-          .map(
-            (item) =>
-              `${item.product_name}
-    ${item.variant_size || '-'} / ${item.variant_color || '-'}
-    Qty: ${item.quantity}`
-          )
-          .join('\n\n')
-
-      const orderDate =
-        new Date(order.created_at)
-          .toLocaleDateString(
-            'en-IN',
-            {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-            }
-          )
-
-      const ordersUrl =
-        `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/orders`
-
-      await sendWhatsAppTemplate({
-        phone:
-          data.shipping_address.phone,
-
-        userId:
-          user.id,
-
-        orderId:
-          order.id,
-
-        templateName:
-          'order_confirmation',
-
-        variables: [
-          order.order_number,
-          orderDate,
-          orderItemsText,
-          `₹${total}`,
-          ordersUrl,
-        ],
-      })
-
-    } catch (err) {
-
-      console.error(
-        'Order WhatsApp Failed',
-        err
-      )
-    }
 
     return NextResponse.json({ order_id: order.id, order_number: order.order_number }, { status: 201 })
   } catch (error) {

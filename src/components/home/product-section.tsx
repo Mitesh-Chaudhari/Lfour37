@@ -13,7 +13,7 @@ interface ProductSectionProps {
 
 export function ProductSection({ title, subtitle, products, viewAllHref, badge }: ProductSectionProps) {
   return (
-    <section className="py-20 bg-white">
+    <section className="pt-20 bg-white">
       <div className="container mx-auto px-4">
         {/* Header */}
         <div className="flex items-end justify-between mb-10">

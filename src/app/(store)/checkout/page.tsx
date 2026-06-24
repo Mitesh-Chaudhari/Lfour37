@@ -8,7 +8,7 @@ async function getCheckoutData() {
 
   if (!user) return null
 
-  const [addressesRes, shippingMethodsRes] = await Promise.all([
+  const [addressesRes, shippingMethodsRes, profileRes] = await Promise.all([
     supabase
       .from('addresses')
       .select('*')
@@ -20,10 +20,20 @@ async function getCheckoutData() {
       .eq('is_active', true)
       .eq('price', 0)
       .order('price', { ascending: true }),
+    supabase
+      .from('users')
+      .select('full_name, phone')
+      .eq('id', user.id)
+      .single(),
   ])
 
   return {
-    user,
+    user: {
+      id: user.id,
+      email: user.email,
+      full_name: profileRes.data?.full_name ?? null,
+      phone: profileRes.data?.phone ?? null,
+    },
     addresses: addressesRes.data || [],
     shippingMethods: shippingMethodsRes.data || [],
   }

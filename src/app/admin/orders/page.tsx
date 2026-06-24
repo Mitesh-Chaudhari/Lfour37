@@ -70,7 +70,10 @@ export default async function AdminOrdersPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Orders</h1>
-        <p className="text-gray-500 mt-1">{orders.length} orders</p>
+        <p className="text-gray-500 mt-1">
+          {orders.length} orders · Shipped and delivered statuses update from
+          Delhivery tracking
+        </p>
       </div>
       <AdminOrdersTable orders={orders} />
     </div>

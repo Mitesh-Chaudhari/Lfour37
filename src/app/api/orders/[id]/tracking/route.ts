@@ -31,8 +31,12 @@ export async function GET(
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     }
 
-    const tracking = await syncDelhiveryShipmentByOrderId(id)
-    return NextResponse.json({ tracking })
+    const summary = await syncDelhiveryShipmentByOrderId(id)
+    return NextResponse.json({
+      tracking: summary.tracking,
+      orderStatus: summary.orderStatus,
+      carrierStatus: summary.carrierStatus,
+    })
   } catch (error) {
     logger.warn('Customer tracking refresh failed', { error })
     return NextResponse.json(

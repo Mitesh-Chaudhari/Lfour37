@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { sendOrderStatusEmail } from '@/lib/email'
-import { logger } from '@/lib/logger'
+import {
+  notifyOrderCancelled,
+  notifyOrderDelivered,
+  notifyOrderShipped,
+} from '@/lib/whatsapp/order-notifications'
+import logger from '@/lib/logger'
 import { OrderStatus } from '@/types'
 
 export async function PATCH(req: NextRequest) {
@@ -54,7 +59,43 @@ export async function PATCH(req: NextRequest) {
       }
     } catch (emailError) {
       logger.warn('Failed to send status email', { emailError, order_id })
-      // Don't fail the request for email errors
+    }
+
+    try {
+      const orderForWhatsApp = {
+        id: updatedOrder.id,
+        order_number: updatedOrder.order_number,
+        user_id: updatedOrder.user_id,
+        shipping_address: updatedOrder.shipping_address,
+        tracking_number: updatedOrder.tracking_number,
+      }
+
+      if (status === 'shipped') {
+        await notifyOrderShipped(
+          orderForWhatsApp,
+          tracking_number || updatedOrder.tracking_number
+        )
+      } else if (status === 'delivered') {
+        await notifyOrderDelivered(orderForWhatsApp)
+      } else if (status === 'cancelled') {
+        const firstItem = Array.isArray(updatedOrder.items)
+          ? updatedOrder.items[0]
+          : null
+
+        await notifyOrderCancelled({
+          order: orderForWhatsApp,
+          item: firstItem
+            ? {
+                product_name: firstItem.product_name,
+                variant_size: firstItem.variant_size,
+                variant_color: firstItem.variant_color,
+                quantity: firstItem.quantity,
+              }
+            : null,
+        })
+      }
+    } catch (whatsappError) {
+      logger.warn('Failed to send status WhatsApp', { whatsappError, order_id })
     }
 
     logger.info('Order status updated', { order_id, status, updated_by: user.id })

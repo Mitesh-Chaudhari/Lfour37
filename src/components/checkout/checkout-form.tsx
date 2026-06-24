@@ -23,7 +23,12 @@ import { OptimizedImage } from '@/components/ui/optimized-image'
 interface CheckoutFormProps {
   addresses: Address[]
   shippingMethods: ShippingMethod[]
-  user: { id: string; email?: string }
+  user: {
+    id: string
+    email?: string
+    full_name?: string | null
+    phone?: string | null
+  }
 }
 
 export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormProps) {
@@ -60,6 +65,8 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
       country: 'India',
       payment_method: 'razorpay',
       shipping_method_id: freeShippingMethod?.id,
+      full_name: user.full_name || '',
+      phone: user.phone || '',
     },
   })
 
@@ -73,7 +80,7 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
   const selectedShippingId = watch('shipping_method_id')
   const shippingAmount = 0
 
-  // Fill form from selected saved address
+  // Fill form from selected saved address, or profile when entering a new address
   useEffect(() => {
     const addr = addresses.find((a) => a.id === selectedAddressId)
     if (addr) {
@@ -85,8 +92,12 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
       setValue('state', addr.state)
       setValue('postal_code', addr.postal_code)
       setValue('country', addr.country)
+      return
     }
-  }, [selectedAddressId, addresses])
+
+    if (user.full_name) setValue('full_name', user.full_name)
+    if (user.phone) setValue('phone', user.phone)
+  }, [selectedAddressId, addresses, user.full_name, user.phone, setValue])
 
   const afterDiscount = Math.max(0, subtotal - localDiscount)
   const taxAmount = 0

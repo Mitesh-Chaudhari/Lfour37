@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import {
+  applyProductSearchFilter,
+  getProductIdsFromCategorySearch,
+  sanitizeSearchTerm,
+} from '@/lib/search'
 
 export async function GET(
   req: NextRequest
@@ -85,13 +90,21 @@ export async function GET(
   // BASE QUERY
   //////////////////////////////////////////////////////
 
+  const searchTerm = search
+    ? sanitizeSearchTerm(search)
+    : ''
+
+  const categoryJoin = searchTerm
+    ? 'product_categories'
+    : 'product_categories!inner'
+
   let query = supabase
     .from('products')
     .select(
       `
       *,
       variants:product_variants(*),
-      product_categories!inner(
+      ${categoryJoin}(
         category:categories(*)
       )
     `,
@@ -243,12 +256,18 @@ export async function GET(
   // SEARCH
   //////////////////////////////////////////////////////
 
-  if (search) {
-    query =
-      query.ilike(
-        'name',
-        `%${search}%`
+  if (searchTerm) {
+    const categoryProductIds =
+      await getProductIdsFromCategorySearch(
+        supabase,
+        searchTerm
       )
+
+    query = applyProductSearchFilter(
+      query,
+      searchTerm,
+      categoryProductIds
+    )
   }
 
   //////////////////////////////////////////////////////

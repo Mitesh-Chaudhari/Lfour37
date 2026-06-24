@@ -1,13 +1,22 @@
-import { createClient }
-  from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
+import logger from '@/lib/logger'
+import {
+  VEBLIKA_TEMPLATE_CONFIG,
+  type VeblikaTemplateName,
+  sanitizeWhatsAppParam,
+} from '@/lib/whatsapp/templates'
 
-export function normalizePhone(
-  phone: string
-) {
-  let cleaned =
-    phone.replace(/\D/g, '')
+export function normalizePhone(phone: string) {
+  let cleaned = phone.replace(/\D/g, '')
 
-  // Add India country code if missing
+  if (cleaned.length === 10) {
+    cleaned = `91${cleaned}`
+  }
+
+  if (!cleaned.startsWith('91') && cleaned.length > 10) {
+    return cleaned
+  }
+
   if (!cleaned.startsWith('91')) {
     cleaned = `91${cleaned}`
   }
@@ -15,9 +24,11 @@ export function normalizePhone(
   return cleaned
 }
 
-// ========================================
-// TYPES
-// ========================================
+export function isWhatsAppConfigured(): boolean {
+  return Boolean(
+    process.env.WHATSAPP_API_KEY && process.env.VEBLIKA_PHONE_NUMBER_ID
+  )
+}
 
 interface SendWhatsappProps {
   phone: string
@@ -29,19 +40,41 @@ interface SendWhatsappProps {
 
 interface SendTemplateProps {
   phone: string
-
-  templateName: string
-
+  templateName: VeblikaTemplateName | string
   variables: string[]
-
   userId?: string
-
   orderId?: string
+  language?: string
 }
 
-// ========================================
-// NORMAL TEXT MESSAGE
-// ========================================
+async function logWhatsAppMessage(entry: {
+  userId?: string
+  orderId?: string
+  phone: string
+  templateName: string
+  templateVariables?: string[]
+  message: unknown
+  response: unknown
+  providerMessageId?: string | null
+  status: 'sent' | 'failed'
+}) {
+  try {
+    const supabase = createAdminClient()
+    await supabase.from('whatsapp_logs').insert({
+      user_id: entry.userId || null,
+      order_id: entry.orderId || null,
+      phone: entry.phone,
+      template_name: entry.templateName,
+      template_variables: entry.templateVariables || null,
+      message: entry.message,
+      response: entry.response,
+      provider_message_id: entry.providerMessageId || null,
+      status: entry.status,
+    })
+  } catch (error) {
+    logger.warn('Failed to write whatsapp_logs row', { error })
+  }
+}
 
 export async function sendWhatsAppMessage({
   phone,
@@ -50,128 +83,76 @@ export async function sendWhatsAppMessage({
   orderId,
   templateName = 'text_message',
 }: SendWhatsappProps) {
-
-  const supabase =
-    await createClient()
+  if (!isWhatsAppConfigured()) {
+    logger.warn('WhatsApp skipped because env is not configured', { templateName })
+    return null
+  }
 
   try {
-
     const payload = {
       to: normalizePhone(phone),
-
-      phoneNoId:
-        process.env
-          .VEBLIKA_PHONE_NUMBER_ID,
-
+      phoneNoId: process.env.VEBLIKA_PHONE_NUMBER_ID,
       type: 'text',
-
       text: message,
     }
 
-    const response =
-      await fetch(
-        'https://automate.veblika.com/api/v2/whatsapp-business/messages',
-        {
-          method: 'POST',
+    const response = await fetch(
+      'https://automate.veblika.com/api/v2/whatsapp-business/messages',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${process.env.WHATSAPP_API_KEY}`,
+        },
+        body: JSON.stringify(payload),
+      }
+    )
 
-          headers: {
-            'Content-Type':
-              'application/json',
+    const raw = await response.text()
+    let data: Record<string, unknown> = { raw }
 
-            Authorization:
-              `Bearer ${process.env.WHATSAPP_API_KEY}`,
-          },
+    try {
+      data = raw ? JSON.parse(raw) : {}
+    } catch {
+      // Veblika may return plain text on some errors.
+    }
 
-          body: JSON.stringify(
-            payload
-          ),
-        }
-      )
-
-    const data =
-      await response.json()
-
-    // SAVE LOG
-    await supabase
-      .from('whatsapp_logs')
-      .insert({
-        user_id:
-          userId || null,
-
-        order_id:
-          orderId || null,
-
-        phone,
-
-        template_name:
-          templateName,
-
-        message: payload,
-
-        response: data,
-
-        provider_message_id:
-          data?.messageId || null,
-
-        status:
-          response.ok
-            ? 'sent'
-            : 'failed',
-      })
+    await logWhatsAppMessage({
+      userId,
+      orderId,
+      phone,
+      templateName,
+      message: payload,
+      response: data,
+      providerMessageId:
+        typeof data.messageId === 'string' ? data.messageId : null,
+      status: response.ok ? 'sent' : 'failed',
+    })
 
     if (!response.ok) {
-
-      console.error(
-        'WhatsApp API Error',
-        data
-      )
-
+      logger.error('WhatsApp API error', { templateName, phone, data })
       return null
     }
 
     return data
+  } catch (error) {
+    logger.error('WhatsApp send failed', { error, templateName, phone })
 
-  } catch (err: any) {
-
-    console.error(
-      'WhatsApp Send Failed',
-      err
-    )
-
-    // SAVE FAILURE
-    await supabase
-      .from('whatsapp_logs')
-      .insert({
-        user_id:
-          userId || null,
-
-        order_id:
-          orderId || null,
-
-        phone,
-
-        template_name:
-          templateName,
-
-        message: {
-          text: message,
-        },
-
-        response: {
-          error:
-            err?.message,
-        },
-
-        status: 'failed',
-      })
+    await logWhatsAppMessage({
+      userId,
+      orderId,
+      phone,
+      templateName,
+      message: { text: message },
+      response: {
+        error: error instanceof Error ? error.message : String(error),
+      },
+      status: 'failed',
+    })
 
     return null
   }
 }
-
-// ========================================
-// TEMPLATE MESSAGE
-// ========================================
 
 export async function sendWhatsAppTemplate({
   phone,
@@ -179,165 +160,115 @@ export async function sendWhatsAppTemplate({
   variables,
   userId,
   orderId,
+  language,
 }: SendTemplateProps) {
-  console.log(
-    'API KEY EXISTS:',
-    !!process.env.WHATSAPP_API_KEY
-  )
+  if (!isWhatsAppConfigured()) {
+    logger.warn('WhatsApp template skipped because env is not configured', {
+      templateName,
+    })
+    return null
+  }
 
-  console.log(
-    'PHONE ID:',
-    process.env.VEBLIKA_PHONE_NUMBER_ID
-  )
-  const supabase =
-    await createClient()
+  const templateConfig =
+    VEBLIKA_TEMPLATE_CONFIG[templateName as VeblikaTemplateName]
+
+  const resolvedLanguage =
+    language || templateConfig?.language || 'en'
+
+  const bodyParams = variables.map((value) => sanitizeWhatsAppParam(value))
+
+  const payload: Record<string, unknown> = {
+    to: normalizePhone(phone),
+    phoneNoId: process.env.VEBLIKA_PHONE_NUMBER_ID,
+    type: 'template',
+    name: templateName,
+    language: resolvedLanguage,
+    bodyParams,
+  }
+
+  if (templateName === 'phone_otp_verify' && bodyParams[0]) {
+    payload.buttons = [
+      {
+        type: 'button',
+        sub_type: 'url',
+        text: bodyParams[0],
+      },
+    ]
+  }
 
   try {
-
-    const payload = {
-      to: normalizePhone(phone),
-
-      phoneNoId:
-        process.env.VEBLIKA_PHONE_NUMBER_ID,
-
-      type: 'template',
-
-      name: 'phone_otp_verify',
-
-      language: 'en',
-
-      bodyParams: variables,
-
-      buttons: [
-        {
-          type: 'button',
-          sub_type: 'url',
-          text: variables[0],
+    const response = await fetch(
+      'https://automate.veblika.com/api/v2/whatsapp-business/messages',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${process.env.WHATSAPP_API_KEY}`,
         },
-      ],
-    }
-    console.log(
-      'VEBLIKA TEMPLATE PAYLOAD:',
-      JSON.stringify(payload, null, 2)
+        body: JSON.stringify(payload),
+      }
     )
-    const response =
-      await fetch(
-        'https://automate.veblika.com/api/v2/whatsapp-business/messages',
-        {
-          method: 'POST',
 
-          headers: {
-            'Content-Type':
-              'application/json',
-
-            Authorization:
-              `Bearer ${process.env.WHATSAPP_API_KEY}`,
-          },
-
-          body: JSON.stringify(
-            payload
-          ),
-        }
-      )
-
-    console.log(
-      'STATUS:',
-      response.status
-    )
     const raw = await response.text()
+    let data: Record<string, unknown> = { raw }
 
-    console.log(
-      'RAW VEBLIKA RESPONSE:',
-      raw
-    )
+    try {
+      data = raw ? JSON.parse(raw) : {}
+    } catch {
+      // ignore parse errors
+    }
 
-    const data = JSON.parse(raw)
-
-    console.log(
-      'VEBLIKA RESPONSE:',
-      data
-    )
-
-    // SAVE LOG
-    await supabase
-      .from('whatsapp_logs')
-      .insert({
-        user_id:
-          userId || null,
-
-        order_id:
-          orderId || null,
-
-        phone,
-
-        template_name:
-          templateName,
-
-        template_variables:
-          variables,
-
-        message: payload,
-
-        response: data,
-
-        provider_message_id:
-          data?.messageId || null,
-
-        status:
-          response.ok
-            ? 'sent'
-            : 'failed',
-      })
+    await logWhatsAppMessage({
+      userId,
+      orderId,
+      phone,
+      templateName,
+      templateVariables: variables,
+      message: payload,
+      response: data,
+      providerMessageId:
+        typeof data.messageId === 'string' ? data.messageId : null,
+      status: response.ok ? 'sent' : 'failed',
+    })
 
     if (!response.ok) {
-
-      console.error(
-        'WhatsApp Template Error',
-        data
-      )
-
+      logger.error('WhatsApp template error', {
+        templateName,
+        phone: normalizePhone(phone),
+        paramCount: bodyParams.length,
+        bodyParams,
+        status: response.status,
+        data,
+      })
       return null
     }
 
+    logger.info('WhatsApp template sent', {
+      templateName,
+      phone: normalizePhone(phone),
+      orderId,
+    })
+
     return data
+  } catch (error) {
+    logger.error('WhatsApp template send failed', {
+      error,
+      templateName,
+      phone,
+    })
 
-  } catch (err: any) {
-
-    console.error(
-      'Template Send Failed',
-      err
-    )
-
-    // SAVE FAILURE
-    await supabase
-      .from('whatsapp_logs')
-      .insert({
-        user_id:
-          userId || null,
-
-        order_id:
-          orderId || null,
-
-        phone,
-
-        template_name:
-          templateName,
-
-        template_variables:
-          variables,
-
-        message: {
-          template: templateName,
-          variables,
-        },
-
-        response: {
-          error:
-            err?.message,
-        },
-
-        status: 'failed',
-      })
+    await logWhatsAppMessage({
+      userId,
+      orderId,
+      phone,
+      templateName,
+      templateVariables: variables,
+      message: payload,
+      response: {
+        error: error instanceof Error ? error.message : String(error),
+      },
+      status: 'failed',
+    })
 
     return null
   }

@@ -10,6 +10,10 @@ import {
   type NormalizedDelhiveryTracking,
 } from '@/lib/delhivery'
 import { sendShipmentStatusEmail } from '@/lib/email'
+import {
+  notifyOrderDelivered,
+  notifyOrderShipped,
+} from '@/lib/whatsapp/order-notifications'
 import logger from '@/lib/logger'
 
 type ShipmentRow = {
@@ -18,6 +22,26 @@ type ShipmentRow = {
   awb: string | null
   status: string
   last_notified_milestone: string | null
+}
+
+export type DelhiverySyncSummary = {
+  tracking: NormalizedDelhiveryTracking
+  orderStatus: string
+  carrierStatus: string
+  awb: string
+  lastSyncedAt: string
+  expectedDeliveryDate?: string | null
+}
+
+export type AdminDelhiverySyncResult = {
+  orderId: string
+  awb: string | null
+  success: boolean
+  orderStatus?: string
+  carrierStatus?: string
+  lastSyncedAt?: string
+  expectedDeliveryDate?: string | null
+  error?: string
 }
 
 function eventKey(
@@ -59,18 +83,46 @@ async function notifyCustomerOfShipmentMilestone(
   if (!order) return
 
   const orderUser = Array.isArray(order.user) ? order.user[0] : order.user
-  if (!orderUser?.email) return
+  if (!orderUser?.email && !order.shipping_address?.phone) return
 
   try {
-    await sendShipmentStatusEmail({
-      order,
-      email: orderUser.email,
-      milestone,
-      carrierStatus,
-      trackingNumber,
-      expectedDeliveryDate,
-      instructions,
-    })
+    if (orderUser?.email) {
+      await sendShipmentStatusEmail({
+        order,
+        email: orderUser.email,
+        milestone,
+        carrierStatus,
+        trackingNumber,
+        expectedDeliveryDate,
+        instructions,
+      })
+    }
+
+    const orderForWhatsApp = {
+      id: order.id,
+      order_number: order.order_number,
+      user_id: order.user_id,
+      shipping_address: order.shipping_address,
+    }
+
+    const shippedMilestones = [
+      'shipment_created',
+      'picked_up',
+      'in_transit',
+      'out_for_delivery',
+    ]
+    const shippedAlreadyNotified = shippedMilestones.includes(
+      shipment.last_notified_milestone || ''
+    )
+
+    if (milestone === 'delivered') {
+      await notifyOrderDelivered(orderForWhatsApp)
+    } else if (
+      shippedMilestones.includes(milestone) &&
+      !shippedAlreadyNotified
+    ) {
+      await notifyOrderShipped(orderForWhatsApp, trackingNumber)
+    }
 
     await supabase
       .from('delhivery_shipments')
@@ -278,7 +330,7 @@ export async function ensureDelhiveryShipmentForPaidOrder(
 
 export async function syncDelhiveryShipment(
   shipment: ShipmentRow
-): Promise<NormalizedDelhiveryTracking> {
+): Promise<DelhiverySyncSummary> {
   if (!shipment.awb) throw new Error('Shipment has no AWB')
 
   const supabase = createAdminClient()
@@ -378,12 +430,32 @@ export async function syncDelhiveryShipment(
     status: tracking.currentStatus,
   })
 
-  return tracking
+  const { data: updatedOrder } = await supabase
+    .from('orders')
+    .select('status')
+    .eq('id', shipment.order_id)
+    .single()
+
+  const { data: updatedShipment } = await supabase
+    .from('delhivery_shipments')
+    .select('status, last_synced_at, expected_delivery_date')
+    .eq('id', shipment.id)
+    .single()
+
+  return {
+    tracking,
+    orderStatus: updatedOrder?.status || order?.status || 'processing',
+    carrierStatus: tracking.currentStatus,
+    awb: tracking.awb,
+    lastSyncedAt:
+      updatedShipment?.last_synced_at || new Date().toISOString(),
+    expectedDeliveryDate: updatedShipment?.expected_delivery_date,
+  }
 }
 
 export async function syncDelhiveryShipmentByOrderId(
   orderId: string
-): Promise<NormalizedDelhiveryTracking> {
+): Promise<DelhiverySyncSummary> {
   const supabase = createAdminClient()
   const { data: shipment, error } = await supabase
     .from('delhivery_shipments')
@@ -395,44 +467,67 @@ export async function syncDelhiveryShipmentByOrderId(
   return syncDelhiveryShipment(shipment as ShipmentRow)
 }
 
-export async function syncActiveDelhiveryShipments(limit = 50) {
+export async function syncDelhiveryShipmentsForAdmin(options?: {
+  orderIds?: string[]
+  limit?: number
+}): Promise<AdminDelhiverySyncResult[]> {
   const supabase = createAdminClient()
-  const { data: shipments, error } = await supabase
+  const limit = Math.min(Math.max(options?.limit ?? 50, 1), 100)
+
+  let query = supabase
     .from('delhivery_shipments')
     .select('id, order_id, awb, status, last_notified_milestone')
     .not('awb', 'is', null)
-    .not('status', 'ilike', '%delivered%')
-    .order('last_synced_at', { ascending: true, nullsFirst: true })
-    .limit(Math.min(Math.max(limit, 1), 100))
 
+  if (options?.orderIds?.length) {
+    query = query.in('order_id', options.orderIds)
+  } else {
+    query = query
+      .not('status', 'ilike', '%delivered%')
+      .order('last_synced_at', { ascending: true, nullsFirst: true })
+      .limit(limit)
+  }
+
+  const { data: shipments, error } = await query
   if (error) throw error
 
-  const results = []
+  const results: AdminDelhiverySyncResult[] = []
+
   for (const shipment of shipments || []) {
     try {
-      const tracking = await syncDelhiveryShipment(shipment as ShipmentRow)
+      const summary = await syncDelhiveryShipment(shipment as ShipmentRow)
       results.push({
         orderId: shipment.order_id,
-        awb: shipment.awb,
+        awb: summary.awb,
         success: true,
-        status: tracking.currentStatus,
+        orderStatus: summary.orderStatus,
+        carrierStatus: summary.carrierStatus,
+        lastSyncedAt: summary.lastSyncedAt,
+        expectedDeliveryDate: summary.expectedDeliveryDate,
       })
-    } catch (error) {
+    } catch (syncError) {
       await supabase
         .from('delhivery_shipments')
         .update({
           last_synced_at: new Date().toISOString(),
-          error_message: error instanceof Error ? error.message : String(error),
+          error_message:
+            syncError instanceof Error ? syncError.message : String(syncError),
         })
         .eq('id', shipment.id)
+
       results.push({
         orderId: shipment.order_id,
         awb: shipment.awb,
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error:
+          syncError instanceof Error ? syncError.message : String(syncError),
       })
     }
   }
 
   return results
+}
+
+export async function syncActiveDelhiveryShipments(limit = 50) {
+  return syncDelhiveryShipmentsForAdmin({ limit })
 }

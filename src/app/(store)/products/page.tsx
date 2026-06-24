@@ -8,6 +8,11 @@ import InfiniteProducts from '@/components/product/infinite-products'
 import { Suspense } from 'react'
 import type { Metadata } from 'next'
 import { Product } from '@/types'
+import {
+  applyProductSearchFilter,
+  getProductIdsFromCategorySearch,
+  sanitizeSearchTerm,
+} from '@/lib/search'
 
 interface PageProps {
   searchParams: Promise<{
@@ -27,6 +32,12 @@ interface PageProps {
 
 export async function generateMetadata({ searchParams }: PageProps): Promise<Metadata> {
   const params = await searchParams
+  if (params.search) {
+    return {
+      title: `Search results for "${params.search}"`,
+      description: `Find products matching "${params.search}" in our collection.`,
+    }
+  }
   const category = params.category
   return {
     title: category
@@ -63,13 +74,19 @@ async function getProducts(searchParams: Awaited<PageProps['searchParams']>) {
   const from = (page - 1) * perPage
   const to = from + perPage - 1
 
+  const searchTerm = searchParams.search
+    ? sanitizeSearchTerm(searchParams.search)
+    : ''
+
+  const categoryJoin = searchTerm ? 'product_categories' : 'product_categories!inner'
+
   let query = supabase
     .from('products')
     .select(
       `
       *,
       variants:product_variants(*),
-      product_categories!inner(
+      ${categoryJoin}(
         category:categories(*)
       )
     `,
@@ -115,8 +132,12 @@ async function getProducts(searchParams: Awaited<PageProps['searchParams']>) {
 
   if (searchParams.minRating) query = query.gte('average_rating', Number(searchParams.minRating))
 
-  if (searchParams.search) {
-    query = query.ilike('name', `%${searchParams.search}%`)
+  if (searchTerm) {
+    const categoryProductIds = await getProductIdsFromCategorySearch(
+      supabase,
+      searchTerm
+    )
+    query = applyProductSearchFilter(query, searchTerm, categoryProductIds)
   }
 
   switch (searchParams.sortBy) {
@@ -280,14 +301,16 @@ export default async function ProductsPage({ searchParams }: PageProps) {
         {/* Products */}
         <div className="w-full">
           <div className="flex items-center justify-between mb-6">
-            <p className="text-sm text-gray-600">
-              {params.search && (
-                <>
-                  Results for <strong>"{params.search}"</strong> —{' '}
-                </>
-              )}
-              <strong>{total}</strong> total products
-            </p>
+            <div>
+              {params.search ? (
+                <h1 className="text-lg font-semibold text-gray-900">
+                  Showing results for &ldquo;{params.search}&rdquo;
+                </h1>
+              ) : null}
+              <p className="text-sm text-gray-600 mt-0.5">
+                <strong>{total}</strong> products found
+              </p>
+            </div>
 
             <ProductSort currentSort={params.sortBy} />
           </div>

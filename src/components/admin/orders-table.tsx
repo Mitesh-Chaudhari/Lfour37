@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Order, OrderItem, OrderStatus } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,7 @@ import toast from 'react-hot-toast'
 import {
   Truck,
   PackageCheck,
+  RefreshCw,
 } from 'lucide-react'
 
 const STATUS_OPTIONS: { value: OrderStatus; label: string }[] = [
@@ -67,6 +68,46 @@ function formatItemVariant(item: AdminOrderItem): string {
   return parts.length ? parts.join(' / ') : '—'
 }
 
+type DelhiveryShipmentInfo = {
+  id?: string
+  awb?: string | null
+  status?: string | null
+  status_code?: string | null
+  expected_delivery_date?: string | null
+  last_synced_at?: string | null
+  error_message?: string | null
+}
+
+type AdminDelhiverySyncPayload = {
+  orderId: string
+  success: boolean
+  orderStatus?: string
+  carrierStatus?: string
+  awb?: string | null
+  lastSyncedAt?: string
+  expectedDeliveryDate?: string | null
+  error?: string
+}
+
+function getDelhiveryShipment(order: AdminOrder): DelhiveryShipmentInfo | null {
+  const shipment = Array.isArray(order.delhivery_shipment)
+    ? order.delhivery_shipment[0]
+    : order.delhivery_shipment
+
+  return shipment || null
+}
+
+function isDelhiveryManagedStatus(status: OrderStatus): boolean {
+  return status === 'shipped' || status === 'delivered'
+}
+
+function canSyncDelhivery(order: AdminOrder): boolean {
+  if (['cancelled', 'refunded'].includes(order.status)) return false
+
+  const shipment = getDelhiveryShipment(order)
+  return Boolean(shipment?.awb || order.tracking_number)
+}
+
 function canProcessItemRefund(
   order: AdminOrder,
   item: AdminOrderItem
@@ -88,6 +129,7 @@ function canProcessItemRefund(
 type AdminOrder = Omit<Order, 'items'> & {
   items?: AdminOrderItem[]
   user?: { full_name: string | null; email: string }
+  delhivery_shipment?: DelhiveryShipmentInfo | DelhiveryShipmentInfo[] | null
 }
 
 interface AdminOrdersTableProps {
@@ -99,6 +141,116 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
   const [selectedStatus, setSelectedStatus] = useState<string>('all')
   const [search, setSearch] = useState('')
   const [updatingId, setUpdatingId] = useState<string | null>(null)
+  const [syncingTracking, setSyncingTracking] = useState(false)
+  const autoSyncedRef = useRef(false)
+
+  const applyDelhiverySyncResults = useCallback(
+    (results: AdminDelhiverySyncPayload[]) => {
+      setOrders((current) =>
+        current.map((order) => {
+          const result = results.find(
+            (entry) => entry.orderId === order.id && entry.success
+          )
+          if (!result) return order
+
+          const existingShipment = getDelhiveryShipment(order)
+
+          return {
+            ...order,
+            status: (result.orderStatus as OrderStatus) || order.status,
+            tracking_number: result.awb || order.tracking_number,
+            delhivery_shipment: existingShipment
+              ? {
+                  ...existingShipment,
+                  awb: result.awb || existingShipment.awb,
+                  status: result.carrierStatus || existingShipment.status,
+                  last_synced_at:
+                    result.lastSyncedAt || existingShipment.last_synced_at,
+                  expected_delivery_date:
+                    result.expectedDeliveryDate ??
+                    existingShipment.expected_delivery_date,
+                  error_message: null,
+                }
+              : result.awb
+                ? {
+                    awb: result.awb,
+                    status: result.carrierStatus,
+                    last_synced_at: result.lastSyncedAt,
+                    expected_delivery_date: result.expectedDeliveryDate,
+                  }
+                : order.delhivery_shipment,
+          }
+        })
+      )
+    },
+    []
+  )
+
+  const refreshDelhiveryTracking = useCallback(
+    async (orderIds: string[], options?: { silent?: boolean }) => {
+      if (!orderIds.length) {
+        if (!options?.silent) {
+          toast('No Delhivery shipments to sync')
+        }
+        return
+      }
+
+      setSyncingTracking(true)
+      try {
+        const res = await fetch('/api/admin/orders/sync-tracking', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_ids: orderIds }),
+        })
+        const data = await res.json()
+
+        if (!res.ok) {
+          toast.error(data.error || 'Failed to sync Delhivery tracking')
+          return
+        }
+
+        applyDelhiverySyncResults(data.results || [])
+
+        if (!options?.silent) {
+          const synced = data.synced ?? 0
+          const failed = data.failed ?? 0
+          if (failed > 0) {
+            toast.error(`Synced ${synced} order(s), ${failed} failed`)
+          } else {
+            toast.success(`Updated tracking for ${synced} order(s)`)
+          }
+        }
+      } catch {
+        if (!options?.silent) {
+          toast.error('Failed to sync Delhivery tracking')
+        }
+      } finally {
+        setSyncingTracking(false)
+      }
+    },
+    [applyDelhiverySyncResults]
+  )
+
+  useEffect(() => {
+    if (autoSyncedRef.current) return
+    autoSyncedRef.current = true
+
+    const orderIds = initialOrders
+      .filter((order) => {
+        const shipment = getDelhiveryShipment(order)
+        return (
+          shipment?.awb &&
+          !['delivered', 'cancelled', 'refunded'].includes(order.status)
+        )
+      })
+      .slice(0, 25)
+      .map((order) => order.id)
+
+    if (orderIds.length) {
+      void refreshDelhiveryTracking(orderIds, { silent: true })
+    }
+  }, [initialOrders, refreshDelhiveryTracking])
+
   const filtered = orders.filter((o) => {
     if (selectedStatus !== 'all' && o.status !== selectedStatus) return false
     if (search && !o.order_number.toLowerCase().includes(search.toLowerCase()) &&
@@ -441,9 +593,18 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
         return
       }
 
-      const awb = data.shipment?.awb || data.tracking?.awb || shipment?.awb
+      const awb =
+        data.shipment?.awb ||
+        data.delhivery_shipment?.awb ||
+        data.tracking?.awb ||
+        shipment?.awb
       const carrierStatus =
-        data.shipment?.status || data.tracking?.currentStatus || shipment?.status
+        data.carrierStatus ||
+        data.shipment?.status ||
+        data.delhivery_shipment?.status ||
+        data.tracking?.currentStatus ||
+        shipment?.status
+      const orderStatus = data.orderStatus || data.order?.status
 
       setOrders((current) =>
         current.map((item) =>
@@ -451,22 +612,30 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
             ? {
                 ...item,
                 tracking_number: awb || item.tracking_number,
-                status:
-                  data.tracking?.currentStatus?.toLowerCase().includes('delivered')
-                    ? 'delivered'
-                    : awb && item.status === 'paid'
-                      ? 'processing'
-                      : item.status,
+                status: (orderStatus as OrderStatus) || item.status,
                 delhivery_shipment: {
                   ...(shipment || {}),
                   awb,
                   status: carrierStatus,
+                  last_synced_at:
+                    data.shipment?.last_synced_at ||
+                    data.delhivery_shipment?.last_synced_at ||
+                    new Date().toISOString(),
+                  expected_delivery_date:
+                    data.shipment?.expected_delivery_date ||
+                    data.delhivery_shipment?.expected_delivery_date ||
+                    shipment?.expected_delivery_date,
+                  error_message: null,
                 },
               }
             : item
         )
       )
-      toast.success(action === 'create' ? `Shipment created: ${awb}` : 'Tracking synced')
+      toast.success(
+        action === 'create'
+          ? `Shipment created${awb ? `: ${awb}` : ''}`
+          : `Tracking synced${orderStatus ? ` → ${orderStatus}` : ''}`
+      )
     } catch {
       toast.error('Delhivery action failed')
     } finally {
@@ -559,6 +728,25 @@ const markDelivered =
             <option key={s.value} value={s.value}>{s.label}</option>
           ))}
         </select>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={syncingTracking}
+          onClick={() =>
+            refreshDelhiveryTracking(
+              orders
+                .filter((order) => canSyncDelhivery(order))
+                .slice(0, 50)
+                .map((order) => order.id)
+            )
+          }
+          className="shrink-0"
+        >
+          <RefreshCw
+            className={`h-4 w-4 mr-2 ${syncingTracking ? 'animate-spin' : ''}`}
+          />
+          Sync Delhivery
+        </Button>
       </div>
 
       {/* Table */}
@@ -601,18 +789,35 @@ const markDelivered =
                       {order.status}
                     </Badge>
                     {(() => {
-                      const shipment = Array.isArray(order.delhivery_shipment)
-                        ? order.delhivery_shipment[0]
-                        : order.delhivery_shipment
-                      return shipment ? (
-                        <div className="mt-2 text-xs text-gray-500">
-                          <p>{shipment.status}</p>
-                          {shipment.awb && <p className="font-mono">{shipment.awb}</p>}
-                          {shipment.error_message && (
+                      const shipment = getDelhiveryShipment(order)
+                      if (!shipment?.awb && !order.tracking_number) return null
+
+                      return (
+                        <div className="mt-2 space-y-1 text-xs text-gray-500">
+                          <p className="font-medium text-gray-700">
+                            Delhivery: {shipment?.status || 'Awaiting sync'}
+                          </p>
+                          {(shipment?.awb || order.tracking_number) && (
+                            <p className="font-mono">
+                              AWB: {shipment?.awb || order.tracking_number}
+                            </p>
+                          )}
+                          {shipment?.expected_delivery_date && (
+                            <p>
+                              ETA:{' '}
+                              {formatDate(shipment.expected_delivery_date)}
+                            </p>
+                          )}
+                          {shipment?.last_synced_at && (
+                            <p>
+                              Synced: {formatDate(shipment.last_synced_at)}
+                            </p>
+                          )}
+                          {shipment?.error_message && (
                             <p className="text-red-600">{shipment.error_message}</p>
                           )}
                         </div>
-                      ) : null
+                      )
                     })()}
                   </td>
                   <td className="px-4 py-3 min-w-[250px]">
@@ -830,22 +1035,36 @@ const markDelivered =
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <select
-                      value={order.status}
-                      onChange={(e) => updateStatus(order.id, e.target.value as OrderStatus)}
-                      disabled={updatingId === order.id || order.status === 'refunded'}
-                      className="text-xs border border-gray-300 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50"
-                    >
-                      {STATUS_OPTIONS
-                        .filter(
+                    {isDelhiveryManagedStatus(order.status) ? (
+                      <div className="space-y-1">
+                        <Badge variant={STATUS_BADGE[order.status]}>
+                          {order.status}
+                        </Badge>
+                        <p className="text-[11px] text-gray-500">
+                          Updated from Delhivery
+                        </p>
+                      </div>
+                    ) : (
+                      <select
+                        value={order.status}
+                        onChange={(e) =>
+                          updateStatus(order.id, e.target.value as OrderStatus)
+                        }
+                        disabled={
+                          updatingId === order.id || order.status === 'refunded'
+                        }
+                        className="text-xs border border-gray-300 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50"
+                      >
+                        {STATUS_OPTIONS.filter(
                           (s) =>
-                            s.value !== 'shipped' &&
-                            s.value !== 'delivered'
-                        )
-                        .map((s) => (
-                        <option key={s.value} value={s.value}>{s.label}</option>
-                      ))}
-                    </select>
+                            s.value !== 'shipped' && s.value !== 'delivered'
+                        ).map((s) => (
+                          <option key={s.value} value={s.value}>
+                            {s.label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right">
 
@@ -854,19 +1073,22 @@ const markDelivered =
                       {/* CREATE OR SYNC DELHIVERY SHIPMENT */}
                       {(order.status === 'processing' ||
                         order.status === 'paid' ||
-                        order.status === 'shipped') && (
+                        order.status === 'shipped' ||
+                        canSyncDelhivery(order)) && (
                         <Button
                           size="sm"
                           variant="outline"
                           disabled={
-                            updatingId === order.id
+                            updatingId === order.id || syncingTracking
                           }
                           onClick={() =>
                             handleShipment(order)
                           }
                         >
                           <Truck className="h-4 w-4 mr-1" />
-                          {order.tracking_number ? 'Sync' : 'Create Shipment'}
+                          {order.tracking_number || getDelhiveryShipment(order)?.awb
+                            ? 'Sync'
+                            : 'Create Shipment'}
                         </Button>
                       )}
 

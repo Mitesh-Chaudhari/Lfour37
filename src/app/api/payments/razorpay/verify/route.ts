@@ -3,6 +3,7 @@ import crypto from 'crypto'
 import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { ensureDelhiveryShipmentForPaidOrder } from '@/lib/delhivery-shipping'
 import { sendOrderConfirmationEmail, sendNewOrderOwnerNotificationEmail } from '@/lib/email'
+import { notifyOrderConfirmation } from '@/lib/whatsapp/order-notifications'
 import logger from '@/lib/logger'
 import { fetchRazorpayPayment } from '@/lib/razorpay'
 import { z } from 'zod'
@@ -236,6 +237,21 @@ export async function POST(request: NextRequest) {
         })
       )
     }
+
+    notifyOrderConfirmation({
+      id: order.id,
+      order_number: order.order_number,
+      total: order.total,
+      created_at: order.created_at,
+      user_id: order.user_id,
+      shipping_address: order.shipping_address,
+      items: order.items,
+    }).catch((error) =>
+      logger.error('Razorpay order confirmation WhatsApp failed', {
+        error,
+        orderId: order_id,
+      })
+    )
 
     return NextResponse.json({ success: true, shipment })
   } catch (error) {

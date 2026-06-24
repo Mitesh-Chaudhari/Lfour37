@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils'
 import { buildAuthHref } from '@/lib/auth-redirect'
 import { OptimizedImage } from '@/components/ui/optimized-image'
 import { CategoryDrawer } from './category-drawer'
+import { GlobalSearch } from './global-search'
 
 const STATIC_LINKS = [
   {
@@ -40,7 +41,6 @@ export function Navbar() {
   const [user, setUser] = useState<UserType | null>(null)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
   const [mounted, setMounted] = useState(false)
   const [categories, setCategories] =
   useState<any[]>([])
@@ -140,14 +140,6 @@ export function Navbar() {
     }
   }
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (searchQuery.trim()) {
-      router.push(`/products?search=${encodeURIComponent(searchQuery.trim())}`)
-      toggleSearch()
-      setSearchQuery('')
-    }
-  }
   const LOGO_IMAGE = [
   '/images/logo.png',
   ]
@@ -420,28 +412,7 @@ export function Navbar() {
           </div>
         </div>
 
-        {/* Search bar */}
-        {isSearchOpen && (
-          <div className="border-t border-gray-100 bg-white px-4 py-3">
-            <form onSubmit={handleSearch} className="max-w-2xl mx-auto flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  autoFocus
-                  type="search"
-                  placeholder="Search for clothing, brands..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-              <Button type="submit" size="sm">Search</Button>
-              <button type="button" onClick={toggleSearch} className="p-2 text-gray-500 hover:text-gray-700">
-                <X className="h-5 w-5" />
-              </button>
-            </form>
-          </div>
-        )}
+        {isSearchOpen && <GlobalSearch onClose={toggleSearch} />}
       </header>
 
       {/* Mobile menu */}

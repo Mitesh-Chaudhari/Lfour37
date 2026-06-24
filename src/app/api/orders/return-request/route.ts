@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { sendWhatsAppTemplate } from '@/lib/whatsapp'
+import { notifyReturnOrExchangeRequested } from '@/lib/whatsapp/order-notifications'
+import logger from '@/lib/logger'
 
 export async function POST(req: NextRequest) {
     try {
@@ -123,70 +124,47 @@ export async function POST(req: NextRequest) {
             *,
             orders (
             order_number,
-            shipping_address
+            shipping_address,
+            user_id
             )
         `)
                     .eq('id', order_item_id)
                     .single()
 
-            const ordersUrl =
-                `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/orders`
+            const orderData = (itemDetails as {
+              orders?: {
+                order_number?: string
+                shipping_address?: { phone?: string }
+                user_id?: string
+              }
+              product_name?: string
+              variant_size?: string | null
+              variant_color?: string | null
+              quantity?: number
+              order_id?: string
+            })?.orders
 
-            const message =
-                `LFOUR37
-
-    Order ID:
-    ${(itemDetails as any)?.orders?.order_number}
-
-    📦 ${return_type === 'exchange'
-                    ? 'EXCHANGE REQUEST'
-                    : 'RETURN REQUEST'} RECEIVED
-
-    • ${itemDetails?.product_name}
-
-    ${itemDetails?.variant_size || '-'} / ${itemDetails?.variant_color || '-'}
-
-    Status:
-    RETURN REQUESTED
-
-    Our team will review your request shortly.
-
-    Track updates:
-    ${ordersUrl}
-
-    Thank you for shopping with LFOUR37 ❤️`
-
-            await sendWhatsAppTemplate({
-                phone:
-                    (itemDetails as any)?.orders
-                        ?.shipping_address
-                        ?.phone,
-
-                userId:
-                    user.id,
-
-                orderId:
-                    (itemDetails as any)?.order_id,
-
-                templateName:
-                    return_type === 'exchange'
-                        ? 'exchange_requested'
-                        : 'return_requested',
-
-                variables: [
-                    (itemDetails as any)?.orders
-                        ?.order_number || '',
-
-                    itemDetails?.product_name || '',
-
-                    `${itemDetails?.variant_size || '-'} / ${itemDetails?.variant_color || '-'}`,
-
-                    `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/orders`,
-                ],
-            })
+            if (itemDetails && orderData) {
+              await notifyReturnOrExchangeRequested({
+                order: {
+                  id: itemDetails.order_id,
+                  order_number: orderData.order_number || '',
+                  user_id: orderData.user_id || user.id,
+                  shipping_address: orderData.shipping_address,
+                },
+                item: {
+                  product_name: itemDetails.product_name,
+                  variant_size: itemDetails.variant_size,
+                  variant_color: itemDetails.variant_color,
+                  quantity: itemDetails.quantity,
+                },
+                returnType: return_type === 'exchange' ? 'exchange' : 'return',
+                currentStatus: 'return_requested',
+              })
+            }
 
         } catch (err) {
-            console.error(
+            logger.error(
                 'Return WhatsApp Failed',
                 err
             )
