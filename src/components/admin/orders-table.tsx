@@ -126,7 +126,7 @@ function canProcessItemRefund(
   return order.payment_status === 'completed'
 }
 
-type AdminOrder = Omit<Order, 'items'> & {
+type AdminOrder = Omit<Order, 'items' | 'delhivery_shipment'> & {
   items?: AdminOrderItem[]
   user?: { full_name: string | null; email: string }
   delhivery_shipment?: DelhiveryShipmentInfo | DelhiveryShipmentInfo[] | null
@@ -573,7 +573,7 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
     }
   }
 
-  const handleShipment = async (order: Order) => {
+  const handleShipment = async (order: AdminOrder) => {
     const shipment = Array.isArray(order.delhivery_shipment)
       ? order.delhivery_shipment[0]
       : order.delhivery_shipment
