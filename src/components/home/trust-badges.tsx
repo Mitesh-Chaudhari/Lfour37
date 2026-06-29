@@ -4,7 +4,7 @@ const BADGES = [
   {
     icon: Truck,
     title: 'Free Shipping',
-    description: 'On orders over $75',
+    description: 'Enjoy free shipping',
     color: 'text-blue-600',
     bg: 'bg-blue-50',
     border: 'border-blue-100',

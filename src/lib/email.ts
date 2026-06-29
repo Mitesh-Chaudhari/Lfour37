@@ -255,8 +255,8 @@ export async function sendOrderConfirmationEmail(order: Order, email: string): P
       <tr>
         <td>${item.product_name}${item.variant_size ? ` (${item.variant_size}/${item.variant_color})` : ''}</td>
         <td>${item.quantity}</td>
-        <td>$${item.unit_price.toFixed(2)}</td>
-        <td>$${item.total_price.toFixed(2)}</td>
+        <td>${formatEmailInr(item.unit_price)}</td>
+        <td>${formatEmailInr(item.total_price)}</td>
       </tr>
     `
     )
@@ -280,11 +280,11 @@ export async function sendOrderConfirmationEmail(order: Order, email: string): P
     </table>
 
     <table>
-      <tr><td>Subtotal</td><td>$${order.subtotal.toFixed(2)}</td></tr>
-      ${order.discount_amount > 0 ? `<tr><td>Discount</td><td>-$${order.discount_amount.toFixed(2)}</td></tr>` : ''}
-      <tr><td>Tax</td><td>$${order.tax_amount.toFixed(2)}</td></tr>
-      <tr><td>Shipping</td><td>$${order.shipping_amount.toFixed(2)}</td></tr>
-      <tr><td><strong>Total</strong></td><td><strong>$${order.total.toFixed(2)}</strong></td></tr>
+      <tr><td>Subtotal</td><td>${formatEmailInr(order.subtotal)}</td></tr>
+      ${order.discount_amount > 0 ? `<tr><td>Discount</td><td>-${formatEmailInr(order.discount_amount)}</td></tr>` : ''}
+      <tr><td>Tax</td><td>${formatEmailInr(order.tax_amount)}</td></tr>
+      <tr><td>Shipping</td><td>${formatEmailInr(order.shipping_amount)}</td></tr>
+      <tr><td><strong>Total</strong></td><td><strong>${formatEmailInr(order.total)}</strong></td></tr>
     </table>
 
     <p><strong>Shipping to:</strong><br>
