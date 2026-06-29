@@ -23,7 +23,6 @@ export function ProductCard({ product, className }: ProductCardProps) {
   const [wishlistLoading, setWishlistLoading] = useState(false)
   const [showSecondary, setShowSecondary] = useState(false)
   const [slideIndex, setSlideIndex] = useState(0)
-  const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -33,31 +32,17 @@ export function ProductCard({ product, className }: ProductCardProps) {
   const primaryImage = imageUrls[0]
   const secondaryImage = imageUrls[1]
   const hasMultipleImages = imageUrls.length > 1
+  const activeMobileImage = imageUrls[slideIndex] ?? primaryImage
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(max-width: 767px)')
-    const updateViewport = () => setIsMobile(mediaQuery.matches)
-
-    updateViewport()
-    mediaQuery.addEventListener('change', updateViewport)
-    return () => mediaQuery.removeEventListener('change', updateViewport)
-  }, [])
-
-  useEffect(() => {
-    if (!isMobile || imageUrls.length <= 1) return
+    if (imageUrls.length <= 1) return
 
     const timer = window.setInterval(() => {
       setSlideIndex((current) => (current + 1) % imageUrls.length)
     }, 3000)
 
     return () => window.clearInterval(timer)
-  }, [isMobile, imageUrls.length])
-
-  useEffect(() => {
-    if (!isMobile) {
-      setSlideIndex(0)
-    }
-  }, [isMobile])
+  }, [imageUrls.length])
 
   const inWishlist = mounted && isInWishlist(product.id)
   const totalStock = product.variants?.reduce((sum, v) => sum + v.stock, 0) ?? 0
@@ -109,58 +94,65 @@ export function ProductCard({ product, className }: ProductCardProps) {
         onFocus={() => setShowSecondary(true)}
       >
         {primaryImage ? (
-          isMobile && hasMultipleImages ? (
-            <>
-              {imageUrls.map((url, index) => (
-                <OptimizedImage
-                  key={url}
-                  src={url}
-                  alt={`${product.name} - image ${index + 1}`}
-                  fill
-                  variant="card"
-                  priority={index === 0}
-                  className={cn(
-                    'object-cover transition-opacity duration-500',
-                    index === slideIndex ? 'opacity-100' : 'opacity-0'
-                  )}
-                />
-              ))}
-              <div className="absolute bottom-2 left-1/2 z-10 flex -translate-x-1/2 gap-1">
-                {imageUrls.map((url, index) => (
-                  <span
-                    key={url}
-                    className={cn(
-                      'h-1 rounded-full bg-white transition-all',
-                      index === slideIndex ? 'w-3' : 'w-1 bg-white/50'
-                    )}
-                  />
-                ))}
-              </div>
-            </>
-          ) : (
-            <>
+          <>
+            {/* Mobile: one eager-loaded image at a time */}
+            <div
+              className={cn(
+                'absolute inset-0',
+                hasMultipleImages && 'md:hidden'
+              )}
+            >
               <OptimizedImage
-                src={primaryImage}
+                key={activeMobileImage}
+                src={activeMobileImage}
                 alt={product.name}
                 fill
                 variant="card"
+                priority
+                loading="eager"
                 className={cn(
                   'object-cover transition-all duration-500',
-                  secondaryImage ? 'group-hover:opacity-0' : 'group-hover:scale-105'
+                  !hasMultipleImages && 'md:group-hover:scale-105'
                 )}
               />
-              {secondaryImage && showSecondary && (
+              {hasMultipleImages && (
+                <div className="absolute bottom-2 left-1/2 z-10 flex -translate-x-1/2 gap-1">
+                  {imageUrls.map((url, index) => (
+                    <span
+                      key={url}
+                      className={cn(
+                        'h-1 rounded-full bg-white transition-all',
+                        index === slideIndex ? 'w-3' : 'w-1 bg-white/50'
+                      )}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Desktop: hover image swap */}
+            {hasMultipleImages ? (
+              <div className="absolute inset-0 hidden md:block">
                 <OptimizedImage
-                  key={secondaryImage}
-                  src={secondaryImage}
+                  src={primaryImage}
                   alt={product.name}
                   fill
                   variant="card"
-                  className="object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                  className="object-cover transition-all duration-500 group-hover:opacity-0"
                 />
-              )}
-            </>
-          )
+                {secondaryImage && showSecondary && (
+                  <OptimizedImage
+                    key={secondaryImage}
+                    src={secondaryImage}
+                    alt={product.name}
+                    fill
+                    variant="card"
+                    className="object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                  />
+                )}
+              </div>
+            ) : null}
+          </>
         ) : (
           <div className="flex h-full items-center justify-center">
             <ShoppingBag className="h-12 w-12 text-gray-300" />

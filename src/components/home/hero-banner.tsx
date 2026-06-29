@@ -174,17 +174,18 @@ export function HeroBanner({ initialSlides = [] }: HeroBannerProps) {
             </Button>
 
             {slide.secondary_link && slide.secondary_text && (
-              <Button
-                variant="outline"
-                size="lg"
-                asChild
-                className="border-white/20 text-white bg-white/10 rounded-full"
-              >
-                <Link href={slide.secondary_link}>
-                  {slide.secondary_text}
-                </Link>
-              </Button>
-            )}
+  <Button
+    variant="outline"
+    size="lg"
+    asChild
+    className="border-white/20 text-white bg-white/10 rounded-full hover:bg-white hover:text-purple-600 hover:border-transparent"
+  >
+    <Link href={slide.secondary_link}>
+      {slide.secondary_text}
+    </Link>
+  </Button>
+)}
+
           </div>
         </div>
       </div>
