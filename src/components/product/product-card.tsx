@@ -29,20 +29,21 @@ export function ProductCard({ product, className }: ProductCardProps) {
   const imageUrls =
     product.images?.map((image) => image.url).filter((url): url is string => Boolean(url)) ??
     []
+  const mobileSlideImages = imageUrls.slice(0, 2)
   const primaryImage = imageUrls[0]
   const secondaryImage = imageUrls[1]
-  const hasMultipleImages = imageUrls.length > 1
-  const activeMobileImage = imageUrls[slideIndex] ?? primaryImage
+  const hasMultipleImages = mobileSlideImages.length > 1
+  const activeMobileImage = mobileSlideImages[slideIndex] ?? primaryImage
 
   useEffect(() => {
-    if (imageUrls.length <= 1) return
+    if (mobileSlideImages.length <= 1) return
 
     const timer = window.setInterval(() => {
-      setSlideIndex((current) => (current + 1) % imageUrls.length)
+      setSlideIndex((current) => (current + 1) % mobileSlideImages.length)
     }, 3000)
 
     return () => window.clearInterval(timer)
-  }, [imageUrls.length])
+  }, [mobileSlideImages.length])
 
   const inWishlist = mounted && isInWishlist(product.id)
   const totalStock = product.variants?.reduce((sum, v) => sum + v.stock, 0) ?? 0
@@ -117,7 +118,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
               />
               {hasMultipleImages && (
                 <div className="absolute bottom-2 left-1/2 z-10 flex -translate-x-1/2 gap-1">
-                  {imageUrls.map((url, index) => (
+                  {mobileSlideImages.map((url, index) => (
                     <span
                       key={url}
                       className={cn(
