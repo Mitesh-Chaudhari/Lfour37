@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { notifyOrderShipped } from '@/lib/whatsapp/order-notifications'
-import logger from '@/lib/logger'
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,18 +22,6 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-
-    const { data: order } = await supabase
-      .from('orders')
-      .select('id, order_number, shipping_address, user_id, tracking_number')
-      .eq('id', orderId)
-      .single()
-
-    if (order) {
-      notifyOrderShipped(order, trackingNumber || order.tracking_number).catch((err) =>
-        logger.error('Shipped WhatsApp failed', { err, orderId })
-      )
     }
 
     return NextResponse.json({ success: true })

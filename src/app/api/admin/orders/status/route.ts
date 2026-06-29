@@ -3,8 +3,6 @@ import { createClient } from '@/lib/supabase/server'
 import { sendOrderStatusEmail } from '@/lib/email'
 import {
   notifyOrderCancelled,
-  notifyOrderDelivered,
-  notifyOrderShipped,
 } from '@/lib/whatsapp/order-notifications'
 import logger from '@/lib/logger'
 import { OrderStatus } from '@/types'
@@ -47,10 +45,10 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to update order' }, { status: 500 })
     }
 
-    // Send status email
+    // Shipped/delivered emails are sent from Delhivery milestone sync only.
     try {
       const orderUser = Array.isArray(updatedOrder.user) ? updatedOrder.user[0] : updatedOrder.user
-      if (orderUser?.email) {
+      if (orderUser?.email && !['shipped', 'delivered'].includes(status)) {
         await sendOrderStatusEmail(
           updatedOrder as any,
           orderUser.email,
@@ -70,14 +68,7 @@ export async function PATCH(req: NextRequest) {
         tracking_number: updatedOrder.tracking_number,
       }
 
-      if (status === 'shipped') {
-        await notifyOrderShipped(
-          orderForWhatsApp,
-          tracking_number || updatedOrder.tracking_number
-        )
-      } else if (status === 'delivered') {
-        await notifyOrderDelivered(orderForWhatsApp)
-      } else if (status === 'cancelled') {
+      if (status === 'cancelled') {
         const firstItem = Array.isArray(updatedOrder.items)
           ? updatedOrder.items[0]
           : null

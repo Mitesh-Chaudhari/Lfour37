@@ -3,13 +3,16 @@ import {
   buildOrderCancelledParams,
   buildOrderConfirmationParams,
   buildOrderDeliveredParams,
-  buildOrderShippedParams,
+  buildOrderShipmentMilestoneParams,
   buildExchangeRequestedParams,
   buildReturnRequestedParams,
   formatItemLabel,
   formatItemVariant,
   formatOrderItemsSummary,
   formatWhatsAppStatusLabel,
+  getDelhiveryTrackingUrlButtonParam,
+  SHIPMENT_MILESTONE_TEMPLATES,
+  type ShipmentWhatsAppMilestone,
 } from '@/lib/whatsapp/templates'
 import logger from '@/lib/logger'
 
@@ -69,7 +72,7 @@ export async function notifyOrderConfirmation(order: OrderForWhatsApp) {
       phone,
       userId: order.user_id,
       orderId: order.id,
-      templateName: 'order_confirmation',
+      templateName: 'order_confirmation_update',
       variables,
     })
   } catch (error) {
@@ -80,27 +83,46 @@ export async function notifyOrderConfirmation(order: OrderForWhatsApp) {
   }
 }
 
-export async function notifyOrderShipped(
-  order: Pick<OrderForWhatsApp, 'id' | 'order_number' | 'user_id' | 'shipping_address'>,
+export async function notifyOrderShipmentMilestone({
+  order,
+  milestone,
+  trackingNumber,
+  items,
+}: {
+  order: Pick<
+    OrderForWhatsApp,
+    'id' | 'order_number' | 'user_id' | 'shipping_address'
+  >
+  milestone: ShipmentWhatsAppMilestone
   trackingNumber?: string | null
-) {
+  items?: OrderItem[]
+}) {
   const phone = getOrderPhone(order as OrderForWhatsApp)
   if (!phone || !isWhatsAppConfigured()) return
+
+  const awb = trackingNumber?.trim() || 'N/A'
+  const templateName = SHIPMENT_MILESTONE_TEMPLATES[milestone]
 
   try {
     await sendWhatsAppTemplate({
       phone,
       userId: order.user_id,
       orderId: order.id,
-      templateName: 'order_shipped',
-      variables: buildOrderShippedParams(
+      templateName,
+      variables: buildOrderShipmentMilestoneParams(
         order.order_number,
-        trackingNumber || 'N/A',
-        getOrdersUrl()
+        formatOrderItems(items),
+        awb
       ),
+      urlButtonParam: getDelhiveryTrackingUrlButtonParam(awb),
     })
   } catch (error) {
-    logger.error('Order shipped WhatsApp failed', { error, orderId: order.id })
+    logger.error('Shipment milestone WhatsApp failed', {
+      error,
+      orderId: order.id,
+      milestone,
+      templateName,
+    })
   }
 }
 

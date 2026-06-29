@@ -15,7 +15,7 @@ const FOOTER_LINKS = {
     { label: 'Size Guide', href: '/size-guide' },
     // { label: 'Shipping & Returns', href: '/shipping' },
     // { label: 'Contact Us', href: '/contact' },
-    { label: 'Track Order', href: '/dashboard/orders' },
+    // { label: 'Track Order', href: '/dashboard/orders' },
     { label: 'Store Near Me', href: '/store-near-me' },
   ],
   Company: [
@@ -31,7 +31,7 @@ const FOOTER_LINKS = {
   ],
 }
 
-const PAYMENT_METHODS = ['Visa', 'Mastercard']
+const PAYMENT_METHODS = ['Visa', 'Mastercard', 'UPI']
 const LOGO_IMAGE = ['/images/logo.png']
 
 export function Footer() {

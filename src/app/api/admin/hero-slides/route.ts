@@ -1,28 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createClient } from '@/lib/supabase/server'
+import { getAllHeroSlides } from '@/lib/hero-slides'
 
-export async function POST(req: NextRequest) {
-  const supabaseAdmin = createAdminClient()
+async function requireAdmin() {
   const supabaseUser = await createClient()
-
-  // ✅ Auth check
-  const { data: { user } } = await supabaseUser.auth.getUser()
+  const {
+    data: { user },
+  } = await supabaseUser.auth.getUser()
 
   if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
 
-  // ✅ Role check
   const { data: userData } = await supabaseUser
     .from('users')
     .select('role')
     .eq('id', user.id)
     .single()
 
-  if (!['admin', 'super_admin'].includes(userData?.role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!['admin', 'super_admin'].includes(userData?.role || '')) {
+    return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
 
+  return { user }
+}
+
+export async function GET() {
+  const auth = await requireAdmin()
+  if (auth.error) return auth.error
+
+  try {
+    const slides = await getAllHeroSlides()
+    return NextResponse.json(slides)
+  } catch (error) {
+    console.error('GET /api/admin/hero-slides failed:', error)
+    return NextResponse.json([], { status: 200 })
+  }
+}
+
+export async function POST(req: NextRequest) {
+  const auth = await requireAdmin()
+  if (auth.error) return auth.error
+
+  const supabaseAdmin = createAdminClient()
   const slides = await req.json()
 
   // ✅ Extract IDs from frontend

@@ -162,8 +162,8 @@ export default async function OrdersPage() {
               return (
                 <div key={order.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                   {/* Header */}
-                  <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-gray-50">
-                    <div className="flex items-center gap-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-4 border-b border-gray-100 bg-gray-50">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
                       <div>
                         <p className="text-xs text-gray-500">Order Number</p>
                         <p className="font-bold text-gray-900">{order.order_number}</p>
@@ -177,7 +177,8 @@ export default async function OrdersPage() {
                         <p className="text-sm font-bold">{formatPrice(order.total)}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    
+                    <div className="flex items-center justify-between sm:justify-end gap-3 pt-3 sm:pt-0 border-t sm:border-t-0 border-gray-200">
                       <Badge variant={statusConfig.color}>{statusConfig.label}</Badge>
                       <a
                         href={`/api/invoices/${order.id}`}
@@ -188,7 +189,6 @@ export default async function OrdersPage() {
                       </a>
                     </div>
                   </div>
-
                   {/* Items */}
                   <div className="p-4">
                     {order.items?.map((item: {
@@ -211,79 +211,90 @@ export default async function OrdersPage() {
                         item.cancel_reason?.label || item.cancel_custom_reason
 
                       return (
-                      <div key={item.id} className="flex items-center justify-between gap-3 py-2">
+                        <div 
+                          key={item.id} 
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3 border-b border-gray-100 last:border-0"
+                        >
+                          {/* LEFT SIDE - Takes 100% width on mobile */}
+                          <Link 
+                            className="flex items-center gap-3 min-w-0 w-full sm:flex-1" 
+                            href={`/products/${item.product_name.toLowerCase().replace(/\s+/g, '-')}/?size=${item.variant_size || ''}${item.variant_color ? `&color=${item.variant_color}` : ''}`}
+                          >
+                            {/* IMAGE */}
+                            <div className="relative h-12 w-12 rounded-md overflow-hidden bg-gray-100 flex-shrink-0">
+                              {item.product_image ? (
+                                <OptimizedImage
+                                  src={item.product_image}
+                                  alt={item.product_name}
+                                  fill
+                                  variant="order"
+                                  className="object-cover"
+                                />
+                              ) : (
+                                <div className="h-full w-full bg-gray-200" />
+                              )}
+                            </div>
 
-                        {/* LEFT SIDE */}
-                        <Link className="flex items-center gap-3 min-w-0 flex-1" href={`/products/${item.product_name.toLowerCase().replace(/\s+/g, '-')}/?size=${item.variant_size || ''}${item.variant_color ? `&color=${item.variant_color}` : ''}`}>
-                          {/* IMAGE */}
-                          <div className="relative h-12 w-12 rounded-md overflow-hidden bg-gray-100 flex-shrink-0">
-                            {item.product_image ? (
-                              <OptimizedImage
-                                src={item.product_image}
-                                alt={item.product_name}
-                                fill
-                                variant="order"
-                                className="object-cover"
-                              />
-                            ) : (
-                              <div className="h-full w-full bg-gray-200" />
-                            )}
-                          </div>
-
-                          {/* DETAILS */}
-                          <div className="text-sm min-w-0">
-                            <p className="text-gray-800 font-medium line-clamp-1">
-                              {item.product_name}
-                            </p>
-
-                            <p className="text-gray-500 text-xs">
-                              {item.variant_size && `${item.variant_size}`}
-                              {item.variant_color && ` / ${item.variant_color}`}
-                              {' ×'}{item.quantity}
-                            </p>
-
-                            {isItemCancelled && cancelReasonLabel && (
-                              <p className="text-xs text-gray-500 mt-1 line-clamp-1">
-                                Reason: {cancelReasonLabel}
+                            {/* DETAILS */}
+                            <div className="text-sm min-w-0 flex-1">
+                              <p className="text-gray-800 font-medium line-clamp-1">
+                                {item.product_name}
                               </p>
-                            )}
+
+                              <p className="text-gray-500 text-xs">
+                                {item.variant_size && `${item.variant_size}`}
+                                {item.variant_color && ` / ${item.variant_color}`}
+                                {' ×'}{item.quantity}
+                              </p>
+
+                              {isItemCancelled && cancelReasonLabel && (
+                                <p className="text-xs text-gray-500 mt-1 line-clamp-1">
+                                  Reason: {cancelReasonLabel}
+                                </p>
+                              )}
+                            </div>
+                          </Link>
+
+                          {/* BOTTOM ROW (Mobile) / RIGHT SIDE (Desktop) */}
+                          <div className="flex items-center justify-between w-full sm:w-auto sm:justify-end gap-4 pt-2 sm:pt-0 border-t border-dashed border-gray-100 sm:border-0">
+                            {/* PRICE */}
+                            <span className="text-sm font-medium text-gray-900 flex-shrink-0">
+                              {formatPrice(item.total_price)}
+                            </span>
+
+                            {/* ACTIONS & BADGES */}
+                            <div className="flex gap-2 flex-shrink-0 items-center">
+                              <OrderItemStatusBadge
+                                status={item.status}
+                                returnStatus={item.return_status}
+                              />
+
+                              {/* CANCEL */}
+                              {['pending', 'paid', 'processing', 'shipped'].includes(order.status) &&
+                                !isItemCancelled &&
+                                !item.return_status && (
+                                  <OrderItemActions item={item} />
+                                )}
+
+                              {/* RETURN / EXCHANGE */}
+                              {[
+                                'delivered',
+                                'return_requested',
+                                'return_initiated',
+                                'exchange_initiated',
+                                'returned',
+                              ].includes(order.status) &&
+                                !isItemCancelled &&
+                                !item.return_status && (
+                                  <ReturnItemActions item={item} />
+                                )}
+                            </div>
                           </div>
-                        </Link>
-
-                        {/* PRICE */}
-                        <span className="text-sm font-medium text-gray-900 flex-shrink-0">
-                          {formatPrice(item.total_price)}
-                        </span>
-
-                        <div className="flex gap-2 flex-shrink-0 items-center">
-                          <OrderItemStatusBadge
-                            status={item.status}
-                            returnStatus={item.return_status}
-                          />
-
-                          {/* CANCEL */}
-                          {['pending', 'paid', 'processing', 'shipped'].includes(order.status) &&
-                            !isItemCancelled &&
-                            !item.return_status && (
-                              <OrderItemActions item={item} />
-                            )}
-
-                          {/* RETURN / EXCHANGE */}
-                          {[
-                            'delivered',
-                            'return_requested',
-                            'return_initiated',
-                            'exchange_initiated',
-                            'returned',
-                          ].includes(order.status) &&
-                            !isItemCancelled &&
-                            !item.return_status && (
-                              <ReturnItemActions item={item} />
-                            )}
                         </div>
-                      </div>
-                    )})}
+                      )
+                    })}
                   </div>
+
 
                   {/* Tracking */}
                   {order.tracking_number && (

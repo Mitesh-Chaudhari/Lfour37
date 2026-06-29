@@ -12,8 +12,9 @@ import {
 import { sendShipmentStatusEmail } from '@/lib/email'
 import {
   notifyOrderDelivered,
-  notifyOrderShipped,
+  notifyOrderShipmentMilestone,
 } from '@/lib/whatsapp/order-notifications'
+import { isShipmentWhatsAppMilestone } from '@/lib/whatsapp/templates'
 import logger from '@/lib/logger'
 
 type ShipmentRow = {
@@ -103,25 +104,18 @@ async function notifyCustomerOfShipmentMilestone(
       order_number: order.order_number,
       user_id: order.user_id,
       shipping_address: order.shipping_address,
+      items: order.items,
     }
-
-    const shippedMilestones = [
-      'shipment_created',
-      'picked_up',
-      'in_transit',
-      'out_for_delivery',
-    ]
-    const shippedAlreadyNotified = shippedMilestones.includes(
-      shipment.last_notified_milestone || ''
-    )
 
     if (milestone === 'delivered') {
       await notifyOrderDelivered(orderForWhatsApp)
-    } else if (
-      shippedMilestones.includes(milestone) &&
-      !shippedAlreadyNotified
-    ) {
-      await notifyOrderShipped(orderForWhatsApp, trackingNumber)
+    } else if (isShipmentWhatsAppMilestone(milestone)) {
+      await notifyOrderShipmentMilestone({
+        order: orderForWhatsApp,
+        milestone,
+        trackingNumber,
+        items: order.items,
+      })
     }
 
     await supabase

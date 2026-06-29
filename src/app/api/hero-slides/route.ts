@@ -1,14 +1,20 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { getActiveHeroSlides } from '@/lib/hero-slides'
+
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 export async function GET() {
-  const supabase = await createClient()
+  try {
+    const slides = await getActiveHeroSlides()
 
-  const { data } = await supabase
-    .from('hero_slides')
-    .select('*')
-    .eq('is_active', true)
-    .order('sort_order')
-
-  return NextResponse.json(data || [])
+    return NextResponse.json(slides, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+      },
+    })
+  } catch (error) {
+    console.error('GET /api/hero-slides failed:', error)
+    return NextResponse.json([], { status: 200 })
+  }
 }

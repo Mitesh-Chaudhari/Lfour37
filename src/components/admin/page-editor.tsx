@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import type { CmsPage } from '@/lib/cms'
+import { prepareCmsHtmlForRender, type CmsPage } from '@/lib/cms'
 import toast from 'react-hot-toast'
 
 const CKEditor = dynamic(
@@ -43,7 +43,7 @@ export default function PageEditor({ page }: PageEditorProps) {
     setLoading(true)
 
     const payload: Record<string, unknown> = {
-      content,
+      content: prepareCmsHtmlForRender(content),
       updated_at: new Date().toISOString(),
     }
 
@@ -97,6 +97,10 @@ export default function PageEditor({ page }: PageEditorProps) {
       )}
 
       <div className="bg-white border rounded-lg p-2">
+        <p className="px-2 pt-2 text-xs text-gray-500">
+          For Google Maps, use the media embed button and paste the maps embed URL
+          (starts with https://www.google.com/maps/embed). Do not paste raw iframe HTML.
+        </p>
         <CKEditor
           editor={editor}
           data={content}
@@ -112,10 +116,14 @@ export default function PageEditor({ page }: PageEditorProps) {
               'link',
               'bulletedList',
               'numberedList',
+              'mediaEmbed',
               '|',
               'undo',
               'redo',
             ],
+            mediaEmbed: {
+              previewsInData: true,
+            },
           }}
         />
       </div>

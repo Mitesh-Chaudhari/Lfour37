@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { HeroBanner } from '@/components/home/hero-banner'
+import { getActiveHeroSlides } from '@/lib/hero-slides'
 import { CategoryGrid } from '@/components/home/category-grid'
 import { ProductSection } from '@/components/home/product-section'
 import { PromoBanner } from '@/components/home/promo-banner'
@@ -16,7 +17,8 @@ export const metadata: Metadata = {
 async function getHomeData() {
   const supabase = await createClient()
 
-  const [featuredRes, newArrivalsRes, trendingRes, categoriesRes] = await Promise.all([
+  const [featuredRes, newArrivalsRes, trendingRes, categoriesRes, heroSlides] =
+    await Promise.all([
     supabase
       .from('products')
       .select('*, variants:product_variants(*), categories:product_categories(category:categories(*))')
@@ -47,6 +49,8 @@ async function getHomeData() {
       .eq('is_active', true)
       .is('parent_id', null)
       .order('sort_order', { ascending: true }),
+
+    getActiveHeroSlides(),
   ])
 
   return {
@@ -54,15 +58,17 @@ async function getHomeData() {
     newArrivals: newArrivalsRes.data || [],
     trending: trendingRes.data || [],
     categories: categoriesRes.data || [],
+    heroSlides,
   }
 }
 
 export default async function HomePage() {
-  const { featured, newArrivals, trending, categories } = await getHomeData()
+  const { featured, newArrivals, trending, categories, heroSlides } =
+    await getHomeData()
 
   return (
     <>
-      <HeroBanner />
+      <HeroBanner initialSlides={heroSlides} />
       {/* <BrandsMarquee /> */}
       {/* <CategoryGrid categories={categories} /> */}
 

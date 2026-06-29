@@ -7,7 +7,7 @@ import { Mail, Gift, Percent, Bell } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const PERKS = [
-  { icon: Gift, text: 'Exclusive member deals' },
+  { icon: Gift, text: 'Exclusive deals' },
   { icon: Percent, text: 'Early access to sales' },
   { icon: Bell, text: 'New arrivals first' },
 ]

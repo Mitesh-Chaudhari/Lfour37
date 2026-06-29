@@ -11,6 +11,7 @@ const COMPANY_PAGES = [
 
 const POLICY_PAGES = [
   { slug: 'privacy-policy', label: 'Privacy Policy' },
+  { slug: 'terms', label: 'Terms of Service' },
   { slug: 'return-refund', label: 'Return Policy' },
   { slug: 'faq', label: 'FAQ' },
 ]

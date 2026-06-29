@@ -13,7 +13,11 @@ const inter = Inter({
   display: 'swap',
 })
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+const APP_URL =
+  process.env.NEXT_PUBLIC_APP_URL ||
+  (process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : 'http://localhost:3000')
 const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || 'Lfour37'
 
 export const metadata: Metadata = {
@@ -46,7 +50,11 @@ export const metadata: Metadata = {
     follow: true,
     googleBot: { index: true, follow: true, 'max-video-preview': -1, 'max-image-preview': 'large', 'max-snippet': -1 },
   },
-  manifest: '/site.webmanifest',
+  appleWebApp: {
+    capable: true,
+    title: APP_NAME,
+    statusBarStyle: 'default',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
-import { formatCmsDate } from '@/lib/cms'
+import { formatCmsDate, prepareCmsHtmlForRender } from '@/lib/cms'
 import type { Metadata } from 'next'
 
 interface Props {
@@ -55,8 +55,10 @@ export default async function BlogPostPage({ params }: Props) {
       </div>
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         <div
-          className="prose prose-gray max-w-none"
-          dangerouslySetInnerHTML={{ __html: post.content || '' }}
+          className="prose prose-gray max-w-none [&_iframe]:my-6 [&_iframe]:w-full [&_iframe]:min-h-[400px] [&_iframe]:rounded-xl [&_iframe]:border [&_iframe]:border-gray-200"
+          dangerouslySetInnerHTML={{
+            __html: prepareCmsHtmlForRender(post.content || ''),
+          }}
         />
       </div>
     </>

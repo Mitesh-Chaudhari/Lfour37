@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
+import { prepareCmsHtmlForRender } from '@/lib/cms'
 
 interface Props {
   params: Promise<{
@@ -49,9 +50,9 @@ export default async function CmsPage({ params }: Props) {
       </div>
       <div className="container mx-auto px-4 py-5 max-w-4xl">
         <div
-          className="prose prose-gray max-w-none"
+          className="prose prose-gray max-w-none [&_iframe]:my-6 [&_iframe]:w-full [&_iframe]:min-h-[400px] [&_iframe]:rounded-xl [&_iframe]:border [&_iframe]:border-gray-200"
           dangerouslySetInnerHTML={{
-            __html: page.content || '',
+            __html: prepareCmsHtmlForRender(page.content || ''),
           }}
         />
       </div>

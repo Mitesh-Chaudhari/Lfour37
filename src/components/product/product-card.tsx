@@ -22,20 +22,51 @@ export function ProductCard({ product, className }: ProductCardProps) {
   const [mounted, setMounted] = useState(false)
   const [wishlistLoading, setWishlistLoading] = useState(false)
   const [showSecondary, setShowSecondary] = useState(false)
+  const [slideIndex, setSlideIndex] = useState(0)
+  const [isMobile, setIsMobile] = useState(false)
+
   useEffect(() => { setMounted(true) }, [])
+
+  const imageUrls =
+    product.images?.map((image) => image.url).filter((url): url is string => Boolean(url)) ??
+    []
+  const primaryImage = imageUrls[0]
+  const secondaryImage = imageUrls[1]
+  const hasMultipleImages = imageUrls.length > 1
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 767px)')
+    const updateViewport = () => setIsMobile(mediaQuery.matches)
+
+    updateViewport()
+    mediaQuery.addEventListener('change', updateViewport)
+    return () => mediaQuery.removeEventListener('change', updateViewport)
+  }, [])
+
+  useEffect(() => {
+    if (!isMobile || imageUrls.length <= 1) return
+
+    const timer = window.setInterval(() => {
+      setSlideIndex((current) => (current + 1) % imageUrls.length)
+    }, 3000)
+
+    return () => window.clearInterval(timer)
+  }, [isMobile, imageUrls.length])
+
+  useEffect(() => {
+    if (!isMobile) {
+      setSlideIndex(0)
+    }
+  }, [isMobile])
+
   const inWishlist = mounted && isInWishlist(product.id)
-const discount =
-  product.compare_price &&
-  product.compare_price > product.price
-    ? calculateDiscount(
-        product.price,
-        product.compare_price
-      )
-    : 0
-  const primaryImage = product.images[0]?.url
-  const secondaryImage = product.images[1]?.url
   const totalStock = product.variants?.reduce((sum, v) => sum + v.stock, 0) ?? 0
   const isOutOfStock = totalStock === 0
+  const discount =
+    product.compare_price &&
+    product.compare_price > product.price
+      ? calculateDiscount(product.price, product.compare_price)
+      : 0
 
   const handleWishlistToggle = async (e: React.MouseEvent) => {
     e.preventDefault()
@@ -77,33 +108,63 @@ const discount =
         onMouseEnter={() => setShowSecondary(true)}
         onFocus={() => setShowSecondary(true)}
       >
-        {/* Main image */}
         {primaryImage ? (
-          <OptimizedImage
-            src={primaryImage}
-            alt={product.name}
-            fill
-            variant="card"
-            className={cn(
-              'object-cover transition-all duration-500',
-              secondaryImage ? 'group-hover:opacity-0' : 'group-hover:scale-105'
-            )}
-          />
+          isMobile && hasMultipleImages ? (
+            <>
+              {imageUrls.map((url, index) => (
+                <OptimizedImage
+                  key={url}
+                  src={url}
+                  alt={`${product.name} - image ${index + 1}`}
+                  fill
+                  variant="card"
+                  priority={index === 0}
+                  className={cn(
+                    'object-cover transition-opacity duration-500',
+                    index === slideIndex ? 'opacity-100' : 'opacity-0'
+                  )}
+                />
+              ))}
+              <div className="absolute bottom-2 left-1/2 z-10 flex -translate-x-1/2 gap-1">
+                {imageUrls.map((url, index) => (
+                  <span
+                    key={url}
+                    className={cn(
+                      'h-1 rounded-full bg-white transition-all',
+                      index === slideIndex ? 'w-3' : 'w-1 bg-white/50'
+                    )}
+                  />
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <OptimizedImage
+                src={primaryImage}
+                alt={product.name}
+                fill
+                variant="card"
+                className={cn(
+                  'object-cover transition-all duration-500',
+                  secondaryImage ? 'group-hover:opacity-0' : 'group-hover:scale-105'
+                )}
+              />
+              {secondaryImage && showSecondary && (
+                <OptimizedImage
+                  key={secondaryImage}
+                  src={secondaryImage}
+                  alt={product.name}
+                  fill
+                  variant="card"
+                  className="object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                />
+              )}
+            </>
+          )
         ) : (
           <div className="flex h-full items-center justify-center">
             <ShoppingBag className="h-12 w-12 text-gray-300" />
           </div>
-        )}
-
-        {/* Secondary image on hover — loaded only after first hover */}
-        {secondaryImage && showSecondary && (
-          <OptimizedImage
-            src={secondaryImage}
-            alt={product.name}
-            fill
-            variant="card"
-            className="object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100"
-          />
         )}
 
         {/* Out of stock overlay */}

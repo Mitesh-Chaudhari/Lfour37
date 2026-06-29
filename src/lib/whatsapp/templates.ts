@@ -1,7 +1,10 @@
 export const VEBLIKA_TEMPLATE_CONFIG = {
   phone_otp_verify: { language: 'en', includeOtpButton: true },
-  order_confirmation: { language: 'en' },
-  order_shipped: { language: 'en' },
+  order_confirmation_update: { language: 'en' },
+  order_shipped_updated: { language: 'en', includeUrlButton: true },
+  order_picked_up: { language: 'en', includeUrlButton: true },
+  order_in_transit: { language: 'en', includeUrlButton: true },
+  order_out_for_delivery: { language: 'en', includeUrlButton: true },
   order_delivered: { language: 'en' },
   order_cancelled: { language: 'en' },
   exchange_requested: { language: 'en' },
@@ -10,6 +13,28 @@ export const VEBLIKA_TEMPLATE_CONFIG = {
 } as const
 
 export type VeblikaTemplateName = keyof typeof VEBLIKA_TEMPLATE_CONFIG
+
+export type ShipmentWhatsAppMilestone =
+  | 'shipment_created'
+  | 'picked_up'
+  | 'in_transit'
+  | 'out_for_delivery'
+
+export const SHIPMENT_MILESTONE_TEMPLATES: Record<
+  ShipmentWhatsAppMilestone,
+  VeblikaTemplateName
+> = {
+  shipment_created: 'order_shipped_updated',
+  picked_up: 'order_picked_up',
+  in_transit: 'order_in_transit',
+  out_for_delivery: 'order_out_for_delivery',
+}
+
+export function isShipmentWhatsAppMilestone(
+  milestone: string
+): milestone is ShipmentWhatsAppMilestone {
+  return milestone in SHIPMENT_MILESTONE_TEMPLATES
+}
 
 /**
  * WhatsApp/Meta rejects newlines and very long values inside template variables.
@@ -97,12 +122,14 @@ export type OrderConfirmationContext = {
 }
 
 /**
- * Build bodyParams for order_confirmation (LFOUR37 approved template).
+ * Build bodyParams for order_confirmation_update (LFOUR37 approved template).
  *
- *   {{1}} order number   — "Your order {{1}} has been confirmed."
- *   {{2}} items          — under "🛍️ Items:"
- *   {{3}} total          — under "💰 Total:"
- *   {{4}} track URL      — under "Track your order:"
+ *   {{1}} order number — "Your order {{1}} has been confirmed."
+ *   {{2}} items        — under "🛍️ Items:"
+ *   {{3}} total        — under "💰 Total:"
+ *
+ * "View your order" CTA uses a static URL baked into the approved template
+ * (https://www.lfour37.com/dashboard/orders) — no button param is sent.
  */
 export function buildOrderConfirmationParams(
   context: OrderConfirmationContext
@@ -110,12 +137,7 @@ export function buildOrderConfirmationParams(
   const fields =
     process.env.WHATSAPP_ORDER_CONFIRMATION_FIELDS?.split(',')
       .map((field) => field.trim())
-      .filter(Boolean) || [
-      'order_number',
-      'items_summary',
-      'total',
-      'orders_url',
-    ]
+      .filter(Boolean) || ['order_number', 'items_summary', 'total']
 
   const values: Record<string, string> = {
     order_number: sanitizeWhatsAppParam(context.orderNumber),
@@ -132,16 +154,34 @@ export function buildOrderConfirmationParams(
   )
 }
 
-export function buildOrderShippedParams(
+export function getDelhiveryTrackingUrl(awb: string): string {
+  const cleaned = sanitizeWhatsAppParam(awb, 'N/A')
+  return `https://www.delhivery.com/track/package/${encodeURIComponent(cleaned)}`
+}
+
+/** AWB for dynamic "Track your order" button ({{1}} in Delhivery package URL). */
+export function getDelhiveryTrackingUrlButtonParam(awb: string): string {
+  return sanitizeWhatsAppParam(awb, 'N/A')
+}
+
+/**
+ * Body params for shipment milestone templates (all 4 templates share this shape).
+ *
+ *   {{1}} order id
+ *   {{2}} items summary
+ *   {{3}} tracking number (AWB)
+ *   {{4}} Delhivery tracking URL
+ */
+export function buildOrderShipmentMilestoneParams(
   orderNumber: string,
-  trackingNumber: string,
-  ordersUrl: string
+  itemsSummary: string,
+  trackingNumber: string
 ): string[] {
-  // {{1}} order id, {{2}} tracking number, {{3}} track orders url
   return [
     sanitizeWhatsAppParam(orderNumber),
+    sanitizeWhatsAppParam(itemsSummary, 'Your order items'),
     sanitizeWhatsAppParam(trackingNumber, 'N/A'),
-    sanitizeWhatsAppParam(ordersUrl),
+    sanitizeWhatsAppParam(getDelhiveryTrackingUrl(trackingNumber)),
   ]
 }
 
@@ -149,7 +189,7 @@ export function buildOrderDeliveredParams(
   orderNumber: string,
   ordersUrl: string
 ): string[] {
-  // {{1}} order id, {{2}} check order url
+  // {{1}} order id, {{2}} check order url (https://www.lfour37.com/dashboard/orders)
   return [
     sanitizeWhatsAppParam(orderNumber),
     sanitizeWhatsAppParam(ordersUrl),

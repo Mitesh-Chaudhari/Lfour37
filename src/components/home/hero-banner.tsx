@@ -6,38 +6,61 @@ import { OptimizedImage } from '@/components/ui/optimized-image'
 import { ArrowRight } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
+import type { HeroSlide } from '@/lib/hero-slides'
 
-interface Slide {
-  id: string
-  badge: string
-  title: string
-  subtitle: string
-  cta_text: string
-  cta_link: string
-  secondary_text: string
-  secondary_link: string
-  highlight_index: number
-  image_url: string
-  accent: string
+interface HeroBannerProps {
+  initialSlides?: HeroSlide[]
 }
 
-export function HeroBanner() {
-  const [slides, setSlides] = useState<Slide[]>([])
+async function fetchHeroSlides(): Promise<HeroSlide[]> {
+  const res = await fetch('/api/hero-slides', {
+    cache: 'no-store',
+  })
+
+  if (!res.ok) {
+    throw new Error(`Failed to load hero slides (${res.status})`)
+  }
+
+  return res.json()
+}
+
+export function HeroBanner({ initialSlides = [] }: HeroBannerProps) {
+  const [slides, setSlides] = useState<HeroSlide[]>(initialSlides)
   const [current, setCurrent] = useState(0)
   const [fading, setFading] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(initialSlides.length === 0)
 
   useEffect(() => {
-    setLoading(true)
+    if (initialSlides.length > 0) {
+      setSlides(initialSlides)
+      setLoading(false)
+      return
+    }
 
-    fetch('/api/hero-slides')
-      .then(res => res.json())
-      .then((data) => {
-        setSlides(data)
-      })
-      .catch(() => console.error('Failed to load hero slides'))
-      .finally(() => setLoading(false))
-  }, [])
+    let cancelled = false
+
+    const loadSlides = async () => {
+      setLoading(true)
+      try {
+        const data = await fetchHeroSlides()
+        if (!cancelled) {
+          setSlides(data)
+        }
+      } catch (error) {
+        console.error('Failed to load hero slides:', error)
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadSlides()
+
+    return () => {
+      cancelled = true
+    }
+  }, [initialSlides])
 
   useEffect(() => {
     if (slides.length === 0) return
@@ -82,23 +105,20 @@ export function HeroBanner() {
 
   return (
     <section className="relative overflow-hidden text-white min-h-[90vh] flex flex-col justify-center bg-gray-950">
-      {slides.map((s, index) =>
-        s.image_url?.trim() ? (
-          <OptimizedImage
-            key={s.id}
-            src={s.image_url}
-            alt=""
-            fill
-            variant="hero"
-            priority={index === 0}
-            className={cn(
-              'object-cover transition-opacity duration-500',
-              index === current ? 'opacity-100' : 'opacity-0'
-            )}
-            aria-hidden={index !== current}
-          />
-        ) : null
-      )}
+      {slide.image_url?.trim() ? (
+        <OptimizedImage
+          key={slide.id}
+          src={slide.image_url}
+          alt=""
+          fill
+          variant="hero"
+          priority
+          className={cn(
+            'object-cover transition-opacity duration-500',
+            fading ? 'opacity-0' : 'opacity-100'
+          )}
+        />
+      ) : null}
 
       {/* Dark overlay */}
       <div className="absolute inset-0 bg-black/60" />

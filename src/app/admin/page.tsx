@@ -11,19 +11,19 @@ async function getDashboardStats() {
 
   const [
     ordersRes,
-    prevOrdersRes,
     usersRes,
-    prevUsersRes,
+    recentOrdersRes,
+    recentUsersRes,
     revenueRes,
     prevRevenueRes,
     lowStockRes,
     revenueChartRes,
     topProductsRes,
   ] = await Promise.all([
-    supabase.from('orders').select('id', { count: 'exact' }).gte('created_at', thirtyDaysAgo).eq('payment_status', 'completed'),
-    supabase.from('orders').select('id', { count: 'exact' }).gte('created_at', sixtyDaysAgo).lt('created_at', thirtyDaysAgo).eq('payment_status', 'completed'),
-    supabase.from('users').select('id', { count: 'exact' }).gte('created_at', thirtyDaysAgo),
-    supabase.from('users').select('id', { count: 'exact' }).gte('created_at', sixtyDaysAgo).lt('created_at', thirtyDaysAgo),
+    supabase.from('orders').select('id', { count: 'exact', head: true }),
+    supabase.from('users').select('id', { count: 'exact', head: true }),
+    supabase.from('orders').select('id', { count: 'exact', head: true }).gte('created_at', thirtyDaysAgo),
+    supabase.from('users').select('id', { count: 'exact', head: true }).gte('created_at', thirtyDaysAgo),
     supabase.from('orders').select('total').gte('created_at', thirtyDaysAgo).eq('payment_status', 'completed'),
     supabase.from('orders').select('total').gte('created_at', sixtyDaysAgo).lt('created_at', thirtyDaysAgo).eq('payment_status', 'completed'),
     supabase.from('product_variants').select('id, product_id, stock, size, color, product:products(name)').lt('stock', 5).eq('is_active', true).order('stock').limit(10),
@@ -35,21 +35,19 @@ async function getDashboardStats() {
   const prevRevenue = prevRevenueRes.data?.reduce((sum, o) => sum + Number(o.total), 0) || 0
 
   const orders = ordersRes.count || 0
-  const prevOrders = prevOrdersRes.count || 0
   const users = usersRes.count || 0
-  const prevUsers = prevUsersRes.count || 0
+  const recentOrders = recentOrdersRes.count || 0
+  const recentUsers = recentUsersRes.count || 0
 
   const revenueChange = prevRevenue > 0 ? ((revenue - prevRevenue) / prevRevenue) * 100 : 0
-  const ordersChange = prevOrders > 0 ? ((orders - prevOrders) / prevOrders) * 100 : 0
-  const usersChange = prevUsers > 0 ? ((users - prevUsers) / prevUsers) * 100 : 0
 
   return {
     revenue,
     orders,
     users,
+    recentOrders,
+    recentUsers,
     revenueChange,
-    ordersChange,
-    usersChange,
     lowStock: lowStockRes.data || [],
     topProducts: topProductsRes.data || [],
     revenueChart: revenueChartRes.data || [],
@@ -60,16 +58,18 @@ function StatCard({
   title,
   value,
   change,
+  footer,
   icon: Icon,
   prefix = '',
 }: {
   title: string
   value: string | number
-  change: number
+  change?: number
+  footer?: string
   icon: React.ElementType
   prefix?: string
 }) {
-  const isPositive = change >= 0
+  const isPositive = (change ?? 0) >= 0
   return (
     <div className="bg-white rounded-2xl border border-gray-200 p-6">
       <div className="flex items-center justify-between mb-4">
@@ -81,10 +81,14 @@ function StatCard({
       <p className="text-3xl font-bold text-gray-900">
         {prefix}{value}
       </p>
-      <div className={`flex items-center gap-1 mt-2 text-sm ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-        <TrendingUp className={`h-4 w-4 ${!isPositive && 'rotate-180'}`} />
-        <span>{Math.abs(change).toFixed(1)}% vs last 30 days</span>
-      </div>
+      {footer ? (
+        <p className="mt-2 text-sm text-gray-500">{footer}</p>
+      ) : change !== undefined ? (
+        <div className={`flex items-center gap-1 mt-2 text-sm ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
+          <TrendingUp className={`h-4 w-4 ${!isPositive && 'rotate-180'}`} />
+          <span>{Math.abs(change).toFixed(1)}% vs previous 30 days</span>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -96,14 +100,24 @@ export default async function AdminDashboard() {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-500 mt-1">Last 30 days overview</p>
+        <p className="text-gray-500 mt-1">Store overview</p>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <StatCard title="Revenue" value={formatPrice(stats.revenue)} change={stats.revenueChange} icon={DollarSign} />
-        <StatCard title="Orders" value={stats.orders} change={stats.ordersChange} icon={ShoppingBag} />
-        <StatCard title="New Users" value={stats.users} change={stats.usersChange} icon={Users} />
+        <StatCard title="Revenue (30 days)" value={formatPrice(stats.revenue)} change={stats.revenueChange} icon={DollarSign} />
+        <StatCard
+          title="Total Orders"
+          value={stats.orders}
+          footer={`${stats.recentOrders} in last 30 days`}
+          icon={ShoppingBag}
+        />
+        <StatCard
+          title="Total Users"
+          value={stats.users}
+          footer={`${stats.recentUsers} joined in last 30 days`}
+          icon={Users}
+        />
       </div>
 
       {/* Revenue chart */}

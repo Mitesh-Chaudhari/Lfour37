@@ -296,7 +296,7 @@ export function Navbar() {
                 {/* Search */}
                 <button
                   onClick={toggleSearch}
-                  className="p-2 text-gray-600 hover:text-purple-600 transition-colors"
+                  className="p-2 text-gray-600 hover:text-purple-600 transition-colors cursor-pointer"
                   aria-label="Search"
                 >
                   <Search className="h-5 w-5" />

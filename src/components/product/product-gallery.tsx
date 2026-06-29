@@ -102,6 +102,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
       >
         {currentImage && (
           <OptimizedImage
+            key={currentImage.url}
             src={currentImage.url}
             alt={currentImage.alt || productName}
             fill
@@ -173,7 +174,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
           {images.map((img, i) => (
             <button
-              key={i}
+              key={img.url || i}
               onClick={() => setSelectedIndex(i)}
               className={cn(
                 'relative h-20 w-16 flex-shrink-0 rounded-lg overflow-hidden border-2 transition-all',
@@ -181,6 +182,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
               )}
             >
               <OptimizedImage
+                key={img.url}
                 src={img.url}
                 alt={img.alt || `Image ${i + 1}`}
                 fill

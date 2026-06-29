@@ -1,6 +1,13 @@
 import nodemailer from 'nodemailer'
 import { Order } from '@/types'
 import logger from '@/lib/logger'
+import {
+  formatOrderItemsSummary,
+  getDelhiveryTrackingUrl,
+} from '@/lib/whatsapp/templates'
+
+/** Shipped/delivered customer emails are sent from Delhivery milestone sync only. */
+const DELHIVERY_MANAGED_ORDER_STATUSES = new Set(['shipped', 'delivered'])
 
 const FREE_EMAIL_DOMAINS = new Set([
   'gmail.com',
@@ -382,18 +389,20 @@ export async function sendOrderStatusEmail(
   email: string,
   status: string
 ): Promise<void> {
+  if (DELHIVERY_MANAGED_ORDER_STATUSES.has(status)) {
+    logger.info('Skipped order status email; Delhivery handles this milestone', {
+      status,
+      orderId: order.id,
+      orderNumber: order.order_number,
+    })
+    return
+  }
+
   const statusMessages: Record<string, { subject: string; message: string }> = {
-    shipped: {
-      subject: `Your order ${order.order_number} has shipped!`,
-      message: `Great news! Your order is on its way.${order.tracking_number ? ` Tracking number: <strong>${order.tracking_number}</strong>` : ''}`,
-    },
-    delivered: {
-      subject: `Your order ${order.order_number} has been delivered!`,
-      message: 'Your order has been delivered. We hope you love your new items!',
-    },
     cancelled: {
       subject: `Order ${order.order_number} cancelled`,
-      message: 'Your order has been cancelled. If you paid, a refund will be processed within 5-10 business days.',
+      message:
+        'Your order has been cancelled. If you paid, a refund will be processed within 5-10 business days.',
     },
   }
 
@@ -434,31 +443,47 @@ export async function sendShipmentStatusEmail({
   expectedDeliveryDate?: string | null
   instructions?: string | null
 }): Promise<void> {
+  const ordersUrl = `${APP_URL}/dashboard/orders`
+  const itemsSummary = formatOrderItemsSummary(order.items || [])
+  const delhiveryTrackingUrl = getDelhiveryTrackingUrl(trackingNumber)
+
+  if (milestone === 'delivered') {
+    const content = `
+      <h2>Your order has been delivered! 🎉</h2>
+      <p>We hope you love your purchase ❤️</p>
+      <p><strong>Order ID:</strong> ${order.order_number}</p>
+      <a href="${ordersUrl}" class="button">Check Order</a>
+    `
+
+    await deliverMail({
+      to: email,
+      subject: `Your order ${order.order_number} has been delivered!`,
+      html: baseTemplate(content),
+      context: 'shipment_delivered',
+    })
+    return
+  }
+
   const messages: Record<string, { subject: string; heading: string; message: string }> = {
     shipment_created: {
-      subject: `Shipment created for ${order.order_number}`,
-      heading: 'Your shipment is being prepared',
-      message: 'Delhivery has received the shipment details from us.',
+      subject: `Your order ${order.order_number} has been shipped!`,
+      heading: 'Your order has been shipped 🚚',
+      message: 'Delhivery has received your shipment and it is on the way.',
     },
     picked_up: {
       subject: `Order ${order.order_number} has been picked up`,
-      heading: 'Your package is on the move',
+      heading: 'Your order has been picked up 🚚',
       message: 'Delhivery has picked up your package from our facility.',
     },
     in_transit: {
       subject: `Order ${order.order_number} is in transit`,
-      heading: 'Your package is travelling to you',
+      heading: 'Your order is in transit 🚚',
       message: 'Your package is moving through the Delhivery network.',
     },
     out_for_delivery: {
       subject: `Order ${order.order_number} is out for delivery`,
-      heading: 'Arriving today',
+      heading: 'Your order is out for delivery 🚚',
       message: 'Please keep your phone available for the delivery agent.',
-    },
-    delivered: {
-      subject: `Order ${order.order_number} has been delivered`,
-      heading: 'Delivered',
-      message: 'Your order has been delivered. We hope you love it!',
     },
     delivery_exception: {
       subject: `Delivery update for ${order.order_number}`,
@@ -477,7 +502,6 @@ export async function sendShipmentStatusEmail({
     heading: 'Shipping update',
     message: `Delhivery updated your shipment to: ${carrierStatus}.`,
   }
-  const trackingUrl = `${APP_URL}/dashboard/orders`
   const eta = expectedDeliveryDate
     ? new Date(expectedDeliveryDate).toLocaleDateString('en-IN', {
         day: 'numeric',
@@ -489,11 +513,13 @@ export async function sendShipmentStatusEmail({
   const content = `
     <h2>${copy.heading}</h2>
     <p>${copy.message}</p>
-    <p><strong>Order:</strong> ${order.order_number}</p>
+    <p><strong>Order ID:</strong> ${order.order_number}</p>
+    <p><strong>Items:</strong> ${itemsSummary}</p>
     <p><strong>Tracking number:</strong> ${trackingNumber}</p>
     <p><strong>Current status:</strong> ${carrierStatus}</p>
     ${eta ? `<p><strong>Expected delivery:</strong> ${eta}</p>` : ''}
-    <a href="${trackingUrl}" class="button">Track Your Order</a>
+    <p><strong>Track on Delhivery:</strong> <a href="${delhiveryTrackingUrl}">${delhiveryTrackingUrl}</a></p>
+    <a href="${delhiveryTrackingUrl}" class="button">Track Your Order</a>
   `
 
   await deliverMail({

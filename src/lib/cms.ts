@@ -27,3 +27,20 @@ export function formatCmsDate(value: string): string {
     year: 'numeric',
   })
 }
+
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+}
+
+/** CKEditor Classic escapes pasted iframe markup as text — restore real embed HTML. */
+export function prepareCmsHtmlForRender(html: string): string {
+  if (!html) return ''
+
+  return html.replace(
+    /&lt;iframe([\s\S]*?)&lt;\/iframe&gt;/gi,
+    (_match, attrs: string) => `<iframe${decodeHtmlEntities(attrs)}></iframe>`
+  )
+}

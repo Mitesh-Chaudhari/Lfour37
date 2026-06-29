@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Image, { type ImageProps } from 'next/image'
 import { cn } from '@/lib/utils'
 import {
@@ -35,9 +35,14 @@ export function OptimizedImage({
   placeholder,
   blurDataURL,
   onError,
+  fill,
   ...props
 }: OptimizedImageProps) {
   const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    setFailed(false)
+  }, [src])
 
   const canOptimize = isOptimizableImageSrc(src) && !unoptimized
   const resolvedSizes = sizes ?? (variant ? IMAGE_SIZE_PRESETS[variant] : undefined)
@@ -49,7 +54,12 @@ export function OptimizedImage({
     if (!showFallback) return null
     return (
       <div
-        className={cn('bg-gray-100', fallbackClassName, !props.fill && className)}
+        className={cn(
+          'bg-gray-100',
+          fill && 'absolute inset-0',
+          fallbackClassName,
+          !fill && className
+        )}
         aria-hidden={!alt}
       />
     )
@@ -57,8 +67,10 @@ export function OptimizedImage({
 
   return (
     <Image
+      key={src}
       src={src}
       alt={alt}
+      fill={fill}
       quality={quality}
       className={className}
       sizes={resolvedSizes}

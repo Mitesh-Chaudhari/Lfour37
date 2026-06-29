@@ -29,9 +29,21 @@ export default function HeroSlidesAdmin() {
   }, [])
 
   const fetchSlides = async () => {
-    const res = await fetch('/api/hero-slides')
-    const data = await res.json()
-    setSlides(data)
+    try {
+      const res = await fetch('/api/admin/hero-slides', {
+        cache: 'no-store',
+      })
+
+      if (!res.ok) {
+        throw new Error(`Failed to load hero slides (${res.status})`)
+      }
+
+      const data = await res.json()
+      setSlides(data)
+    } catch (error) {
+      console.error(error)
+      toast.error('Failed to load hero slides')
+    }
   }
 
   const handleChange = <K extends keyof Slide>(

@@ -45,6 +45,7 @@ interface SendTemplateProps {
   userId?: string
   orderId?: string
   language?: string
+  urlButtonParam?: string
 }
 
 async function logWhatsAppMessage(entry: {
@@ -161,6 +162,7 @@ export async function sendWhatsAppTemplate({
   userId,
   orderId,
   language,
+  urlButtonParam,
 }: SendTemplateProps) {
   if (!isWhatsAppConfigured()) {
     logger.warn('WhatsApp template skipped because env is not configured', {
@@ -192,6 +194,14 @@ export async function sendWhatsAppTemplate({
         type: 'button',
         sub_type: 'url',
         text: bodyParams[0],
+      },
+    ]
+  } else if (urlButtonParam) {
+    payload.buttons = [
+      {
+        type: 'button',
+        sub_type: 'url',
+        text: sanitizeWhatsAppParam(urlButtonParam),
       },
     ]
   }
