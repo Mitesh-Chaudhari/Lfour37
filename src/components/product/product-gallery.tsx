@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { OptimizedImage } from '@/components/ui/optimized-image'
+import { LoadingOverlay } from '@/components/ui/loading-overlay'
 import { ChevronLeft, ChevronRight, ZoomIn, Share2, Check } from 'lucide-react'
 import { ProductImage } from '@/types'
+import { normalizeProductImages } from '@/lib/product-images'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
 
@@ -13,19 +15,37 @@ interface ProductGalleryProps {
 }
 
 export function ProductGallery({ images, productName }: ProductGalleryProps) {
+  const galleryImages = useMemo(() => normalizeProductImages(images), [images])
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [isZoomed, setIsZoomed] = useState(false)
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
   const [copied, setCopied] = useState(false)
+  const [isImageLoading, setIsImageLoading] = useState(true)
   
   // Refs to track touch coordinates for swiping
   const touchStartX = useRef<number | null>(null)
   const touchEndX = useRef<number | null>(null)
 
-  const currentImage = images[selectedIndex]
+  const currentImage = galleryImages[selectedIndex]
 
-  const prev = () => setSelectedIndex((i) => (i === 0 ? images.length - 1 : i - 1))
-  const next = () => setSelectedIndex((i) => (i === images.length - 1 ? 0 : i + 1))
+  useEffect(() => {
+    setSelectedIndex((index) =>
+      index >= galleryImages.length ? 0 : index
+    )
+  }, [galleryImages.length])
+
+  useEffect(() => {
+    setIsZoomed(false)
+  }, [selectedIndex])
+
+  useEffect(() => {
+    setIsImageLoading(true)
+  }, [selectedIndex, currentImage?.url])
+
+  const prev = () =>
+    setSelectedIndex((i) => (i === 0 ? galleryImages.length - 1 : i - 1))
+  const next = () =>
+    setSelectedIndex((i) => (i === galleryImages.length - 1 ? 0 : i + 1))
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isZoomed) return
@@ -77,7 +97,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
     }
   }
 
-  if (!images || images.length === 0) {
+  if (galleryImages.length === 0) {
     return (
       <div className="aspect-square bg-gray-100 rounded-2xl flex items-center justify-center">
         <span className="text-gray-400">No images available</span>
@@ -100,17 +120,23 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        {currentImage && (
+        <LoadingOverlay show={isImageLoading} className="z-10" />
+
+        {currentImage?.url && (
           <OptimizedImage
-            key={currentImage.url}
+            key={`gallery-main-${selectedIndex}-${currentImage.url}`}
             src={currentImage.url}
             alt={currentImage.alt || productName}
             fill
             variant="gallery"
-            priority
+            priority={selectedIndex === 0}
+            loading="eager"
+            onLoad={() => setIsImageLoading(false)}
+            onError={() => setIsImageLoading(false)}
             className={cn(
-              'object-contain transition-transform duration-200 select-none',
-              isZoomed && 'scale-200'
+              'object-contain transition-all duration-200 select-none',
+              isZoomed && 'scale-200',
+              isImageLoading && 'opacity-0'
             )}
             style={
               isZoomed
@@ -121,7 +147,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
         )}
 
         {/* Navigation arrows (hidden on touch screens via md:flex) */}
-        {images.length > 1 && (
+        {galleryImages.length > 1 && (
           <>
             <button
               onClick={(e) => { e.stopPropagation(); prev() }}
@@ -153,9 +179,9 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
         </div>
 
         {/* Image counter / indicator dots */}
-        {images.length > 1 && (
+        {galleryImages.length > 1 && (
           <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-            {images.map((_, i) => (
+            {galleryImages.map((_, i) => (
               <button
                 key={i}
                 onClick={(e) => { e.stopPropagation(); setSelectedIndex(i) }}
@@ -170,11 +196,11 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
       </div>
 
       {/* Thumbnail strip */}
-      {images.length > 1 && (
+      {galleryImages.length > 1 && (
         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-          {images.map((img, i) => (
+          {galleryImages.map((img, i) => (
             <button
-              key={img.url || i}
+              key={`gallery-thumb-${i}-${img.url}`}
               onClick={() => setSelectedIndex(i)}
               className={cn(
                 'relative h-20 w-16 flex-shrink-0 rounded-lg overflow-hidden border-2 transition-all',
@@ -182,11 +208,11 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
               )}
             >
               <OptimizedImage
-                key={img.url}
                 src={img.url}
                 alt={img.alt || `Image ${i + 1}`}
                 fill
                 variant="galleryThumb"
+                loading="eager"
                 className="object-cover"
               />
             </button>

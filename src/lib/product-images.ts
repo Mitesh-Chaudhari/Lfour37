@@ -1,16 +1,50 @@
 import type { ProductImage } from '@/types'
 
+function sanitizeImageUrl(url: string): string {
+  return url.trim().replace(/^http:\/\//i, 'https://')
+}
+
+export function normalizeProductImages(images: unknown): ProductImage[] {
+  if (!Array.isArray(images)) return []
+
+  const normalized: ProductImage[] = []
+
+  images.forEach((entry, index) => {
+    if (typeof entry === 'string') {
+      const url = sanitizeImageUrl(entry)
+      if (url) normalized.push({ url, position: index })
+      return
+    }
+
+    if (!entry || typeof entry !== 'object') return
+
+    const record = entry as Record<string, unknown>
+    const rawUrl = record.url
+    const url =
+      typeof rawUrl === 'string'
+        ? sanitizeImageUrl(rawUrl)
+        : typeof rawUrl === 'number'
+          ? sanitizeImageUrl(String(rawUrl))
+          : ''
+
+    if (!url) return
+
+    normalized.push({
+      url,
+      alt: typeof record.alt === 'string' ? record.alt : undefined,
+      position:
+        typeof record.position === 'number' && Number.isFinite(record.position)
+          ? record.position
+          : index,
+    })
+  })
+
+  return normalized.sort((a, b) => a.position - b.position)
+}
+
 export function getProductPrimaryImageUrl(images: unknown): string | null {
-  if (!Array.isArray(images) || images.length === 0) return null
-
-  const first = images[0]
-  if (typeof first === 'string' && first.trim()) return first
-  if (first && typeof first === 'object' && 'url' in first) {
-    const url = (first as ProductImage).url
-    if (typeof url === 'string' && url.trim()) return url
-  }
-
-  return null
+  const normalized = normalizeProductImages(images)
+  return normalized[0]?.url ?? null
 }
 
 type VariantImageSource = {
