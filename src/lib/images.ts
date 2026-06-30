@@ -12,6 +12,7 @@ export const IMAGE_SIZE_PRESETS = {
   gallery: '(max-width: 768px) 100vw, 50vw',
   galleryThumb: '80px',
   hero: '100vw',
+  heroMobile: '100vw',
   category: '(max-width: 768px) 50vw, 25vw',
   categoryFeatured: '(max-width: 768px) 100vw, 50vw',
   avatar: '40px',

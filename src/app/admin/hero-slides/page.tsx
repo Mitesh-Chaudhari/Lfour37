@@ -15,6 +15,7 @@ interface Slide {
   secondary_link?: string | null
   highlight_index: number
   image_url?: string
+  mobile_image_url?: string
   accent: string
   is_active: boolean
   sort_order: number
@@ -75,6 +76,7 @@ export default function HeroSlidesAdmin() {
         secondary_link: '',
         highlight_index: 0,
         image_url: '',
+        mobile_image_url: '',
         accent: 'text-purple-600',
         is_active: true,
         sort_order: slides.length + 1,
@@ -103,10 +105,13 @@ export default function HeroSlidesAdmin() {
     }
   }
 
-  const handleImageUpload = async (file: File, index: number) => {
+  const handleImageUpload = async (
+    file: File,
+    index: number,
+    field: 'image_url' | 'mobile_image_url'
+  ) => {
     const formData = new FormData()
 
-    // ✅ IMPORTANT: match API → "files"
     formData.append('files', file)
 
     const res = await fetch('/api/upload', {
@@ -121,12 +126,15 @@ export default function HeroSlidesAdmin() {
       return
     }
 
-    // ✅ your API returns array
     const uploadedUrl = data.urls?.[0]
 
-    handleChange(index, 'image_url', uploadedUrl)
+    handleChange(index, field, uploadedUrl)
 
-    toast.success('Image uploaded!')
+    toast.success(
+      field === 'mobile_image_url'
+        ? 'Mobile banner uploaded!'
+        : 'Desktop banner uploaded!'
+    )
   }
 
   const handleRemove = (index: number) => {
@@ -222,27 +230,65 @@ export default function HeroSlidesAdmin() {
               />
             </div>
 
-            {/* Image Upload */}
-            <div>
-              <span>Select Image: </span>
+            {/* Desktop banner */}
+            <div className="rounded-lg border border-gray-200 p-4 space-y-2">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Desktop banner</p>
+                <p className="text-xs text-gray-500">
+                  Landscape · recommended 1920×1080 px (16:9) or 1920×800 px · WebP/JPG · under 800 KB
+                </p>
+              </div>
               <input
                 type="file"
                 accept="image/*"
                 onChange={(e) => {
                   const file = e.target.files?.[0]
-                  if (file) handleImageUpload(file, i)
+                  if (file) handleImageUpload(file, i, 'image_url')
                 }}
               />
               {slide.image_url && (
-                <div className="relative h-32 mt-2 rounded overflow-hidden">
+                <div className="relative mt-2 h-32 overflow-hidden rounded">
                   <OptimizedImage
                     src={slide.image_url}
-                    alt={slide.title || 'Slide preview'}
+                    alt={slide.title || 'Desktop banner preview'}
                     fill
                     variant="categoryFeatured"
                     className="object-cover"
                   />
                 </div>
+              )}
+            </div>
+
+            {/* Mobile banner */}
+            <div className="rounded-lg border border-gray-200 p-4 space-y-2">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Mobile banner</p>
+                <p className="text-xs text-gray-500">
+                  Portrait · recommended 1080×1920 px (9:16) · WebP/JPG · under 500 KB · shown on screens under 768px
+                </p>
+              </div>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) handleImageUpload(file, i, 'mobile_image_url')
+                }}
+              />
+              {slide.mobile_image_url ? (
+                <div className="relative mt-2 h-48 w-28 overflow-hidden rounded">
+                  <OptimizedImage
+                    src={slide.mobile_image_url}
+                    alt={slide.title || 'Mobile banner preview'}
+                    fill
+                    variant="heroMobile"
+                    className="object-cover"
+                  />
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400">
+                  Optional. If empty, the desktop banner is used on mobile.
+                </p>
               )}
             </div>
 

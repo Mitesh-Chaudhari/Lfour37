@@ -148,7 +148,7 @@ export function Navbar() {
     <>
       <header className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm">
         <div className="container mx-auto px-4">
-          <div className="flex h-20 items-center justify-between">
+          <div className="flex h-16 sm:h-20 items-center justify-between">
             <button
               onClick={open}
               className="
@@ -178,9 +178,10 @@ export function Navbar() {
                 height={70}
                 variant="logo"
                 priority
-                className="object-cover transition-transform duration-700 group-hover:scale-105"
+                className="w-14 h-14 sm:w-[70px] sm:h-[70px] object-cover transition-transform duration-700 group-hover:scale-105"
               />
             </Link>
+
 
 
               {/* Desktop Navigation */}

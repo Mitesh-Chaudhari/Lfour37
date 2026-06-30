@@ -11,6 +11,7 @@ export interface HeroSlide {
   secondary_link: string | null
   highlight_index: number
   image_url: string | null
+  mobile_image_url: string | null
   accent: string
   is_active: boolean
   sort_order: number

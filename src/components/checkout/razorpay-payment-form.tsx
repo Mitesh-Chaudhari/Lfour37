@@ -58,7 +58,7 @@ export function RazorpayPaymentForm({ razorpayOrder, orderId, amount }: any) {
       currency: 'INR',
       order_id: razorpayOrder.id,
 
-      name: 'YadeviLifestyle',
+      name: 'LFOUR37',
       description: 'Order Payment',
 
       handler: async function (response: {

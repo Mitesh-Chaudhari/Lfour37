@@ -102,32 +102,49 @@ export function HeroBanner({ initialSlides = [] }: HeroBannerProps) {
   if (!slide) return null
 
   const words = slide.title.split(' ')
+  const desktopImage = slide.image_url?.trim() || null
+  const mobileImage = slide.mobile_image_url?.trim() || desktopImage
 
   return (
     <section className="relative overflow-hidden text-white min-h-[90vh] flex flex-col justify-center bg-gray-950">
-      {slide.image_url?.trim() ? (
+      {desktopImage ? (
         <OptimizedImage
-          key={slide.id}
-          src={slide.image_url}
+          key={`${slide.id}-desktop`}
+          src={desktopImage}
           alt=""
           fill
           variant="hero"
           priority
           className={cn(
-            'object-cover transition-opacity duration-500',
+            'hidden md:block object-cover transition-opacity duration-500',
+            fading ? 'opacity-0' : 'opacity-100'
+          )}
+        />
+      ) : null}
+
+      {mobileImage ? (
+        <OptimizedImage
+          key={`${slide.id}-mobile`}
+          src={mobileImage}
+          alt=""
+          fill
+          variant="heroMobile"
+          priority
+          className={cn(
+            'md:hidden object-cover transition-opacity duration-500',
             fading ? 'opacity-0' : 'opacity-100'
           )}
         />
       ) : null}
 
       {/* Dark overlay */}
-      <div className="absolute inset-0 bg-black/60" />
+      {/* <div className="absolute inset-0 bg-black/60" /> */}
 
       {/* Grid lines */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff06_1px,transparent_1px),linear-gradient(to_bottom,#ffffff06_1px,transparent_1px)] bg-[size:72px_72px]" />
+      {/* <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff06_1px,transparent_1px),linear-gradient(to_bottom,#ffffff06_1px,transparent_1px)] bg-[size:72px_72px]" /> */}
 
       {/* Gradient */}
-      <div className={`absolute inset-0 bg-gradient-to-br ${slide.accent} opacity-[0.15]`} />
+      {/* <div className={`absolute inset-0 bg-gradient-to-br ${slide.accent} opacity-[0.15]`} /> */}
 
       <div className="relative container mx-auto px-4 py-28 lg:py-36">
         <div className="max-w-5xl mx-auto text-center">
@@ -163,7 +180,7 @@ export function HeroBanner({ initialSlides = [] }: HeroBannerProps) {
 
           {/* Buttons */}
           <div className={`flex flex-col sm:flex-row justify-center gap-4 transition-all duration-300 ${fading ? 'opacity-0 translate-y-5' : 'opacity-100'}`}>
-            <Button
+            {/* <Button
               size="lg"
               asChild
               className={`bg-gradient-to-r ${slide.accent} border-0 text-white px-8 rounded-full`}
@@ -171,20 +188,29 @@ export function HeroBanner({ initialSlides = [] }: HeroBannerProps) {
               <Link href={slide.cta_link || '/products'}>
                 {slide.cta_text} <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
+            </Button> */}
+            <Button
+              size="lg"
+              asChild
+              className="border-white/20 text-white bg-white/10 rounded-full hover:bg-white hover:text-purple-600 hover:border-transparent"
+            >
+              <Link href={slide.cta_link || '/products'}>
+                {slide.cta_text} <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
             </Button>
 
             {slide.secondary_link && slide.secondary_text && (
-  <Button
-    variant="outline"
-    size="lg"
-    asChild
-    className="border-white/20 text-white bg-white/10 rounded-full hover:bg-white hover:text-purple-600 hover:border-transparent"
-  >
-    <Link href={slide.secondary_link}>
-      {slide.secondary_text}
-    </Link>
-  </Button>
-)}
+              <Button
+                variant="outline"
+                size="lg"
+                asChild
+                className="border-white/20 text-white bg-white/10 rounded-full hover:bg-white hover:text-purple-600 hover:border-transparent"
+              >
+                <Link href={slide.secondary_link}>
+                  {slide.secondary_text}
+                </Link>
+              </Button>
+            )}
 
           </div>
         </div>
