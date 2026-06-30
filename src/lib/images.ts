@@ -32,3 +32,23 @@ export function isOptimizableImageSrc(src?: string | null): src is string {
     trimmed.startsWith('https://')
   )
 }
+
+/** Remote CDN images — skip Vercel /_next/image to avoid transformation quota limits */
+export function shouldUseUnoptimizedImage(src?: string | null): boolean {
+  if (!src || typeof src !== 'string') return false
+  const trimmed = src.trim()
+  if (!trimmed) return false
+
+  if (process.env.NEXT_PUBLIC_UNOPTIMIZED_IMAGES === 'true') return true
+
+  try {
+    const { hostname, pathname } = new URL(trimmed)
+    if (hostname.endsWith('.supabase.co') && pathname.includes('/storage/')) {
+      return true
+    }
+  } catch {
+    return false
+  }
+
+  return false
+}

@@ -8,6 +8,7 @@ import {
   IMAGE_BLUR_DATA_URL,
   IMAGE_SIZE_PRESETS,
   isOptimizableImageSrc,
+  shouldUseUnoptimizedImage,
   type OptimizedImageVariant,
 } from '@/lib/images'
 
@@ -44,13 +45,14 @@ export function OptimizedImage({
     setFailed(false)
   }, [src])
 
-  const canOptimize = isOptimizableImageSrc(src) && !unoptimized
+  const isValidSrc = isOptimizableImageSrc(src)
+  const skipOptimization = Boolean(unoptimized || shouldUseUnoptimizedImage(src))
   const resolvedSizes = sizes ?? (variant ? IMAGE_SIZE_PRESETS[variant] : undefined)
-  const useBlur = canOptimize && !priority && placeholder !== 'empty'
+  const useBlur = isValidSrc && !skipOptimization && !priority && placeholder !== 'empty'
   const resolvedPlaceholder = useBlur ? 'blur' : 'empty'
   const resolvedBlur = useBlur ? (blurDataURL ?? IMAGE_BLUR_DATA_URL) : undefined
 
-  if (!canOptimize || failed) {
+  if (!isValidSrc || failed) {
     if (!showFallback) return null
     return (
       <div
@@ -75,6 +77,7 @@ export function OptimizedImage({
       className={className}
       sizes={resolvedSizes}
       priority={priority}
+      unoptimized={skipOptimization}
       placeholder={resolvedPlaceholder}
       blurDataURL={resolvedBlur}
       onError={(event) => {

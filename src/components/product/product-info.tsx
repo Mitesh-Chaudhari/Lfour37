@@ -514,7 +514,7 @@ export function ProductInfo({ product, sizeOrder = [], sizeGuides = [] }: Produc
               )}`
             )
           }}
-          className="w-full sm:flex-1"
+          className="w-full sm:flex-1 cursor-pointer"
           size="lg"
           variant="brand"
         >
@@ -525,7 +525,7 @@ export function ProductInfo({ product, sizeOrder = [], sizeGuides = [] }: Produc
 
         <Button
           onClick={handleAddToCart}
-          className=" w-full sm:flex-1"
+          className=" w-full sm:flex-1 cursor-pointer"
           size="lg"
           variant="brand"
           disabled={isProductOutOfStock}
@@ -539,7 +539,7 @@ export function ProductInfo({ product, sizeOrder = [], sizeGuides = [] }: Produc
           onClick={handleWishlist}
           disabled={wishlistLoading}
           className={cn(
-            'h-12 w-12 rounded-xl border-2 flex items-center justify-center transition-all disabled:opacity-70',
+            'h-12 w-12 rounded-xl border-2 flex items-center justify-center transition-all disabled:opacity-70 cursor-pointer',
             inWishlist
               ? 'border-red-500 bg-red-50 text-red-500'
               : 'border-gray-300 text-gray-600 hover:border-red-400 hover:text-red-500'
