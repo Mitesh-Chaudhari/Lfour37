@@ -160,6 +160,7 @@ export function Navbar() {
                 p-2
                 text-gray-600
                 hover:text-purple-600
+                cursor-pointer
               "
             >
               <Menu className="h-6 w-6" />
@@ -316,7 +317,7 @@ export function Navbar() {
                 {/* Cart */}
                 <button
                   onClick={toggleCart}
-                  className="relative p-2 text-gray-600 hover:text-purple-600 transition-colors"
+                  className="relative p-2 text-gray-600 hover:text-purple-600 transition-colors cursor-pointer"
                   aria-label="Cart"
                 >
                   <ShoppingBag className="h-5 w-5" />
@@ -332,7 +333,7 @@ export function Navbar() {
                   <div className="relative">
                     <button
                       onClick={() => setUserMenuOpen(!userMenuOpen)}
-                      className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                      className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
                     >
                       {user.avatar_url ? (
                         <OptimizedImage
@@ -377,7 +378,7 @@ export function Navbar() {
                           <button
                             onClick={handleSignOut}
                             disabled={isSigningOut}
-                            className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+                            className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50 cursor-pointer"
                           >
                             {isSigningOut ? (
                               <span className="h-4 w-4 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
@@ -393,10 +394,14 @@ export function Navbar() {
                 ) : (
                   <div className="hidden sm:flex items-center gap-2">
                     <Link href={loginHref}>
-                      <Button variant="ghost" size="sm">Sign In</Button>
+                      <Button variant="ghost" size="sm" className="cursor-pointer">
+                        Sign In
+                      </Button>
                     </Link>
                     <Link href={registerHref}>
-                      <Button size="sm">Sign Up</Button>
+                      <Button size="sm" className="cursor-pointer">
+                        Sign Up
+                      </Button>
                     </Link>
                   </div>
                 )}

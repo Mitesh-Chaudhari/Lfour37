@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { OptimizedImage } from '@/components/ui/optimized-image'
 import { DEFAULT_PRODUCT_IMAGE } from '@/lib/images'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type MouseEvent } from 'react'
 import { Heart, ShoppingBag, Star, Loader2 } from 'lucide-react'
 import { Product } from '@/types'
 import { useWishlistStore } from '@/store/wishlist-store'
@@ -12,6 +12,7 @@ import { formatPrice, calculateDiscount } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
+import { useNavigationStore } from '@/store/navigation-store'
 
 interface ProductCardProps {
   product: Product
@@ -23,8 +24,11 @@ export function ProductCard({ product, className }: ProductCardProps) {
   const [mounted, setMounted] = useState(false)
   const [wishlistLoading, setWishlistLoading] = useState(false)
   const [slideIndex, setSlideIndex] = useState(0)
+  const [isNavigating, setIsNavigating] = useState(false)
+  const startNavigation = useNavigationStore((state) => state.startNavigation)
 
   useEffect(() => { setMounted(true) }, [])
+  useEffect(() => { setIsNavigating(false) }, [product.slug])
 
   const imageUrls =
     product.images?.map((image) => image.url).filter((url): url is string => Boolean(url)) ??
@@ -89,8 +93,23 @@ export function ProductCard({ product, className }: ProductCardProps) {
     }
   }
 
+  const handleCardClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (isNavigating) {
+      event.preventDefault()
+      return
+    }
+
+    setIsNavigating(true)
+    startNavigation()
+  }
+
   return (
-    <Link href={`/products/${product.slug}`} className={cn('group block', className)}>
+    <Link
+      href={`/products/${product.slug}`}
+      className={cn('group block', className, isNavigating && 'pointer-events-none')}
+      onClick={handleCardClick}
+      aria-busy={isNavigating}
+    >
       <div className="relative overflow-hidden rounded-xl bg-gray-100 aspect-[3/4]">
         {primaryImage ? (
           <>
@@ -234,7 +253,12 @@ export function ProductCard({ product, className }: ProductCardProps) {
       {/* Product info */}
       <div className="mt-3 space-y-1">
         <p className="text-xs text-gray-500">{product.categories?.[0]?.name}</p>
-        <h3 className="text-sm font-medium text-gray-900 group-hover:text-purple-600 transition-colors line-clamp-1">
+        <h3
+          className={cn(
+            'text-sm font-medium line-clamp-1 transition-colors',
+            isNavigating ? 'text-purple-600' : 'text-gray-900 group-hover:text-purple-600'
+          )}
+        >
           {product.name}
         </h3>
 

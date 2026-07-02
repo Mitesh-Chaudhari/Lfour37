@@ -7,6 +7,12 @@ import { wagmiConfig } from '@/lib/crypto/wagmi-config'
 import { useState } from 'react'
 
 import '@rainbow-me/rainbowkit/styles.css'
+import { Suspense } from 'react'
+import { NavigationLoader } from '@/components/layout/navigation-loader'
+
+function NavigationLoaderFallback() {
+  return null
+}
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -28,6 +34,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
             borderRadius: 'large',
           })}
         >
+          <Suspense fallback={<NavigationLoaderFallback />}>
+            <NavigationLoader />
+          </Suspense>
           {children}
         </RainbowKitProvider>
       </QueryClientProvider>
