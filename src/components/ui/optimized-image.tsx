@@ -20,6 +20,9 @@ export interface OptimizedImageProps extends Omit<ImageProps, 'src' | 'alt'> {
   unoptimized?: boolean
   showFallback?: boolean
   fallbackClassName?: string
+  /** Local placeholder shown until `src` finishes loading (e.g. product default image) */
+  placeholderImage?: string
+  placeholderClassName?: string
 }
 
 export function OptimizedImage({
@@ -30,29 +33,67 @@ export function OptimizedImage({
   quality = DEFAULT_IMAGE_QUALITY,
   className,
   fallbackClassName,
+  placeholderClassName,
+  placeholderImage,
   priority,
   unoptimized,
   showFallback = true,
   placeholder,
   blurDataURL,
   onError,
+  onLoad,
   fill,
   ...props
 }: OptimizedImageProps) {
   const [failed, setFailed] = useState(false)
+  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
     setFailed(false)
+    setLoaded(false)
   }, [src])
 
   const isValidSrc = isOptimizableImageSrc(src)
   const skipOptimization = Boolean(unoptimized || shouldUseUnoptimizedImage(src))
   const resolvedSizes = sizes ?? (variant ? IMAGE_SIZE_PRESETS[variant] : undefined)
-  const useBlur = isValidSrc && !skipOptimization && !priority && placeholder !== 'empty'
+  const useDefaultPlaceholder = Boolean(placeholderImage)
+  const useBlur =
+    isValidSrc &&
+    !skipOptimization &&
+    !priority &&
+    placeholder !== 'empty' &&
+    !useDefaultPlaceholder
   const resolvedPlaceholder = useBlur ? 'blur' : 'empty'
   const resolvedBlur = useBlur ? (blurDataURL ?? IMAGE_BLUR_DATA_URL) : undefined
 
+  const placeholderLayerClassName = cn(
+    'object-cover',
+    fill && 'absolute inset-0 z-0',
+    placeholderClassName,
+    !fill && className
+  )
+
+  const renderPlaceholderLayer = () => {
+    if (!placeholderImage) return null
+
+    return (
+      <Image
+        src={placeholderImage}
+        alt=""
+        aria-hidden
+        fill={fill}
+        sizes={resolvedSizes}
+        unoptimized
+        className={placeholderLayerClassName}
+      />
+    )
+  }
+
   if (!isValidSrc || failed) {
+    if (placeholderImage) {
+      return renderPlaceholderLayer()
+    }
+
     if (!showFallback) return null
     return (
       <div
@@ -67,24 +108,59 @@ export function OptimizedImage({
     )
   }
 
+  if (!useDefaultPlaceholder) {
+    return (
+      <Image
+        key={src}
+        src={src}
+        alt={alt}
+        fill={fill}
+        quality={quality}
+        className={className}
+        sizes={resolvedSizes}
+        priority={priority}
+        unoptimized={skipOptimization}
+        placeholder={resolvedPlaceholder}
+        blurDataURL={resolvedBlur}
+        onError={(event) => {
+          setFailed(true)
+          onError?.(event)
+        }}
+        onLoad={onLoad}
+        {...props}
+      />
+    )
+  }
+
   return (
-    <Image
-      key={src}
-      src={src}
-      alt={alt}
-      fill={fill}
-      quality={quality}
-      className={className}
-      sizes={resolvedSizes}
-      priority={priority}
-      unoptimized={skipOptimization}
-      placeholder={resolvedPlaceholder}
-      blurDataURL={resolvedBlur}
-      onError={(event) => {
-        setFailed(true)
-        onError?.(event)
-      }}
-      {...props}
-    />
+    <>
+      {renderPlaceholderLayer()}
+      <Image
+        key={src}
+        src={src}
+        alt={alt}
+        fill={fill}
+        quality={quality}
+        className={cn(
+          className,
+          fill && 'absolute inset-0 z-[1]',
+          'transition-opacity duration-300 ease-in-out',
+          !loaded && 'opacity-0'
+        )}
+        sizes={resolvedSizes}
+        priority={priority}
+        unoptimized={skipOptimization}
+        placeholder="empty"
+        onError={(event) => {
+          setFailed(true)
+          onError?.(event)
+        }}
+        onLoad={(event) => {
+          setLoaded(true)
+          onLoad?.(event)
+        }}
+        {...props}
+      />
+    </>
   )
 }

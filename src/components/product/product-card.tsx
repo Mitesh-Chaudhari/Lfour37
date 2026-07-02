@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { OptimizedImage } from '@/components/ui/optimized-image'
+import { DEFAULT_PRODUCT_IMAGE } from '@/lib/images'
 import { useState, useEffect } from 'react'
 import { Heart, ShoppingBag, Star, Loader2 } from 'lucide-react'
 import { Product } from '@/types'
@@ -110,6 +111,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
                     variant="card"
                     priority={index === 0}
                     loading="eager"
+                    placeholderImage={DEFAULT_PRODUCT_IMAGE}
                     className={cn(
                       imageTransitionClass,
                       index === slideIndex ? 'opacity-100' : 'opacity-0'
@@ -124,6 +126,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
                   variant="card"
                   priority
                   loading="eager"
+                  placeholderImage={DEFAULT_PRODUCT_IMAGE}
                   className={cn(
                     'object-cover',
                     !hasMultipleImages &&
@@ -154,6 +157,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
                   alt={product.name}
                   fill
                   variant="card"
+                  placeholderImage={DEFAULT_PRODUCT_IMAGE}
                   className={cn(
                     imageTransitionClass,
                     'group-hover:opacity-0'
@@ -165,6 +169,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
                     alt={product.name}
                     fill
                     variant="card"
+                    placeholderImage={DEFAULT_PRODUCT_IMAGE}
                     className={cn(
                       imageTransitionClass,
                       'opacity-0 group-hover:opacity-100'

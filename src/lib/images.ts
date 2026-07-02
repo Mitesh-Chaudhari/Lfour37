@@ -4,6 +4,9 @@ export const IMAGE_BLUR_DATA_URL =
 
 export const DEFAULT_IMAGE_QUALITY = 75
 
+/** Shown while product photos load (3:4 portrait — matches product card aspect) */
+export const DEFAULT_PRODUCT_IMAGE = '/images/default-image.png'
+
 export const IMAGE_SIZE_PRESETS = {
   thumbnail: '64px',
   cart: '96px',

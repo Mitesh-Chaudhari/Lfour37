@@ -6,6 +6,7 @@ import { LoadingOverlay } from '@/components/ui/loading-overlay'
 import { ChevronLeft, ChevronRight, ZoomIn, Share2, Check, X } from 'lucide-react'
 import { ProductImage } from '@/types'
 import { normalizeProductImages } from '@/lib/product-images'
+import { DEFAULT_PRODUCT_IMAGE } from '@/lib/images'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
 
@@ -402,6 +403,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
                 fill
                 variant="galleryThumb"
                 loading="eager"
+                placeholderImage={DEFAULT_PRODUCT_IMAGE}
                 className="object-cover"
               />
             </button>
