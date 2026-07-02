@@ -570,6 +570,7 @@ export default function RegisterForm() {
               type="tel"
               placeholder="9876543210"
               maxLength={10}
+              helperText="Provide WhatsApp number to receive updates on WhatsApp."
               error={errors.phone?.message}
               leftIcon={
                 <span className="text-sm font-medium text-gray-500 select-none">

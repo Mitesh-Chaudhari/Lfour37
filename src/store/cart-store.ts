@@ -14,6 +14,7 @@ interface CartStore {
   addItem: (product: Product, variant: ProductVariant, quantity?: number) => void
   removeItem: (variantId: string) => void
   updateQuantity: (variantId: string, quantity: number) => void
+  incrementQuantity: (variantId: string) => boolean
   clearCart: () => void
   saveForLater: (variantId: string) => void
   moveToCart: (variantId: string) => void
@@ -93,6 +94,22 @@ export const useCartStore = create<CartStore>()(
               : i
           ),
         }))
+      },
+
+      incrementQuantity: (variantId) => {
+        const item = get().items.find((i) => i.variant_id === variantId)
+        if (!item) return false
+        if (item.quantity >= item.variant.stock) return false
+
+        set((state) => ({
+          items: state.items.map((i) =>
+            i.variant_id === variantId
+              ? { ...i, quantity: i.quantity + 1 }
+              : i
+          ),
+        }))
+
+        return true
       },
 
       clearCart: () => set({ items: [], couponCode: null, discountAmount: 0, shippingAmount: 0, shippingMethodId: null }),

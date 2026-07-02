@@ -8,11 +8,20 @@ import { useUIStore } from '@/store/ui-store'
 import { Button } from '@/components/ui/button'
 import { formatPrice } from '@/lib/utils'
 import { persistAuthRedirect } from '@/lib/auth-redirect'
+import toast from 'react-hot-toast'
+
+const MAX_STOCK_TOAST = 'Maximum stock reached for this item'
 
 export function CartDrawer() {
   const { isCartOpen, closeCart } = useUIStore()
-  const { items, removeItem, updateQuantity, getSubtotal, getItemCount, savedForLater, moveToCart, removeSavedItem } =
+  const { items, removeItem, updateQuantity, incrementQuantity, getSubtotal, getItemCount, savedForLater, moveToCart, removeSavedItem } =
     useCartStore()
+
+  const handleIncrementQuantity = (variantId: string) => {
+    if (!incrementQuantity(variantId)) {
+      toast.error(MAX_STOCK_TOAST)
+    }
+  }
 
   useEffect(() => {
     if (isCartOpen) {
@@ -133,9 +142,8 @@ export function CartDrawer() {
                           </button>
                           <span className="w-6 text-center text-sm font-medium">{item.quantity}</span>
                           <button
-                            onClick={() => updateQuantity(item.variant_id, item.quantity + 1)}
+                            onClick={() => handleIncrementQuantity(item.variant_id)}
                             className="p-1.5 hover:bg-gray-100 rounded-r-lg transition-colors"
-                            disabled={item.quantity >= item.variant.stock}
                           >
                             <Plus className="h-3 w-3" />
                           </button>

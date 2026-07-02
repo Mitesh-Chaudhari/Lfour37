@@ -7,7 +7,10 @@ import { useCartStore } from '@/store/cart-store'
 import { Button } from '@/components/ui/button'
 import { formatPrice } from '@/lib/utils'
 import { persistAuthRedirect } from '@/lib/auth-redirect'
+import toast from 'react-hot-toast'
 import type { Metadata } from 'next'
+
+const MAX_STOCK_TOAST = 'Maximum stock reached for this item'
 
 export default function CartPage() {
   const {
@@ -15,6 +18,7 @@ export default function CartPage() {
     savedForLater,
     removeItem,
     updateQuantity,
+    incrementQuantity,
     saveForLater,
     moveToCart,
     removeSavedItem,
@@ -22,6 +26,12 @@ export default function CartPage() {
     getTotal,
     discountAmount,
   } = useCartStore()
+
+  const handleIncrementQuantity = (variantId: string) => {
+    if (!incrementQuantity(variantId)) {
+      toast.error(MAX_STOCK_TOAST)
+    }
+  }
 
   const subtotal = getSubtotal()
   const total = getTotal()
@@ -97,9 +107,8 @@ export default function CartPage() {
                         </button>
                         <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
                         <button
-                          onClick={() => updateQuantity(item.variant_id, item.quantity + 1)}
+                          onClick={() => handleIncrementQuantity(item.variant_id)}
                           className="p-2 hover:bg-gray-100 rounded-r-lg transition-colors"
-                          disabled={item.quantity >= item.variant.stock}
                         >
                           <Plus className="h-4 w-4" />
                         </button>

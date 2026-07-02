@@ -21,7 +21,6 @@ export function ProductCard({ product, className }: ProductCardProps) {
   const { isInWishlist, toggleWishlist } = useWishlistStore()
   const [mounted, setMounted] = useState(false)
   const [wishlistLoading, setWishlistLoading] = useState(false)
-  const [showSecondary, setShowSecondary] = useState(false)
   const [slideIndex, setSlideIndex] = useState(0)
 
   useEffect(() => { setMounted(true) }, [])
@@ -33,7 +32,9 @@ export function ProductCard({ product, className }: ProductCardProps) {
   const primaryImage = imageUrls[0]
   const secondaryImage = imageUrls[1]
   const hasMultipleImages = mobileSlideImages.length > 1
-  const activeMobileImage = mobileSlideImages[slideIndex] ?? primaryImage
+
+  const imageTransitionClass =
+    'object-cover transition-opacity duration-900 ease-in-out'
 
   useEffect(() => {
     if (mobileSlideImages.length <= 1) return
@@ -89,40 +90,54 @@ export function ProductCard({ product, className }: ProductCardProps) {
 
   return (
     <Link href={`/products/${product.slug}`} className={cn('group block', className)}>
-      <div
-        className="relative overflow-hidden rounded-xl bg-gray-100 aspect-[3/4]"
-        onMouseEnter={() => setShowSecondary(true)}
-        onFocus={() => setShowSecondary(true)}
-      >
+      <div className="relative overflow-hidden rounded-xl bg-gray-100 aspect-[3/4]">
         {primaryImage ? (
           <>
-            {/* Mobile: one eager-loaded image at a time */}
+            {/* Mobile: crossfade between first two images */}
             <div
               className={cn(
                 'absolute inset-0',
-                hasMultipleImages && 'md:hidden'
+                hasMultipleImages ? 'md:hidden' : ''
               )}
             >
-              <OptimizedImage
-                key={activeMobileImage}
-                src={activeMobileImage}
-                alt={product.name}
-                fill
-                variant="card"
-                priority
-                loading="eager"
-                className={cn(
-                  'object-cover transition-all duration-500',
-                  !hasMultipleImages && 'md:group-hover:scale-105'
-                )}
-              />
+              {hasMultipleImages ? (
+                mobileSlideImages.map((url, index) => (
+                  <OptimizedImage
+                    key={url}
+                    src={url}
+                    alt={product.name}
+                    fill
+                    variant="card"
+                    priority={index === 0}
+                    loading="eager"
+                    className={cn(
+                      imageTransitionClass,
+                      index === slideIndex ? 'opacity-100' : 'opacity-0'
+                    )}
+                  />
+                ))
+              ) : (
+                <OptimizedImage
+                  src={primaryImage}
+                  alt={product.name}
+                  fill
+                  variant="card"
+                  priority
+                  loading="eager"
+                  className={cn(
+                    'object-cover',
+                    !hasMultipleImages &&
+                      'transition-transform duration-700 ease-in-out md:group-hover:scale-105'
+                  )}
+                />
+              )}
               {hasMultipleImages && (
                 <div className="absolute bottom-2 left-1/2 z-10 flex -translate-x-1/2 gap-1">
                   {mobileSlideImages.map((url, index) => (
                     <span
                       key={url}
                       className={cn(
-                        'h-1 rounded-full bg-white transition-all',
+                        'h-1 rounded-full bg-white transition-all duration-500 ease-in-out',
                         index === slideIndex ? 'w-3' : 'w-1 bg-white/50'
                       )}
                     />
@@ -131,28 +146,33 @@ export function ProductCard({ product, className }: ProductCardProps) {
               )}
             </div>
 
-            {/* Desktop: hover image swap */}
-            {hasMultipleImages ? (
+            {/* Desktop: smooth crossfade on hover */}
+            {hasMultipleImages && (
               <div className="absolute inset-0 hidden md:block">
                 <OptimizedImage
                   src={primaryImage}
                   alt={product.name}
                   fill
                   variant="card"
-                  className="object-cover transition-all duration-500 group-hover:opacity-0"
+                  className={cn(
+                    imageTransitionClass,
+                    'group-hover:opacity-0'
+                  )}
                 />
-                {secondaryImage && showSecondary && (
+                {secondaryImage && (
                   <OptimizedImage
-                    key={secondaryImage}
                     src={secondaryImage}
                     alt={product.name}
                     fill
                     variant="card"
-                    className="object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                    className={cn(
+                      imageTransitionClass,
+                      'opacity-0 group-hover:opacity-100'
+                    )}
                   />
                 )}
               </div>
-            ) : null}
+            )}
           </>
         ) : (
           <div className="flex h-full items-center justify-center">
