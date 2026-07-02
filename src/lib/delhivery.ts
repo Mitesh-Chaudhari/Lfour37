@@ -414,3 +414,283 @@ export function getTrackingMilestone(status: string): string {
 
   return 'shipment_update'
 }
+
+export function isDelhiveryStatusCancellable(status: string): boolean {
+  const normalized = status.toLowerCase()
+
+  if (normalized.includes('out for delivery')) return false
+  if (normalized.includes('delivered') && !normalized.includes('undelivered')) {
+    return false
+  }
+  if (
+    normalized.includes('rto') ||
+    normalized.includes('return to origin') ||
+    normalized.includes('cancel')
+  ) {
+    return false
+  }
+
+  const cancellableMarkers = [
+    'manifest',
+    'pending',
+    'open',
+    'scheduled',
+    'in transit',
+    'dispatch',
+    'pickup',
+    'ready to ship',
+    'ready for pickup',
+  ]
+
+  return cancellableMarkers.some((marker) => normalized.includes(marker))
+}
+
+export function isDelhiveryOutForDelivery(status: string): boolean {
+  return status.toLowerCase().includes('out for delivery')
+}
+
+export function mapDelhiveryReverseStatus(
+  status: string
+): 'picked_up' | 'in_transit' | 'delivered_to_origin' | 'cancelled' | null {
+  const normalized = status.toLowerCase()
+
+  if (normalized.includes('dto') || normalized.includes('delivered to origin')) {
+    return 'delivered_to_origin'
+  }
+  if (normalized.includes('cancel') || normalized.includes('closed')) {
+    return 'cancelled'
+  }
+  if (
+    normalized.includes('in transit') ||
+    normalized.includes('dispatched') ||
+    normalized.includes('pending')
+  ) {
+    return 'in_transit'
+  }
+  if (
+    normalized.includes('picked') ||
+    normalized.includes('pickup') ||
+    normalized.includes('scheduled') ||
+    normalized.includes('open')
+  ) {
+    return 'picked_up'
+  }
+
+  return null
+}
+
+export type ReversePickupMilestone = 'reverse_picked_up' | 'reverse_dto'
+
+export function getReversePickupMilestone(
+  status: string,
+  statusType?: string | null
+): ReversePickupMilestone | null {
+  const normalized = status.toLowerCase()
+  const type = (statusType || '').toUpperCase()
+
+  if (normalized.includes('dto') || normalized.includes('delivered to origin')) {
+    return 'reverse_dto'
+  }
+
+  if (normalized.includes('cancel') || normalized.includes('closed')) {
+    return null
+  }
+
+  // Item physically collected from the customer (Delhivery PU scan type).
+  if (type === 'PU' || normalized.includes('picked up')) {
+    return 'reverse_picked_up'
+  }
+
+  return null
+}
+
+export type DelhiveryReversePickupItem = {
+  product_name: string
+  quantity: number
+  variant_size?: string | null
+  variant_color?: string | null
+  product_image?: string | null
+  return_reason?: string | null
+}
+
+export async function cancelShipment(awb: string): Promise<unknown> {
+  return delhiveryRequest('/api/p/edit', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      waybill: awb,
+      cancellation: 'true',
+    }),
+  })
+}
+
+function buildReverseQcPayload(item: DelhiveryReversePickupItem) {
+  const variant = [item.variant_size, item.variant_color]
+    .filter(Boolean)
+    .join(', ')
+
+  return {
+    item: item.product_name,
+    description: variant || item.product_name,
+    images: item.product_image || '',
+    brand: process.env.DELHIVERY_SELLER_NAME || 'LFour37',
+    product_category: 'Apparel',
+    quantity: String(item.quantity),
+    return_reason: item.return_reason || 'Customer return',
+  }
+}
+
+export async function createReversePickup({
+  order,
+  item,
+  reference,
+}: {
+  order: DelhiveryOrder
+  item: DelhiveryReversePickupItem
+  reference: string
+}): Promise<unknown> {
+  const { pickupName } = getConfig()
+  const address = order.shipping_address
+  const addressText = [address.address_line1, address.address_line2]
+    .filter(Boolean)
+    .join(', ')
+
+  const qcEnabled = process.env.DELHIVERY_RETURN_QC_ENABLED !== 'false'
+
+  const shipment: Record<string, unknown> = {
+    name: address.full_name,
+    add: addressText,
+    pin: address.postal_code,
+    city: address.city,
+    state: address.state,
+    country: address.country || 'India',
+    phone: address.phone,
+    order: reference,
+    payment_mode: 'Pickup',
+    order_date: today(),
+    total_amount: String(order.total),
+    quantity: String(item.quantity),
+    products_desc: shipmentDescription([item]),
+    weight: (
+      Number(process.env.DELHIVERY_DEFAULT_WEIGHT_GRAMS || 500) / 1000
+    ).toFixed(2),
+    shipment_length: process.env.DELHIVERY_DEFAULT_LENGTH_CM || '25',
+    shipment_width: process.env.DELHIVERY_DEFAULT_WIDTH_CM || '20',
+    shipment_height: process.env.DELHIVERY_DEFAULT_HEIGHT_CM || '5',
+    seller_name: requiredEnv('DELHIVERY_SELLER_NAME'),
+    seller_add: requiredEnv('DELHIVERY_SELLER_ADDRESS'),
+    seller_inv: reference,
+    return_name:
+      process.env.DELHIVERY_RETURN_NAME || requiredEnv('DELHIVERY_SELLER_NAME'),
+    return_add:
+      process.env.DELHIVERY_RETURN_ADDRESS ||
+      requiredEnv('DELHIVERY_SELLER_ADDRESS'),
+    return_city: requiredEnv('DELHIVERY_RETURN_CITY'),
+    return_state: requiredEnv('DELHIVERY_RETURN_STATE'),
+    return_country: 'India',
+    return_phone: requiredEnv('DELHIVERY_RETURN_PHONE'),
+    return_pin: requiredEnv('DELHIVERY_RETURN_PIN'),
+  }
+
+  if (qcEnabled) {
+    shipment.qc = [buildReverseQcPayload(item)]
+  }
+
+  const shipmentData = {
+    shipments: [shipment],
+    pickup_location: {
+      name: pickupName,
+    },
+  }
+
+  const body = new URLSearchParams({
+    format: 'json',
+    data: JSON.stringify(shipmentData),
+  })
+
+  return delhiveryRequest('/api/cmu/create.json', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body,
+  })
+}
+
+export async function createExchangeForwardShipment({
+  order,
+  item,
+  reference,
+}: {
+  order: DelhiveryOrder
+  item: DelhiveryOrderItem
+  reference: string
+}): Promise<unknown> {
+  const { pickupName } = getConfig()
+  const address = order.shipping_address
+  const addressText = [address.address_line1, address.address_line2]
+    .filter(Boolean)
+    .join(', ')
+
+  const shipmentData = {
+    shipments: [
+      {
+        name: address.full_name,
+        add: addressText,
+        pin: address.postal_code,
+        city: address.city,
+        state: address.state,
+        country: address.country || 'India',
+        phone: address.phone,
+        order: reference,
+        payment_mode: 'Prepaid',
+        order_date: today(),
+        total_amount: '0',
+        cod_amount: '0',
+        quantity: String(item.quantity),
+        products_desc: shipmentDescription([item]),
+        weight: (
+          Number(process.env.DELHIVERY_DEFAULT_WEIGHT_GRAMS || 500) / 1000
+        ).toFixed(2),
+        shipment_length: process.env.DELHIVERY_DEFAULT_LENGTH_CM || '25',
+        shipment_width: process.env.DELHIVERY_DEFAULT_WIDTH_CM || '20',
+        shipment_height: process.env.DELHIVERY_DEFAULT_HEIGHT_CM || '5',
+        seller_name: requiredEnv('DELHIVERY_SELLER_NAME'),
+        seller_add: requiredEnv('DELHIVERY_SELLER_ADDRESS'),
+        seller_inv: reference,
+        seller_gst_tin: process.env.DELHIVERY_SELLER_GSTIN || '',
+        return_name:
+          process.env.DELHIVERY_RETURN_NAME ||
+          requiredEnv('DELHIVERY_SELLER_NAME'),
+        return_add:
+          process.env.DELHIVERY_RETURN_ADDRESS ||
+          requiredEnv('DELHIVERY_SELLER_ADDRESS'),
+        return_city: requiredEnv('DELHIVERY_RETURN_CITY'),
+        return_state: requiredEnv('DELHIVERY_RETURN_STATE'),
+        return_country: 'India',
+        return_phone: requiredEnv('DELHIVERY_RETURN_PHONE'),
+        return_pin: requiredEnv('DELHIVERY_RETURN_PIN'),
+        invoice_number: reference,
+        invoice_date: today(),
+      },
+    ],
+    pickup_location: {
+      name: pickupName,
+    },
+  }
+
+  const body = new URLSearchParams({
+    format: 'json',
+    data: JSON.stringify(shipmentData),
+  })
+
+  return delhiveryRequest('/api/cmu/create.json', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body,
+  })
+}

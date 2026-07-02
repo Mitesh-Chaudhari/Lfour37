@@ -5,13 +5,17 @@ import {
   buildOrderDeliveredParams,
   buildOrderShipmentMilestoneParams,
   buildExchangeRequestedParams,
+  buildReturnPickupPickedUpParams,
+  buildReturnPickupReceivedParams,
   buildReturnRequestedParams,
   formatItemLabel,
   formatItemVariant,
   formatOrderItemsSummary,
   formatWhatsAppStatusLabel,
   getDelhiveryTrackingUrlButtonParam,
+  REVERSE_PICKUP_MILESTONE_TEMPLATES,
   SHIPMENT_MILESTONE_TEMPLATES,
+  type ReversePickupWhatsAppMilestone,
   type ShipmentWhatsAppMilestone,
 } from '@/lib/whatsapp/templates'
 import logger from '@/lib/logger'
@@ -232,6 +236,72 @@ export async function notifyReturnOrExchangeRequested({
       error,
       orderId: order.id,
       returnType,
+    })
+  }
+}
+
+export async function notifyReversePickupMilestone({
+  order,
+  item,
+  milestone,
+  trackingNumber,
+  pickupType,
+}: {
+  order: Pick<
+    OrderForWhatsApp,
+    'id' | 'order_number' | 'user_id' | 'shipping_address'
+  >
+  item: OrderItem
+  milestone: ReversePickupWhatsAppMilestone
+  trackingNumber?: string | null
+  pickupType?: 'return' | 'exchange'
+}) {
+  const phone = getOrderPhone(order as OrderForWhatsApp)
+  if (!phone || !isWhatsAppConfigured()) return
+
+  const itemLabel = formatItemLabel(
+    item.product_name,
+    item.variant_size,
+    item.variant_color
+  )
+  const templateName = REVERSE_PICKUP_MILESTONE_TEMPLATES[milestone]
+  const awb = trackingNumber?.trim() || 'N/A'
+
+  try {
+    if (milestone === 'reverse_picked_up') {
+      await sendWhatsAppTemplate({
+        phone,
+        userId: order.user_id,
+        orderId: order.id,
+        templateName,
+        variables: buildReturnPickupPickedUpParams(
+          order.order_number,
+          itemLabel,
+          awb
+        ),
+        urlButtonParam: getDelhiveryTrackingUrlButtonParam(awb),
+      })
+      return
+    }
+
+    await sendWhatsAppTemplate({
+      phone,
+      userId: order.user_id,
+      orderId: order.id,
+      templateName,
+      variables: buildReturnPickupReceivedParams(
+        order.order_number,
+        itemLabel,
+        getOrdersUrl()
+      ),
+    })
+  } catch (error) {
+    logger.error('Reverse pickup milestone WhatsApp failed', {
+      error,
+      orderId: order.id,
+      milestone,
+      templateName,
+      pickupType,
     })
   }
 }

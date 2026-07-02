@@ -12,7 +12,8 @@ async function getOrders() {
       user:users(
         id,
         full_name,
-        email
+        email,
+        phone
       ),
 
       items:order_items(
@@ -54,6 +55,18 @@ async function getOrders() {
         status_code,
         expected_delivery_date,
         last_synced_at,
+        error_message,
+        cancellation_requested_at
+      ),
+
+      delhivery_reverse_pickups:delhivery_reverse_pickups(
+        id,
+        order_item_id,
+        pickup_type,
+        awb,
+        exchange_forward_awb,
+        status,
+        last_synced_at,
         error_message
       )
     `)
@@ -71,8 +84,8 @@ export default async function AdminOrdersPage() {
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Orders</h1>
         <p className="text-gray-500 mt-1">
-          {orders.length} orders · Shipped and delivered statuses update from
-          Delhivery tracking
+          {orders.length} orders · Forward shipped/delivered, cancellations, and
+          return/exchange pickups sync from Delhivery
         </p>
       </div>
       <AdminOrdersTable orders={orders} />

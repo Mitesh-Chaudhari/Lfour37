@@ -204,6 +204,24 @@ export interface DelhiveryTrackingEvent {
   created_at: string
 }
 
+export interface DelhiveryReversePickup {
+  id: string
+  order_id: string
+  order_item_id: string
+  pickup_type: 'return' | 'exchange'
+  awb: string | null
+  exchange_forward_awb: string | null
+  status: string
+  status_code: string | null
+  status_type: string | null
+  instructions: string | null
+  last_event_at: string | null
+  last_synced_at: string | null
+  error_message: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface OrderItem {
   id: string
   order_id: string

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { cancelDelhiveryShipmentForOrder } from '@/lib/delhivery-shipping'
 import { notifyOrderCancelled } from '@/lib/whatsapp/order-notifications'
 import logger from '@/lib/logger'
 
@@ -59,6 +60,20 @@ export async function POST(req: NextRequest) {
       ? 'cancel_requested'
       : 'cancelled'
 
+  if (newStatus === 'cancelled') {
+    const delhiveryCancel = await cancelDelhiveryShipmentForOrder(item.order_id)
+    if (!delhiveryCancel.ok && !delhiveryCancel.skipped) {
+      return NextResponse.json(
+        {
+          error:
+            delhiveryCancel.error ||
+            'Could not cancel the Delhivery shipment for this order',
+        },
+        { status: 409 }
+      )
+    }
+  }
+
   const { data: updated, error } = await supabase
     .from('order_items')
     .update({
@@ -80,6 +95,27 @@ export async function POST(req: NextRequest) {
       { error: 'Update blocked (RLS)' },
       { status: 403 }
     )
+  }
+
+  if (newStatus === 'cancelled') {
+    const { data: siblings } = await supabase
+      .from('order_items')
+      .select('status')
+      .eq('order_id', item.order_id)
+
+    const allCancelled = siblings?.every(
+      (sibling) => sibling.status === 'cancelled'
+    )
+
+    if (allCancelled) {
+      await supabase
+        .from('orders')
+        .update({
+          status: 'cancelled',
+          cancelled_at: new Date().toISOString(),
+        })
+        .eq('id', item.order_id)
+    }
   }
 
   if (newStatus === 'cancelled' || newStatus === 'cancel_requested') {

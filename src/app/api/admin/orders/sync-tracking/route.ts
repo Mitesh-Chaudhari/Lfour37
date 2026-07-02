@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { syncDelhiveryShipmentsForAdmin } from '@/lib/delhivery-shipping'
+import { syncDelhiveryShipmentsForAdmin, syncActiveDelhiveryReversePickups } from '@/lib/delhivery-shipping'
 import logger from '@/lib/logger'
 import { z } from 'zod'
 
@@ -41,10 +41,15 @@ export async function POST(request: NextRequest) {
       limit: parsed.data.limit,
     })
 
+    const reverseSynced = await syncActiveDelhiveryReversePickups(
+      parsed.data.limit ?? 50
+    )
+
     return NextResponse.json({
       success: true,
       synced: results.filter((result) => result.success).length,
       failed: results.filter((result) => !result.success).length,
+      reverse_synced: reverseSynced,
       results,
     })
   } catch (error) {

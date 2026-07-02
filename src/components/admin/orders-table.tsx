@@ -68,12 +68,36 @@ function formatItemVariant(item: AdminOrderItem): string {
   return parts.length ? parts.join(' / ') : '—'
 }
 
+function getCustomerPhone(order: AdminOrder): string | null {
+  const profilePhone = order.user?.phone?.trim()
+  if (profilePhone) return profilePhone
+
+  const shippingPhone = (
+    order.shipping_address as { phone?: string } | null | undefined
+  )?.phone?.trim()
+  if (shippingPhone) return shippingPhone
+
+  return null
+}
+
 type DelhiveryShipmentInfo = {
   id?: string
   awb?: string | null
   status?: string | null
   status_code?: string | null
   expected_delivery_date?: string | null
+  last_synced_at?: string | null
+  error_message?: string | null
+  cancellation_requested_at?: string | null
+}
+
+type DelhiveryReversePickupInfo = {
+  id?: string
+  order_item_id?: string
+  pickup_type?: string | null
+  awb?: string | null
+  exchange_forward_awb?: string | null
+  status?: string | null
   last_synced_at?: string | null
   error_message?: string | null
 }
@@ -95,6 +119,17 @@ function getDelhiveryShipment(order: AdminOrder): DelhiveryShipmentInfo | null {
     : order.delhivery_shipment
 
   return shipment || null
+}
+
+function getReversePickupForItem(
+  order: AdminOrder,
+  itemId: string
+): DelhiveryReversePickupInfo | null {
+  const pickups = order.delhivery_reverse_pickups
+  if (!pickups) return null
+
+  const list = Array.isArray(pickups) ? pickups : [pickups]
+  return list.find((pickup) => pickup.order_item_id === itemId) || null
 }
 
 function isDelhiveryManagedStatus(status: OrderStatus): boolean {
@@ -128,8 +163,12 @@ function canProcessItemRefund(
 
 type AdminOrder = Omit<Order, 'items' | 'delhivery_shipment'> & {
   items?: AdminOrderItem[]
-  user?: { full_name: string | null; email: string }
+  user?: { full_name: string | null; email: string; phone?: string | null }
   delhivery_shipment?: DelhiveryShipmentInfo | DelhiveryShipmentInfo[] | null
+  delhivery_reverse_pickups?:
+    | DelhiveryReversePickupInfo
+    | DelhiveryReversePickupInfo[]
+    | null
 }
 
 interface AdminOrdersTableProps {
@@ -421,21 +460,52 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
       setOrders(
         orders.map((order) => ({
           ...order,
+          status:
+            order.items?.find((item) => item.id === itemId)?.return_type ===
+            'exchange'
+              ? 'exchange_initiated'
+              : 'return_initiated',
           items: order.items?.map(
             (item: AdminOrderItem) =>
               item.id === itemId
                 ? {
                   ...item,
-                  return_status:
-                    'return_approved',
+                  return_status: 'return_approved',
+                  status:
+                    item.return_type === 'exchange'
+                      ? 'exchange_initiated'
+                      : 'return_initiated',
                 }
                 : item
           ),
+          delhivery_reverse_pickups: [
+            ...(Array.isArray(order.delhivery_reverse_pickups)
+              ? order.delhivery_reverse_pickups
+              : order.delhivery_reverse_pickups
+                ? [order.delhivery_reverse_pickups]
+                : []),
+            {
+              order_item_id: itemId,
+              pickup_type:
+                order.items?.find((entry) => entry.id === itemId)?.return_type ||
+                'return',
+              awb: data.delhivery?.reverseAwb || null,
+              exchange_forward_awb:
+                data.delhivery?.exchangeForwardAwb || null,
+              status: 'Scheduled',
+            },
+          ],
         }))
       )
 
+      const reverseAwb = data.delhivery?.reverseAwb
+      const exchangeAwb = data.delhivery?.exchangeForwardAwb
       toast.success(
-        'Return approved'
+        reverseAwb
+          ? `Return approved. Reverse AWB: ${reverseAwb}${
+              exchangeAwb ? `, Exchange AWB: ${exchangeAwb}` : ''
+            }`
+          : 'Return approved'
       )
     } catch {
       toast.error(
@@ -775,6 +845,9 @@ const markDelivered =
                   <td className="px-4 py-3">
                     <p className="text-gray-900">{order.user?.full_name || 'Unknown'}</p>
                     <p className="text-xs text-gray-400">{order.user?.email}</p>
+                    <p className="text-xs text-blue-500 mt-0.5">
+                      {getCustomerPhone(order) || 'no phone detail found'}
+                    </p>
                   </td>
                   <td className="px-4 py-3">
                     <span className="font-bold text-gray-900">{formatPrice(order.total)}</span>
@@ -968,6 +1041,43 @@ const markDelivered =
                                     {item.return_custom_reason}
                                   </p>
                                 )}
+
+                                {(() => {
+                                  const reversePickup = getReversePickupForItem(
+                                    order,
+                                    item.id
+                                  )
+                                  if (!reversePickup?.awb) return null
+
+                                  return (
+                                    <div className="mt-2 space-y-1">
+                                      <p>
+                                        Reverse AWB:{' '}
+                                        <span className="font-mono font-medium">
+                                          {reversePickup.awb}
+                                        </span>
+                                      </p>
+                                      {reversePickup.exchange_forward_awb && (
+                                        <p>
+                                          Exchange AWB:{' '}
+                                          <span className="font-mono font-medium">
+                                            {reversePickup.exchange_forward_awb}
+                                          </span>
+                                        </p>
+                                      )}
+                                      {reversePickup.status && (
+                                        <p>
+                                          Carrier: {reversePickup.status}
+                                        </p>
+                                      )}
+                                      {reversePickup.error_message && (
+                                        <p className="text-red-600">
+                                          {reversePickup.error_message}
+                                        </p>
+                                      )}
+                                    </div>
+                                  )
+                                })()}
                               </div>
 
                               {/* APPROVE / REJECT */}

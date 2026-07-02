@@ -1,7 +1,14 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import {
+  cancelShipment,
+  createExchangeForwardShipment,
+  createReversePickup,
   createShipment,
+  getReversePickupMilestone,
   getTrackingMilestone,
+  isDelhiveryOutForDelivery,
+  isDelhiveryStatusCancellable,
+  mapDelhiveryReverseStatus,
   mapDelhiveryStatusToOrderStatus,
   parseShipmentCreationResponse,
   trackShipment,
@@ -9,12 +16,17 @@ import {
   type DelhiveryOrderItem,
   type NormalizedDelhiveryTracking,
 } from '@/lib/delhivery'
-import { sendShipmentStatusEmail } from '@/lib/email'
+import { sendReversePickupStatusEmail, sendShipmentStatusEmail } from '@/lib/email'
 import {
   notifyOrderDelivered,
   notifyOrderShipmentMilestone,
+  notifyReversePickupMilestone,
 } from '@/lib/whatsapp/order-notifications'
-import { isShipmentWhatsAppMilestone } from '@/lib/whatsapp/templates'
+import {
+  formatItemLabel,
+  isReversePickupWhatsAppMilestone,
+  isShipmentWhatsAppMilestone,
+} from '@/lib/whatsapp/templates'
 import logger from '@/lib/logger'
 
 type ShipmentRow = {
@@ -126,6 +138,85 @@ async function notifyCustomerOfShipmentMilestone(
     logger.warn('Delhivery status email failed', {
       error,
       orderId: shipment.order_id,
+      milestone,
+    })
+  }
+}
+
+async function notifyCustomerOfReversePickupMilestone(
+  reversePickup: ReversePickupRow,
+  {
+    milestone,
+    carrierStatus,
+    trackingNumber,
+  }: {
+    milestone: 'reverse_picked_up' | 'reverse_dto'
+    carrierStatus: string
+    trackingNumber: string
+  }
+): Promise<void> {
+  if (milestone === reversePickup.last_notified_milestone) return
+
+  const supabase = createAdminClient()
+  const { data: order } = await supabase
+    .from('orders')
+    .select('*, user:users(email, full_name)')
+    .eq('id', reversePickup.order_id)
+    .single()
+
+  const { data: item } = await supabase
+    .from('order_items')
+    .select('product_name, variant_size, variant_color, quantity')
+    .eq('id', reversePickup.order_item_id)
+    .single()
+
+  if (!order || !item) return
+
+  const orderUser = Array.isArray(order.user) ? order.user[0] : order.user
+  if (!orderUser?.email && !order.shipping_address?.phone) return
+
+  const itemLabel = formatItemLabel(
+    item.product_name,
+    item.variant_size,
+    item.variant_color
+  )
+
+  try {
+    if (orderUser?.email) {
+      await sendReversePickupStatusEmail({
+        order,
+        email: orderUser.email,
+        milestone,
+        carrierStatus,
+        trackingNumber,
+        itemLabel,
+        pickupType: reversePickup.pickup_type,
+      })
+    }
+
+    if (order.shipping_address?.phone) {
+      await notifyReversePickupMilestone({
+        order: {
+          id: order.id,
+          order_number: order.order_number,
+          user_id: order.user_id,
+          shipping_address: order.shipping_address,
+        },
+        item,
+        milestone,
+        trackingNumber,
+        pickupType: reversePickup.pickup_type,
+      })
+    }
+
+    await supabase
+      .from('delhivery_reverse_pickups')
+      .update({ last_notified_milestone: milestone })
+      .eq('id', reversePickup.id)
+  } catch (error) {
+    logger.warn('Reverse pickup status notification failed', {
+      error,
+      orderId: reversePickup.order_id,
       milestone,
     })
   }
@@ -524,4 +615,430 @@ export async function syncDelhiveryShipmentsForAdmin(options?: {
 
 export async function syncActiveDelhiveryShipments(limit = 50) {
   return syncDelhiveryShipmentsForAdmin({ limit })
+}
+
+type ReversePickupRow = {
+  id: string
+  order_id: string
+  order_item_id: string
+  pickup_type: 'return' | 'exchange'
+  awb: string | null
+  exchange_forward_awb: string | null
+  status: string
+  last_notified_milestone: string | null
+}
+
+export type DelhiveryCancelResult = {
+  ok: boolean
+  awb?: string | null
+  skipped?: boolean
+  reason?: string
+  error?: string
+}
+
+export async function cancelDelhiveryShipmentForOrder(
+  orderId: string
+): Promise<DelhiveryCancelResult> {
+  const supabase = createAdminClient()
+  const { data: shipment } = await supabase
+    .from('delhivery_shipments')
+    .select('id, awb, status, cancellation_requested_at')
+    .eq('order_id', orderId)
+    .maybeSingle()
+
+  if (!shipment?.awb) {
+    return { ok: true, skipped: true, reason: 'no_awb' }
+  }
+
+  if (shipment.cancellation_requested_at) {
+    return { ok: true, awb: shipment.awb, skipped: true, reason: 'already_requested' }
+  }
+
+  const carrierStatus = shipment.status || 'Unknown'
+
+  if (isDelhiveryOutForDelivery(carrierStatus)) {
+    return {
+      ok: false,
+      awb: shipment.awb,
+      error:
+        'Shipment is out for delivery. Ask the customer to refuse delivery; Delhivery will process it as RTO.',
+    }
+  }
+
+  if (!isDelhiveryStatusCancellable(carrierStatus)) {
+    try {
+      await syncDelhiveryShipment({
+        id: shipment.id,
+        order_id: orderId,
+        awb: shipment.awb,
+        status: carrierStatus,
+        last_notified_milestone: null,
+      })
+    } catch {
+      // Best effort refresh before re-checking cancellability.
+    }
+
+    const { data: refreshed } = await supabase
+      .from('delhivery_shipments')
+      .select('status')
+      .eq('id', shipment.id)
+      .single()
+
+    const latestStatus = refreshed?.status || carrierStatus
+    if (!isDelhiveryStatusCancellable(latestStatus)) {
+      return {
+        ok: false,
+        awb: shipment.awb,
+        error: `Shipment cannot be cancelled in its current Delhivery state (${latestStatus}).`,
+      }
+    }
+  }
+
+  try {
+    await cancelShipment(shipment.awb)
+
+    await supabase
+      .from('delhivery_shipments')
+      .update({
+        cancellation_requested_at: new Date().toISOString(),
+        status: 'Cancellation Requested',
+        last_synced_at: new Date().toISOString(),
+        error_message: null,
+      })
+      .eq('id', shipment.id)
+
+    logger.info('Delhivery shipment cancellation requested', {
+      orderId,
+      awb: shipment.awb,
+    })
+
+    try {
+      await syncDelhiveryShipment({
+        id: shipment.id,
+        order_id: orderId,
+        awb: shipment.awb,
+        status: 'Cancellation Requested',
+        last_notified_milestone: null,
+      })
+    } catch (syncError) {
+      logger.warn('Post-cancel Delhivery sync failed', { syncError, orderId })
+    }
+
+    return { ok: true, awb: shipment.awb }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    logger.error('Delhivery shipment cancellation failed', { error, orderId })
+    return { ok: false, awb: shipment.awb, error: message }
+  }
+}
+
+function reverseReference(orderNumber: string, itemId: string): string {
+  return `${orderNumber}-RVP-${itemId.slice(0, 8)}`
+}
+
+function exchangeReference(orderNumber: string, itemId: string): string {
+  return `${orderNumber}-EX-${itemId.slice(0, 8)}`
+}
+
+export type DelhiveryReversePickupResult = {
+  ok: boolean
+  reverseAwb?: string
+  exchangeForwardAwb?: string
+  error?: string
+}
+
+export async function createDelhiveryReversePickupForItem(
+  orderItemId: string
+): Promise<DelhiveryReversePickupResult> {
+  const supabase = createAdminClient()
+
+  const { data: item, error: itemError } = await supabase
+    .from('order_items')
+    .select(`
+      *,
+      orders (
+        id,
+        order_number,
+        total,
+        payment_status,
+        payment_method,
+        shipping_address
+      )
+    `)
+    .eq('id', orderItemId)
+    .single()
+
+  if (itemError || !item) {
+    return { ok: false, error: 'Order item not found' }
+  }
+
+  const order = Array.isArray(item.orders) ? item.orders[0] : item.orders
+  if (!order) {
+    return { ok: false, error: 'Parent order not found' }
+  }
+
+  const pickupType: 'return' | 'exchange' =
+    item.return_type === 'exchange' ? 'exchange' : 'return'
+
+  const { data: existing } = await supabase
+    .from('delhivery_reverse_pickups')
+    .select('id, awb, exchange_forward_awb, status')
+    .eq('order_item_id', orderItemId)
+    .maybeSingle()
+
+  if (existing?.awb) {
+    return {
+      ok: true,
+      reverseAwb: existing.awb,
+      exchangeForwardAwb: existing.exchange_forward_awb || undefined,
+    }
+  }
+
+  let reversePickupId = existing?.id
+
+  if (!reversePickupId) {
+    const { data: reservation, error: reservationError } = await supabase
+      .from('delhivery_reverse_pickups')
+      .insert({
+        order_id: order.id,
+        order_item_id: orderItemId,
+        pickup_type: pickupType,
+        status: 'creating',
+      })
+      .select('id')
+      .single()
+
+    if (reservationError) {
+      const { data: concurrent } = await supabase
+        .from('delhivery_reverse_pickups')
+        .select('id, awb, exchange_forward_awb')
+        .eq('order_item_id', orderItemId)
+        .maybeSingle()
+
+      if (concurrent?.awb) {
+        return {
+          ok: true,
+          reverseAwb: concurrent.awb,
+          exchangeForwardAwb: concurrent.exchange_forward_awb || undefined,
+        }
+      }
+      if (!concurrent) return { ok: false, error: reservationError.message }
+      reversePickupId = concurrent.id
+    } else {
+      reversePickupId = reservation.id
+    }
+  }
+
+  const returnReason =
+    item.return_custom_reason ||
+    (item.return_reason_id ? 'Return approved' : 'Customer return')
+
+  try {
+    const reverseResponse = await createReversePickup({
+      order: order as DelhiveryOrder,
+      item: {
+        product_name: item.product_name,
+        quantity: item.quantity,
+        variant_size: item.variant_size,
+        variant_color: item.variant_color,
+        product_image: item.product_image,
+        return_reason: returnReason,
+      },
+      reference: reverseReference(order.order_number, orderItemId),
+    })
+
+    const reverseCreated = parseShipmentCreationResponse(reverseResponse)
+    let exchangeForwardAwb: string | undefined
+    let exchangeCreateResponse: unknown = null
+
+    if (pickupType === 'exchange') {
+      const exchangeItem: DelhiveryOrderItem = {
+        product_name: item.product_name,
+        quantity: item.quantity,
+        variant_size: item.exchange_size || item.variant_size,
+        variant_color: item.exchange_color || item.variant_color,
+      }
+
+      try {
+        exchangeCreateResponse = await createExchangeForwardShipment({
+          order: order as DelhiveryOrder,
+          item: exchangeItem,
+          reference: exchangeReference(order.order_number, orderItemId),
+        })
+        exchangeForwardAwb =
+          parseShipmentCreationResponse(exchangeCreateResponse).awb
+      } catch (exchangeError) {
+        const exchangeMessage =
+          exchangeError instanceof Error
+            ? exchangeError.message
+            : String(exchangeError)
+
+        await supabase
+          .from('delhivery_reverse_pickups')
+          .update({
+            awb: reverseCreated.awb,
+            status: reverseCreated.status,
+            create_response: reverseResponse,
+            error_message: `Reverse pickup created but exchange forward failed: ${exchangeMessage}`,
+            last_synced_at: new Date().toISOString(),
+          })
+          .eq('id', reversePickupId)
+
+        return {
+          ok: false,
+          reverseAwb: reverseCreated.awb,
+          error: `Reverse pickup created (${reverseCreated.awb}) but exchange shipment failed: ${exchangeMessage}`,
+        }
+      }
+    }
+
+    await supabase
+      .from('delhivery_reverse_pickups')
+      .update({
+        awb: reverseCreated.awb,
+        exchange_forward_awb: exchangeForwardAwb || null,
+        status: reverseCreated.status,
+        create_response: reverseResponse,
+        exchange_create_response: exchangeCreateResponse,
+        error_message: null,
+        last_synced_at: new Date().toISOString(),
+      })
+      .eq('id', reversePickupId)
+
+    logger.info('Delhivery reverse pickup created', {
+      orderId: order.id,
+      orderItemId,
+      reverseAwb: reverseCreated.awb,
+      exchangeForwardAwb,
+      pickupType,
+    })
+
+    return {
+      ok: true,
+      reverseAwb: reverseCreated.awb,
+      exchangeForwardAwb,
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+
+    await supabase
+      .from('delhivery_reverse_pickups')
+      .update({
+        status: 'creation_failed',
+        error_message: message,
+      })
+      .eq('id', reversePickupId)
+
+    logger.error('Delhivery reverse pickup creation failed', {
+      error,
+      orderItemId,
+    })
+
+    return { ok: false, error: message }
+  }
+}
+
+export async function syncDelhiveryReversePickup(
+  reversePickup: ReversePickupRow
+): Promise<void> {
+  if (!reversePickup.awb) return
+
+  const supabase = createAdminClient()
+  const tracking = await trackShipment(reversePickup.awb)
+  const milestone = getReversePickupMilestone(
+    tracking.currentStatus,
+    tracking.statusType
+  )
+
+  await supabase
+    .from('delhivery_reverse_pickups')
+    .update({
+      status: tracking.currentStatus,
+      status_code: tracking.statusCode,
+      status_type: tracking.statusType,
+      instructions: tracking.instructions,
+      last_event_at:
+        tracking.events[tracking.events.length - 1]?.occurredAt || null,
+      last_synced_at: new Date().toISOString(),
+      tracking_response: tracking.raw,
+      error_message: null,
+    })
+    .eq('id', reversePickup.id)
+
+  if (
+    milestone &&
+    isReversePickupWhatsAppMilestone(milestone) &&
+    milestone !== reversePickup.last_notified_milestone
+  ) {
+    await notifyCustomerOfReversePickupMilestone(reversePickup, {
+      milestone,
+      carrierStatus: tracking.currentStatus,
+      trackingNumber: tracking.awb,
+    })
+  }
+
+  const reverseState = mapDelhiveryReverseStatus(tracking.currentStatus)
+
+  if (reversePickup.pickup_type === 'return' && reverseState === 'delivered_to_origin') {
+    await supabase
+      .from('order_items')
+      .update({ status: 'returned' })
+      .eq('id', reversePickup.order_item_id)
+
+    await supabase
+      .from('orders')
+      .update({ status: 'returned' })
+      .eq('id', reversePickup.order_id)
+  }
+
+  if (reversePickup.pickup_type === 'exchange' && reversePickup.exchange_forward_awb) {
+    const forwardTracking = await trackShipment(reversePickup.exchange_forward_awb)
+    const forwardDelivered =
+      forwardTracking.currentStatus.toLowerCase().includes('delivered') &&
+      !forwardTracking.currentStatus.toLowerCase().includes('undelivered')
+
+    if (forwardDelivered) {
+      await supabase
+        .from('order_items')
+        .update({ status: 'exchanged' })
+        .eq('id', reversePickup.order_item_id)
+
+      await supabase
+        .from('orders')
+        .update({ status: 'exchanged' })
+        .eq('id', reversePickup.order_id)
+    }
+  }
+}
+
+export async function syncActiveDelhiveryReversePickups(limit = 50) {
+  const supabase = createAdminClient()
+  const { data: pickups, error } = await supabase
+    .from('delhivery_reverse_pickups')
+    .select(
+      'id, order_id, order_item_id, pickup_type, awb, exchange_forward_awb, status, last_notified_milestone'
+    )
+    .not('awb', 'is', null)
+    .or(
+      'last_notified_milestone.is.null,last_notified_milestone.neq.reverse_dto'
+    )
+    .not('status', 'ilike', '%cancel%')
+    .not('status', 'ilike', '%closed%')
+    .order('last_synced_at', { ascending: true, nullsFirst: true })
+    .limit(Math.min(Math.max(limit, 1), 100))
+
+  if (error) throw error
+
+  for (const pickup of pickups || []) {
+    try {
+      await syncDelhiveryReversePickup(pickup as ReversePickupRow)
+    } catch (syncError) {
+      logger.warn('Delhivery reverse pickup sync failed', {
+        syncError,
+        reversePickupId: pickup.id,
+      })
+    }
+  }
+
+  return pickups?.length || 0
 }

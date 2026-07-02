@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { cancelDelhiveryShipmentForOrder } from '@/lib/delhivery-shipping'
 import { processItemRefund } from '@/lib/refunds'
 import logger from '@/lib/logger'
 
@@ -46,6 +47,18 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const delhiveryCancel = await cancelDelhiveryShipmentForOrder(item.order_id)
+    if (!delhiveryCancel.ok && !delhiveryCancel.skipped) {
+      return NextResponse.json(
+        {
+          error:
+            delhiveryCancel.error ||
+            'Could not cancel the Delhivery shipment for this order',
+        },
+        { status: 409 }
+      )
+    }
+
     const { error: updateError } = await supabase
       .from('order_items')
       .update({
@@ -75,6 +88,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
           success: true,
           cancelled: true,
+          delhivery: delhiveryCancel,
           refund_error:
             refundError instanceof Error
               ? refundError.message
@@ -95,13 +109,17 @@ export async function POST(req: NextRequest) {
     if (allCancelled) {
       await supabase
         .from('orders')
-        .update({ status: 'cancelled' })
+        .update({
+          status: 'cancelled',
+          cancelled_at: new Date().toISOString(),
+        })
         .eq('id', item.order_id)
     }
 
     return NextResponse.json({
       success: true,
       cancelled: true,
+      delhivery: delhiveryCancel,
       refund,
     })
   } catch (error) {

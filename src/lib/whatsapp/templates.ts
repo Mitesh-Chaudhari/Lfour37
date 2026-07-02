@@ -9,6 +9,8 @@ export const VEBLIKA_TEMPLATE_CONFIG = {
   order_cancelled: { language: 'en' },
   exchange_requested: { language: 'en' },
   return_requested: { language: 'en' },
+  return_pickup_picked_up: { language: 'en', includeUrlButton: true },
+  return_pickup_received: { language: 'en' },
   welcome_lfour37: { language: 'en' },
 } as const
 
@@ -34,6 +36,24 @@ export function isShipmentWhatsAppMilestone(
   milestone: string
 ): milestone is ShipmentWhatsAppMilestone {
   return milestone in SHIPMENT_MILESTONE_TEMPLATES
+}
+
+export type ReversePickupWhatsAppMilestone =
+  | 'reverse_picked_up'
+  | 'reverse_dto'
+
+export const REVERSE_PICKUP_MILESTONE_TEMPLATES: Record<
+  ReversePickupWhatsAppMilestone,
+  VeblikaTemplateName
+> = {
+  reverse_picked_up: 'return_pickup_picked_up',
+  reverse_dto: 'return_pickup_received',
+}
+
+export function isReversePickupWhatsAppMilestone(
+  milestone: string
+): milestone is ReversePickupWhatsAppMilestone {
+  return milestone in REVERSE_PICKUP_MILESTONE_TEMPLATES
 }
 
 /**
@@ -239,6 +259,46 @@ export function buildReturnRequestedParams(
     sanitizeWhatsAppParam(orderNumber),
     sanitizeWhatsAppParam(itemLabel, 'Order item'),
     sanitizeWhatsAppParam(currentStatus, 'Return Requested'),
+    sanitizeWhatsAppParam(ordersUrl),
+  ]
+}
+
+/**
+ * Body params for return_pickup_picked_up (4 vars + dynamic track button).
+ *
+ *   {{1}} order number
+ *   {{2}} item label
+ *   {{3}} reverse AWB
+ *   {{4}} Delhivery tracking URL
+ */
+export function buildReturnPickupPickedUpParams(
+  orderNumber: string,
+  itemLabel: string,
+  trackingNumber: string
+): string[] {
+  return [
+    sanitizeWhatsAppParam(orderNumber),
+    sanitizeWhatsAppParam(itemLabel, 'Your item'),
+    sanitizeWhatsAppParam(trackingNumber, 'N/A'),
+    sanitizeWhatsAppParam(getDelhiveryTrackingUrl(trackingNumber)),
+  ]
+}
+
+/**
+ * Body params for return_pickup_received (DTO at warehouse).
+ *
+ *   {{1}} order number
+ *   {{2}} item label
+ *   {{3}} orders dashboard URL
+ */
+export function buildReturnPickupReceivedParams(
+  orderNumber: string,
+  itemLabel: string,
+  ordersUrl: string
+): string[] {
+  return [
+    sanitizeWhatsAppParam(orderNumber),
+    sanitizeWhatsAppParam(itemLabel, 'Your item'),
     sanitizeWhatsAppParam(ordersUrl),
   ]
 }

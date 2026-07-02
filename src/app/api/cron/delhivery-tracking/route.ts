@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { syncActiveDelhiveryShipments } from '@/lib/delhivery-shipping'
+import {
+  syncActiveDelhiveryReversePickups,
+  syncActiveDelhiveryShipments,
+} from '@/lib/delhivery-shipping'
 import logger from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
@@ -52,6 +55,11 @@ export async function GET(
         limit
       )
 
+    const reverseSynced =
+      await syncActiveDelhiveryReversePickups(
+        limit
+      )
+
     return NextResponse.json({
       success: true,
       synced:
@@ -64,6 +72,7 @@ export async function GET(
           (result) =>
             !result.success
         ).length,
+      reverse_synced: reverseSynced,
       results,
     })
   } catch (error) {

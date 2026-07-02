@@ -530,6 +530,70 @@ export async function sendShipmentStatusEmail({
   })
 }
 
+export async function sendReversePickupStatusEmail({
+  order,
+  email,
+  milestone,
+  carrierStatus,
+  trackingNumber,
+  itemLabel,
+  pickupType,
+}: {
+  order: Order
+  email: string
+  milestone: 'reverse_picked_up' | 'reverse_dto'
+  carrierStatus: string
+  trackingNumber: string
+  itemLabel: string
+  pickupType?: 'return' | 'exchange'
+}): Promise<void> {
+  const ordersUrl = `${APP_URL}/dashboard/orders`
+  const delhiveryTrackingUrl = getDelhiveryTrackingUrl(trackingNumber)
+  const flowLabel = pickupType === 'exchange' ? 'exchange' : 'return'
+
+  if (milestone === 'reverse_dto') {
+    const content = `
+      <h2>We've received your ${flowLabel} item ✅</h2>
+      <p>Delhivery has delivered your item back to our facility.</p>
+      <p><strong>Order ID:</strong> ${order.order_number}</p>
+      <p><strong>Item:</strong> ${itemLabel}</p>
+      <p><strong>Carrier status:</strong> ${carrierStatus}</p>
+      ${
+        pickupType === 'exchange'
+          ? '<p>Your exchange replacement shipment will continue to update separately.</p>'
+          : '<p>We will process your refund shortly as per our return policy.</p>'
+      }
+      <a href="${ordersUrl}" class="button">View Order</a>
+    `
+
+    await deliverMail({
+      to: email,
+      subject: `${flowLabel === 'exchange' ? 'Exchange' : 'Return'} item received for order ${order.order_number}`,
+      html: baseTemplate(content),
+      context: 'reverse_pickup_dto',
+    })
+    return
+  }
+
+  const content = `
+    <h2>Your ${flowLabel} pickup is complete 📦</h2>
+    <p>Delhivery has collected your item from your address.</p>
+    <p><strong>Order ID:</strong> ${order.order_number}</p>
+    <p><strong>Item:</strong> ${itemLabel}</p>
+    <p><strong>Return tracking number:</strong> ${trackingNumber}</p>
+    <p><strong>Current status:</strong> ${carrierStatus}</p>
+    <p><strong>Track on Delhivery:</strong> <a href="${delhiveryTrackingUrl}">${delhiveryTrackingUrl}</a></p>
+    <a href="${delhiveryTrackingUrl}" class="button">Track Return Pickup</a>
+  `
+
+  await deliverMail({
+    to: email,
+    subject: `${flowLabel === 'exchange' ? 'Exchange' : 'Return'} item picked up for order ${order.order_number}`,
+    html: baseTemplate(content),
+    context: 'reverse_pickup_picked_up',
+  })
+}
+
 export async function sendPasswordResetEmail(email: string, resetUrl: string): Promise<void> {
   const content = `
     <h2>Reset Your Password</h2>
