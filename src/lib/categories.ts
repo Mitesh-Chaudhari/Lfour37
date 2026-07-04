@@ -4,7 +4,7 @@ export interface CategoryRef {
   id: string
   name: string
   slug?: string
-  parent_id: string | null
+  parent_id?: string | null
 }
 
 export interface CategorySectionGroup {
