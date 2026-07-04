@@ -128,11 +128,16 @@ export function OptimizedImage({
     )
   }
 
+  const imageSrc =
+    !useOriginalSrc && canUseTransform && transformedSrc
+      ? transformedSrc
+      : src
+
   if (!useDefaultPlaceholder) {
     return (
       <Image
-        key={resolvedSrc}
-        src={resolvedSrc}
+        key={imageSrc}
+        src={imageSrc}
         alt={alt}
         fill={fill}
         quality={quality}
@@ -153,8 +158,8 @@ export function OptimizedImage({
     <>
       {renderPlaceholderLayer()}
       <Image
-        key={resolvedSrc}
-        src={resolvedSrc}
+        key={imageSrc}
+        src={imageSrc}
         alt={alt}
         fill={fill}
         quality={quality}
