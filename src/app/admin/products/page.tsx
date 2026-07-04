@@ -1,26 +1,38 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
-import { Plus, Edit, Trash2, Eye, EyeOff } from 'lucide-react'
+import { Plus, Edit, Eye } from 'lucide-react'
 import { formatPrice } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { ProductBulkUpload } from '@/components/admin/product-bulk-upload'
 import { OptimizedImage } from '@/components/ui/optimized-image'
 import { AdminProductDeleteButton } from '@/components/admin/AdminProductDeleteButton'
+import { getProductCategoryPathLabel } from '@/lib/categories'
 
 async function getProducts() {
   const supabase = await createClient()
-  const { data } = await supabase
-    .from('products')
-    .select(`
-      *,
-      product_categories(category:categories(name))
-    `)
-    .order('created_at', { ascending: false })
-  return data || []
+
+  const [{ data: products }, { data: categories }] = await Promise.all([
+    supabase
+      .from('products')
+      .select(`
+        *,
+        product_categories(category:categories(id, name, slug, parent_id))
+      `)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('categories')
+      .select('id, name, slug, parent_id')
+      .eq('is_active', true),
+  ])
+
+  return {
+    products: products || [],
+    categories: categories || [],
+  }
 }
 
 export default async function AdminProductsPage() {
-  const products = await getProducts()
+  const { products, categories } = await getProducts()
 
   return (
     <div className="space-y-6">
@@ -79,7 +91,7 @@ export default async function AdminProductsPage() {
                   </td>
                   <td className="px-4 py-3">
                     <span className="text-gray-600 text-xs">
-                      {product.product_categories?.[0]?.category?.name || '-'}
+                      {getProductCategoryPathLabel(product.product_categories, categories) || '-'}
                     </span>
                   </td>
                   <td className="px-4 py-3">

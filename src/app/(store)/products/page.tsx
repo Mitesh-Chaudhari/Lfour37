@@ -13,6 +13,11 @@ import {
   getProductIdsFromCategorySearch,
   sanitizeSearchTerm,
 } from '@/lib/search'
+import {
+  buildCategoryTree,
+  enrichProductsWithCategoryDisplay,
+  getCategoryDescendantIds,
+} from '@/lib/categories'
 
 interface PageProps {
   searchParams: Promise<{
@@ -47,26 +52,21 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
   }
 }
 
-function buildCategoryTree(categories: any[]) {
-  const map = new Map()
-  const roots: any[] = []
+async function getAllCategories() {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('categories')
+    .select('id, name, slug, parent_id')
+    .eq('is_active', true)
+    .order('sort_order')
 
-  categories.forEach((cat) => {
-    map.set(cat.id, { ...cat, children: [] })
-  })
-
-  categories.forEach((cat) => {
-    if (cat.parent_id) {
-      map.get(cat.parent_id)?.children.push(map.get(cat.id))
-    } else {
-      roots.push(map.get(cat.id))
-    }
-  })
-
-  return roots
+  return data || []
 }
 
-async function getProducts(searchParams: Awaited<PageProps['searchParams']>) {
+async function getProducts(
+  searchParams: Awaited<PageProps['searchParams']>,
+  allCategories: { id: string; name: string; slug: string; parent_id: string | null }[]
+) {
   const supabase = await createClient()
 
   const page = Number(searchParams.page) || 1
@@ -99,24 +99,13 @@ async function getProducts(searchParams: Awaited<PageProps['searchParams']>) {
   ////////////////////////////////////////////////////////////////
 
   if (searchParams.category) {
-    const { data: allCategories } = await supabase
-      .from('categories')
-      .select('id, slug, parent_id')
+    const selected = allCategories.find(
+      (category) => category.slug === searchParams.category
+    )
 
-    if (allCategories) {
-      const selected = allCategories.find(
-        (c) => c.slug === searchParams.category
-      )
-
-      if (selected) {
-        const childIds = allCategories
-          .filter((c) => c.parent_id === selected.id)
-          .map((c) => c.id)
-
-        const ids = [selected.id, ...childIds]
-
-        query = query.in('product_categories.category_id', ids)
-      }
+    if (selected) {
+      const ids = getCategoryDescendantIds(selected.id, allCategories)
+      query = query.in('product_categories.category_id', ids)
     }
   }
 
@@ -203,6 +192,8 @@ async function getProducts(searchParams: Awaited<PageProps['searchParams']>) {
     )
   }
 
+  products = enrichProductsWithCategoryDisplay(products, allCategories)
+
   return { products, total: count || 0, page, perPage }
 }
 
@@ -210,16 +201,12 @@ async function getProducts(searchParams: Awaited<PageProps['searchParams']>) {
 // ✅ FILTER OPTIONS (NOW WITH TREE)
 //////////////////////////////////////////////////////////////////
 
-async function getFilterOptions() {
+async function getFilterOptions(
+  allCategories: { id: string; name: string; slug: string; parent_id: string | null }[]
+) {
   const supabase = await createClient()
 
-  const [categoriesRes, variantsRes, sizesRes] = await Promise.all([
-    supabase
-      .from('categories')
-      .select('id, name, slug, parent_id')
-      .eq('is_active', true)
-      .order('sort_order'),
-
+  const [variantsRes, sizesRes] = await Promise.all([
     supabase
       .from('product_variants')
       .select(`
@@ -264,7 +251,7 @@ async function getFilterOptions() {
     ),
   ].sort()
 
-  const categoryTree = buildCategoryTree(categoriesRes.data || [])
+  const categoryTree = buildCategoryTree(allCategories)
 
   return {
     categories: categoryTree,
@@ -279,9 +266,13 @@ async function getFilterOptions() {
 
 export default async function ProductsPage({ searchParams }: PageProps) {
   const params = await searchParams
+  const allCategories = await getAllCategories()
 
   const [{ products, total, page, perPage }, filterOptions] =
-    await Promise.all([getProducts(params), getFilterOptions()])
+    await Promise.all([
+      getProducts(params, allCategories),
+      getFilterOptions(allCategories),
+    ])
 
   const totalPages = Math.ceil(total / perPage)
 

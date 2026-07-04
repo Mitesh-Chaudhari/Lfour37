@@ -6,6 +6,12 @@ import { ProductReviews } from '@/components/product/product-reviews'
 import { ProductSection } from '@/components/home/product-section'
 import { SizeGuideList } from '@/components/size-guide/size-guide-section'
 import { getSizeGuidesForCategories } from '@/lib/size-guides'
+import {
+  enrichProductsWithCategoryDisplay,
+  getCategoryPath,
+  getDeepestCategoryId,
+  extractCategoryIdsFromProduct,
+} from '@/lib/categories'
 import type { Metadata } from 'next'
 
 interface PageProps {
@@ -93,12 +99,33 @@ export default async function ProductDetailPage({ params }: PageProps) {
 
   if (!product) notFound()
 
-  const categoryIds = product.categories?.map((pc: { category: { id: string } }) => pc.category.id) || []
-  const [relatedProducts, sizeOrder, sizeGuides] = await Promise.all([
+  const supabase = await createClient()
+  const { data: allCategories } = await supabase
+    .from('categories')
+    .select('id, name, slug, parent_id')
+    .eq('is_active', true)
+
+  const categoryIds = extractCategoryIdsFromProduct(product.categories)
+  const deepestCategoryId = getDeepestCategoryId(categoryIds, allCategories || [])
+  const categoryBreadcrumb = deepestCategoryId
+    ? getCategoryPath(deepestCategoryId, allCategories || [])
+    : []
+
+  const [relatedProductsRaw, sizeOrder, sizeGuides] = await Promise.all([
     getRelatedProducts(categoryIds, product.id),
     getSizeOrder(),
     getSizeGuidesForCategories(categoryIds),
   ])
+
+  const enrichedProduct = enrichProductsWithCategoryDisplay(
+    [product],
+    allCategories || []
+  )[0]
+
+  const relatedProducts = enrichProductsWithCategoryDisplay(
+    relatedProductsRaw,
+    allCategories || []
+  )
 
   // JSON-LD structured data
   const jsonLd = {
@@ -142,17 +169,17 @@ export default async function ProductDetailPage({ params }: PageProps) {
           <a href="/" className="hover:text-purple-600">Home</a>
           <span>/</span>
           <a href="/products" className="hover:text-purple-600">Products</a>
-          {product.categories?.[0]?.category && (
-            <>
+          {categoryBreadcrumb.map((category) => (
+            <span key={category.id} className="flex items-center gap-2">
               <span>/</span>
               <a
-                href={`/products?category=${product.categories[0].category.slug}`}
+                href={`/products?category=${category.slug}`}
                 className="hover:text-purple-600"
               >
-                {product.categories[0].category.name}
+                {category.name}
               </a>
-            </>
-          )}
+            </span>
+          ))}
           <span>/</span>
           <span className="text-gray-900 font-medium truncate max-w-xs">{product.name}</span>
         </nav>
@@ -160,7 +187,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
         {/* Main product section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-16">
           <ProductGallery images={product.images} productName={product.name} />
-          <ProductInfo product={product} sizeOrder={sizeOrder} sizeGuides={sizeGuides} />
+          <ProductInfo product={enrichedProduct} sizeOrder={sizeOrder} sizeGuides={sizeGuides} />
         </div>
 
         {sizeGuides.length > 0 && (

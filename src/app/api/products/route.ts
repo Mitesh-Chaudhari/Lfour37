@@ -5,12 +5,18 @@ import {
   getProductIdsFromCategorySearch,
   sanitizeSearchTerm,
 } from '@/lib/search'
+import { getCategoryDescendantIds, enrichProductsWithCategoryDisplay } from '@/lib/categories'
 
 export async function GET(
   req: NextRequest
 ) {
   const supabase =
     await createClient()
+
+  const { data: allCategories } = await supabase
+    .from('categories')
+    .select('id, name, slug, parent_id')
+    .eq('is_active', true)
 
   const searchParams =
     req.nextUrl.searchParams
@@ -122,47 +128,11 @@ export async function GET(
   //////////////////////////////////////////////////////
 
   if (category) {
-
-    const {
-      data:
-        allCategories,
-    } =
-      await supabase
-        .from(
-          'categories'
-        )
-        .select(
-          'id, slug, parent_id'
-        )
-
-    const selected =
-      allCategories?.find(
-        (c) =>
-          c.slug ===
-          category
-      )
+    const selected = allCategories?.find((item) => item.slug === category)
 
     if (selected) {
-
-      const childIds =
-        allCategories
-          ?.filter(
-            (c) =>
-              c.parent_id ===
-              selected.id
-          )
-          .map(
-            (c) => c.id
-          ) || []
-
-      query =
-        query.in(
-          'product_categories.category_id',
-          [
-            selected.id,
-            ...childIds,
-          ]
-        )
+      const ids = getCategoryDescendantIds(selected.id, allCategories || [])
+      query = query.in('product_categories.category_id', ids)
     }
   }
 
@@ -420,6 +390,11 @@ export async function GET(
           )
       )
   }
+
+  products = enrichProductsWithCategoryDisplay(
+    products,
+    allCategories || []
+  )
 
   //////////////////////////////////////////////////////
   // RESPONSE

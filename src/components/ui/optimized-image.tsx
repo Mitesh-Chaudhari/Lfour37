@@ -50,7 +50,8 @@ export function OptimizedImage({
   const [loaded, setLoaded] = useState(false)
   const [useOriginalSrc, setUseOriginalSrc] = useState(false)
 
-  const transformedSrc = getSupabaseTransformedImageSrc(src, variant, quality)
+  const resolvedQuality = Number(quality)
+  const transformedSrc = getSupabaseTransformedImageSrc(src, variant, resolvedQuality)
   const canUseTransform = Boolean(transformedSrc && transformedSrc !== src)
 
   useEffect(() => {

@@ -15,6 +15,7 @@ import { OptimizedImage } from '@/components/ui/optimized-image'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { resolveHsnFromCategories } from '@/lib/hsn'
+import { buildCategoryTree, getDeepestSelectedCategoryIds } from '@/lib/categories'
 
 interface ProductFormProps {
   categories: {
@@ -85,25 +86,6 @@ const COLOR_GROUPS = [
   'Beige',
   'Multi Color',
 ]
-
-const buildCategoryTree = (categories: any[]) => {
-  const map = new Map()
-  const roots: any[] = []
-
-  categories.forEach((cat) => {
-    map.set(cat.id, { ...cat, children: [] })
-  })
-
-  categories.forEach((cat) => {
-    if (cat.parent_id) {
-      map.get(cat.parent_id)?.children.push(map.get(cat.id))
-    } else {
-      roots.push(map.get(cat.id))
-    }
-  })
-
-  return roots
-}
 
 const CategoryNode = ({
   category,
@@ -533,10 +515,19 @@ export function ProductForm({
 
       if (!productId) throw new Error('No product ID')
 
-      // Update categories
+      // Update categories — store only the most specific selected categories
+      const categoryIdsToSave = getDeepestSelectedCategoryIds(
+        data.category_ids,
+        categories.map((category) => ({
+          id: category.id,
+          name: category.name,
+          parent_id: category.parent_id ?? null,
+        }))
+      )
+
       await supabase.from('product_categories').delete().eq('product_id', productId)
       await supabase.from('product_categories').insert(
-        data.category_ids.map((cat_id) => ({ product_id: productId, category_id: cat_id }))
+        categoryIdsToSave.map((cat_id) => ({ product_id: productId, category_id: cat_id }))
       )
       // =========================
       // DELETE REMOVED VARIANTS

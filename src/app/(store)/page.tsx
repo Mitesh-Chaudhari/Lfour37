@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { HeroBanner } from '@/components/home/hero-banner'
 import { getActiveHeroSlides } from '@/lib/hero-slides'
+import { enrichProductsWithCategoryDisplay } from '@/lib/categories'
 import { CategoryGrid } from '@/components/home/category-grid'
 import { ProductSection } from '@/components/home/product-section'
 import { PromoBanner } from '@/components/home/promo-banner'
@@ -45,19 +46,19 @@ async function getHomeData() {
 
     supabase
       .from('categories')
-      .select('*')
-      .eq('is_active', true)
-      .is('parent_id', null)
-      .order('sort_order', { ascending: true }),
+      .select('id, name, slug, parent_id')
+      .eq('is_active', true),
 
     getActiveHeroSlides(),
   ])
 
+  const allCategories = categoriesRes.data || []
+
   return {
-    featured: featuredRes.data || [],
-    newArrivals: newArrivalsRes.data || [],
-    trending: trendingRes.data || [],
-    categories: categoriesRes.data || [],
+    featured: enrichProductsWithCategoryDisplay(featuredRes.data || [], allCategories),
+    newArrivals: enrichProductsWithCategoryDisplay(newArrivalsRes.data || [], allCategories),
+    trending: enrichProductsWithCategoryDisplay(trendingRes.data || [], allCategories),
+    categories: allCategories.filter((category) => !category.parent_id),
     heroSlides,
   }
 }

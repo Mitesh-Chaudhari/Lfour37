@@ -252,7 +252,12 @@ export function ProductCard({ product, className }: ProductCardProps) {
 
       {/* Product info */}
       <div className="mt-3 space-y-1">
-        <p className="text-xs text-gray-500">{product.categories?.[0]?.name}</p>
+        <p className="text-xs text-gray-500 line-clamp-1">
+          {product.primary_category_label ||
+            (product.categories as { category?: { name?: string } }[] | undefined)?.[0]?.category?.name ||
+            product.categories?.[0]?.name ||
+            ''}
+        </p>
         <h3
           className={cn(
             'text-sm font-medium line-clamp-1 transition-colors',

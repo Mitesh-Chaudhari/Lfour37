@@ -74,6 +74,8 @@ export interface Product {
   updated_at: string
   variants?: ProductVariant[]
   categories?: Category[]
+  primary_category_label?: string
+  primary_category_slug?: string
 }
 
 export interface ProductVariant {

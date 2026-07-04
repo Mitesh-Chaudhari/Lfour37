@@ -227,14 +227,21 @@ export function ProductInfo({ product, sizeOrder = [], sizeGuides = [] }: Produc
     <div className="space-y-6">
       {/* Category & Badges */}
       <div className="flex items-center gap-2 flex-wrap">
-        {(product.categories as any)?.[0]?.category && (
+        {product.primary_category_label ? (
           <Link
-            href={`/products?category=${(product.categories as any)[0].category.slug}`}
+            href={`/products?category=${product.primary_category_slug || ''}`}
             className="text-sm text-purple-600 hover:underline"
           >
-            {(product.categories as any)[0].category.name}
+            {product.primary_category_label}
           </Link>
-        )}
+        ) : (product.categories as { category?: { slug?: string; name?: string } }[] | undefined)?.[0]?.category ? (
+          <Link
+            href={`/products?category=${(product.categories as { category: { slug: string } }[])[0].category.slug}`}
+            className="text-sm text-purple-600 hover:underline"
+          >
+            {(product.categories as { category: { name: string } }[])[0].category.name}
+          </Link>
+        ) : null}
         {product.is_new_arrival && <Badge variant="new">New</Badge>}
         {discount > 0 && <Badge variant="sale">-{discount}% OFF</Badge>}
         {product.is_trending && <Badge variant="trending">Trending</Badge>}
