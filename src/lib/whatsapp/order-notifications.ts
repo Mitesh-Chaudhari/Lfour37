@@ -5,6 +5,8 @@ import {
   buildOrderDeliveredParams,
   buildOrderShipmentMilestoneParams,
   buildExchangeRequestedParams,
+  buildExchangePickupPickedUpParams,
+  buildExchangePickupReceivedParams,
   buildReturnPickupPickedUpParams,
   buildReturnPickupReceivedParams,
   buildReturnRequestedParams,
@@ -13,7 +15,7 @@ import {
   formatOrderItemsSummary,
   formatWhatsAppStatusLabel,
   getDelhiveryTrackingUrlButtonParam,
-  REVERSE_PICKUP_MILESTONE_TEMPLATES,
+  getReversePickupTemplateName,
   SHIPMENT_MILESTONE_TEMPLATES,
   type ReversePickupWhatsAppMilestone,
   type ShipmentWhatsAppMilestone,
@@ -24,6 +26,8 @@ type OrderItem = {
   product_name: string
   variant_size?: string | null
   variant_color?: string | null
+  exchange_size?: string | null
+  exchange_color?: string | null
   quantity: number
 }
 
@@ -40,8 +44,28 @@ type OrderForWhatsApp = {
   items?: OrderItem[]
 }
 
+function getCustomerAppUrl(): string {
+  const configuredUrl = process.env.NEXT_PUBLIC_APP_URL?.trim()
+
+  if (configuredUrl) {
+    try {
+      const url = new URL(configuredUrl)
+      const isLocalhost =
+        url.hostname === 'localhost' || url.hostname === '127.0.0.1'
+
+      if (!isLocalhost) {
+        return url.origin.replace(/\/$/, '')
+      }
+    } catch {
+      // Fall through to the customer-facing production URL.
+    }
+  }
+
+  return 'https://www.lfour37.com'
+}
+
 function getOrdersUrl(): string {
-  return `${process.env.NEXT_PUBLIC_APP_URL || 'https://www.lfour37.com'}/dashboard/orders`
+  return `${getCustomerAppUrl()}/dashboard/orders`
 }
 
 function getOrderPhone(order: OrderForWhatsApp): string | null {
@@ -259,41 +283,61 @@ export async function notifyReversePickupMilestone({
   const phone = getOrderPhone(order as OrderForWhatsApp)
   if (!phone || !isWhatsAppConfigured()) return
 
+  const flow: 'return' | 'exchange' = pickupType === 'exchange' ? 'exchange' : 'return'
   const itemLabel = formatItemLabel(
     item.product_name,
     item.variant_size,
     item.variant_color
   )
-  const templateName = REVERSE_PICKUP_MILESTONE_TEMPLATES[milestone]
+  const templateName = getReversePickupTemplateName(milestone, flow)
   const awb = trackingNumber?.trim() || 'N/A'
 
   try {
     if (milestone === 'reverse_picked_up') {
+      const variables =
+        flow === 'exchange'
+          ? buildExchangePickupPickedUpParams(
+              order.order_number,
+              itemLabel,
+              awb
+            )
+          : buildReturnPickupPickedUpParams(
+              order.order_number,
+              itemLabel,
+              awb
+            )
+
       await sendWhatsAppTemplate({
         phone,
         userId: order.user_id,
         orderId: order.id,
         templateName,
-        variables: buildReturnPickupPickedUpParams(
-          order.order_number,
-          itemLabel,
-          awb
-        ),
+        variables,
         urlButtonParam: getDelhiveryTrackingUrlButtonParam(awb),
       })
       return
     }
+
+    const variables =
+      flow === 'exchange'
+        ? buildExchangePickupReceivedParams(
+            order.order_number,
+            itemLabel,
+            formatItemVariant(item.exchange_size, item.exchange_color),
+            getOrdersUrl()
+          )
+        : buildReturnPickupReceivedParams(
+            order.order_number,
+            itemLabel,
+            getOrdersUrl()
+          )
 
     await sendWhatsAppTemplate({
       phone,
       userId: order.user_id,
       orderId: order.id,
       templateName,
-      variables: buildReturnPickupReceivedParams(
-        order.order_number,
-        itemLabel,
-        getOrdersUrl()
-      ),
+      variables,
     })
   } catch (error) {
     logger.error('Reverse pickup milestone WhatsApp failed', {

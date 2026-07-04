@@ -166,7 +166,9 @@ async function notifyCustomerOfReversePickupMilestone(
 
   const { data: item } = await supabase
     .from('order_items')
-    .select('product_name, variant_size, variant_color, quantity')
+    .select(
+      'product_name, variant_size, variant_color, exchange_size, exchange_color, quantity'
+    )
     .eq('id', reversePickup.order_item_id)
     .single()
 

@@ -11,6 +11,8 @@ export const VEBLIKA_TEMPLATE_CONFIG = {
   return_requested: { language: 'en' },
   return_pickup_picked_up: { language: 'en', includeUrlButton: true },
   return_pickup_received: { language: 'en' },
+  exchange_pickup_picked_up: { language: 'en', includeUrlButton: true },
+  exchange_pickup_received: { language: 'en' },
   welcome_lfour37: { language: 'en' },
 } as const
 
@@ -48,6 +50,24 @@ export const REVERSE_PICKUP_MILESTONE_TEMPLATES: Record<
 > = {
   reverse_picked_up: 'return_pickup_picked_up',
   reverse_dto: 'return_pickup_received',
+}
+
+export const EXCHANGE_PICKUP_MILESTONE_TEMPLATES: Record<
+  ReversePickupWhatsAppMilestone,
+  VeblikaTemplateName
+> = {
+  reverse_picked_up: 'exchange_pickup_picked_up',
+  reverse_dto: 'exchange_pickup_received',
+}
+
+export function getReversePickupTemplateName(
+  milestone: ReversePickupWhatsAppMilestone,
+  pickupType: 'return' | 'exchange' = 'return'
+): VeblikaTemplateName {
+  if (pickupType === 'exchange') {
+    return EXCHANGE_PICKUP_MILESTONE_TEMPLATES[milestone]
+  }
+  return REVERSE_PICKUP_MILESTONE_TEMPLATES[milestone]
 }
 
 export function isReversePickupWhatsAppMilestone(
@@ -299,6 +319,44 @@ export function buildReturnPickupReceivedParams(
   return [
     sanitizeWhatsAppParam(orderNumber),
     sanitizeWhatsAppParam(itemLabel, 'Your item'),
+    sanitizeWhatsAppParam(ordersUrl),
+  ]
+}
+
+/**
+ * Body params for exchange_pickup_picked_up (4 vars + dynamic track button).
+ *
+ *   {{1}} order number
+ *   {{2}} original item label being collected
+ *   {{3}} reverse AWB
+ *   {{4}} Delhivery tracking URL
+ */
+export function buildExchangePickupPickedUpParams(
+  orderNumber: string,
+  itemLabel: string,
+  trackingNumber: string
+): string[] {
+  return buildReturnPickupPickedUpParams(orderNumber, itemLabel, trackingNumber)
+}
+
+/**
+ * Body params for exchange_pickup_received (DTO at warehouse).
+ *
+ *   {{1}} order number
+ *   {{2}} original item label returned
+ *   {{3}} new exchange variant (size / color)
+ *   {{4}} orders dashboard URL
+ */
+export function buildExchangePickupReceivedParams(
+  orderNumber: string,
+  itemLabel: string,
+  exchangeVariant: string,
+  ordersUrl: string
+): string[] {
+  return [
+    sanitizeWhatsAppParam(orderNumber),
+    sanitizeWhatsAppParam(itemLabel, 'Your item'),
+    sanitizeWhatsAppParam(exchangeVariant, 'New size / color'),
     sanitizeWhatsAppParam(ordersUrl),
   ]
 }

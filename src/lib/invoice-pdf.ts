@@ -21,6 +21,26 @@ function formatPdfInr(amount: number, decimals = 2): string {
   })}`
 }
 
+function getCustomerAppUrl(): string {
+  const configuredUrl = process.env.NEXT_PUBLIC_APP_URL?.trim()
+
+  if (configuredUrl) {
+    try {
+      const url = new URL(configuredUrl)
+      const isLocalhost =
+        url.hostname === 'localhost' || url.hostname === '127.0.0.1'
+
+      if (!isLocalhost) {
+        return url.origin.replace(/\/$/, '')
+      }
+    } catch {
+      // Fall through to the customer-facing production URL.
+    }
+  }
+
+  return 'https://www.lfour37.com'
+}
+
 function getCompanyConfig() {
   return {
     name:
@@ -37,10 +57,7 @@ function getCompanyConfig() {
     cin: process.env.INVOICE_COMPANY_CIN || 'U14101GJ2025PTC170456',
     supportPhone: process.env.INVOICE_SUPPORT_PHONE || '+91-9978437437',
     supportEmail: process.env.INVOICE_SUPPORT_EMAIL || 'support@lfour37.com',
-    website:
-      process.env.INVOICE_COMPANY_WEBSITE ||
-      process.env.NEXT_PUBLIC_APP_URL ||
-      'https://www.lfour37.com',
+    website: process.env.INVOICE_COMPANY_WEBSITE || getCustomerAppUrl(),
   }
 }
 

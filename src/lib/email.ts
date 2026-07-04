@@ -202,9 +202,30 @@ async function deliverMail(options: {
   }
 }
 const APP_NAME = 'Lfour37'
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://www.lfour37.com/'
 const ORDER_NOTIFICATION_EMAIL =
   process.env.ORDER_NOTIFICATION_EMAIL || 'order.lfour37@gmail.com'
+
+function getCustomerAppUrl(): string {
+  const configuredUrl = process.env.NEXT_PUBLIC_APP_URL?.trim()
+
+  if (configuredUrl) {
+    try {
+      const url = new URL(configuredUrl)
+      const isLocalhost =
+        url.hostname === 'localhost' || url.hostname === '127.0.0.1'
+
+      if (!isLocalhost) {
+        return url.origin.replace(/\/$/, '')
+      }
+    } catch {
+      // Fall through to the customer-facing production URL.
+    }
+  }
+
+  return 'https://www.lfour37.com'
+}
+
+const APP_URL = getCustomerAppUrl()
 
 function formatEmailInr(amount: number): string {
   return `Rs. ${amount.toLocaleString('en-IN', {
