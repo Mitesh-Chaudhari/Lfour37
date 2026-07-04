@@ -18,6 +18,7 @@ import type { SizeGuide } from '@/lib/size-guides'
 import { SizeGuideList } from '@/components/size-guide/size-guide-section'
 import toast from 'react-hot-toast'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { getProductCategoryDisplay } from '@/lib/categories'
 
 interface ProductInfoProps {
   product: Product
@@ -223,23 +224,22 @@ export function ProductInfo({ product, sizeOrder = [], sizeGuides = [] }: Produc
     }
   }
 
+  const categoryDisplay = getProductCategoryDisplay({
+    primary_category_label: product.primary_category_label,
+    primary_category_slug: product.primary_category_slug,
+    categories: product.categories as Parameters<typeof getProductCategoryDisplay>[0]['categories'],
+  })
+
   return (
     <div className="space-y-6">
       {/* Category & Badges */}
       <div className="flex items-center gap-2 flex-wrap">
-        {product.primary_category_label ? (
+        {categoryDisplay?.slug ? (
           <Link
-            href={`/products?category=${product.primary_category_slug || ''}`}
+            href={`/products?category=${categoryDisplay.slug}`}
             className="text-sm text-purple-600 hover:underline"
           >
-            {product.primary_category_label}
-          </Link>
-        ) : (product.categories as { category?: { slug?: string; name?: string } }[] | undefined)?.[0]?.category ? (
-          <Link
-            href={`/products?category=${(product.categories as { category: { slug: string } }[])[0].category.slug}`}
-            className="text-sm text-purple-600 hover:underline"
-          >
-            {(product.categories as { category: { name: string } }[])[0].category.name}
+            {categoryDisplay.label}
           </Link>
         ) : null}
         {product.is_new_arrival && <Badge variant="new">New</Badge>}

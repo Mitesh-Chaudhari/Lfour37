@@ -189,6 +189,30 @@ export function enrichProductsWithCategoryDisplay<
   }))
 }
 
+export function getProductCategoryDisplay(product: {
+  primary_category_label?: string
+  primary_category_slug?: string
+  categories?: ProductCategoryJoin[] | null
+}): { label: string; slug: string } | null {
+  if (product.primary_category_label) {
+    return {
+      label: product.primary_category_label,
+      slug: product.primary_category_slug || '',
+    }
+  }
+
+  const first = product.categories?.[0]
+  if (!first) return null
+
+  const category = 'category' in first ? first.category : first
+  if (!category?.name) return null
+
+  return {
+    label: category.name,
+    slug: category.slug || '',
+  }
+}
+
 export function getSortedCategoryChildren(
   parentId: string,
   categories: Category[]
