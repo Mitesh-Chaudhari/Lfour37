@@ -7,6 +7,7 @@ import {
   DEFAULT_IMAGE_QUALITY,
   IMAGE_BLUR_DATA_URL,
   IMAGE_SIZE_PRESETS,
+  getSupabaseTransformedImageSrc,
   isOptimizableImageSrc,
   shouldUseUnoptimizedImage,
   type OptimizedImageVariant,
@@ -47,14 +48,21 @@ export function OptimizedImage({
 }: OptimizedImageProps) {
   const [failed, setFailed] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [useOriginalSrc, setUseOriginalSrc] = useState(false)
+
+  const transformedSrc = getSupabaseTransformedImageSrc(src, variant, quality)
+  const canUseTransform = Boolean(transformedSrc && transformedSrc !== src)
 
   useEffect(() => {
     setFailed(false)
     setLoaded(false)
-  }, [src])
+    setUseOriginalSrc(false)
+  }, [src, variant, quality])
 
   const isValidSrc = isOptimizableImageSrc(src)
-  const skipOptimization = Boolean(unoptimized || shouldUseUnoptimizedImage(src))
+  const resolvedSrc =
+    useOriginalSrc || !canUseTransform ? src : transformedSrc
+  const skipOptimization = Boolean(unoptimized || shouldUseUnoptimizedImage(resolvedSrc))
   const resolvedSizes = sizes ?? (variant ? IMAGE_SIZE_PRESETS[variant] : undefined)
   const useDefaultPlaceholder = Boolean(placeholderImage)
   const useBlur =
@@ -65,6 +73,17 @@ export function OptimizedImage({
     !useDefaultPlaceholder
   const resolvedPlaceholder = useBlur ? 'blur' : 'empty'
   const resolvedBlur = useBlur ? (blurDataURL ?? IMAGE_BLUR_DATA_URL) : undefined
+
+  const handleImageError: ImageProps['onError'] = (event) => {
+    if (canUseTransform && !useOriginalSrc) {
+      setUseOriginalSrc(true)
+      setLoaded(false)
+      return
+    }
+
+    setFailed(true)
+    onError?.(event)
+  }
 
   const placeholderLayerClassName = cn(
     'object-cover',
@@ -111,8 +130,8 @@ export function OptimizedImage({
   if (!useDefaultPlaceholder) {
     return (
       <Image
-        key={src}
-        src={src}
+        key={resolvedSrc}
+        src={resolvedSrc}
         alt={alt}
         fill={fill}
         quality={quality}
@@ -122,10 +141,7 @@ export function OptimizedImage({
         unoptimized={skipOptimization}
         placeholder={resolvedPlaceholder}
         blurDataURL={resolvedBlur}
-        onError={(event) => {
-          setFailed(true)
-          onError?.(event)
-        }}
+        onError={handleImageError}
         onLoad={onLoad}
         {...props}
       />
@@ -136,8 +152,8 @@ export function OptimizedImage({
     <>
       {renderPlaceholderLayer()}
       <Image
-        key={src}
-        src={src}
+        key={resolvedSrc}
+        src={resolvedSrc}
         alt={alt}
         fill={fill}
         quality={quality}
@@ -151,10 +167,7 @@ export function OptimizedImage({
         priority={priority}
         unoptimized={skipOptimization}
         placeholder="empty"
-        onError={(event) => {
-          setFailed(true)
-          onError?.(event)
-        }}
+        onError={handleImageError}
         onLoad={(event) => {
           setLoaded(true)
           onLoad?.(event)

@@ -96,6 +96,14 @@ export async function processItemRefund(itemId: string) {
     throw new Error('This item has already been refunded')
   }
 
+  if (refundItem.return_type === 'exchange') {
+    throw new Error('Exchange items are not refundable')
+  }
+
+  if (refundItem.return_type === 'return' && refundItem.status !== 'returned') {
+    throw new Error('Return refund is available only after product check')
+  }
+
   const { data: order, error: orderError } = await supabase
     .from('orders')
     .select('id, order_number, total, payment_method, payment_status, status')

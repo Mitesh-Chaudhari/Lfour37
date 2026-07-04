@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { cancelDelhiveryShipmentForOrder } from '@/lib/delhivery-shipping'
+import { processItemRefund } from '@/lib/refunds'
 import { notifyOrderCancelled } from '@/lib/whatsapp/order-notifications'
 import logger from '@/lib/logger'
 
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest) {
 
   const { data: order } = await supabase
     .from('orders')
-    .select('status, user_id')
+    .select('status, user_id, payment_method, payment_status')
     .eq('id', item.order_id)
     .single()
 
@@ -48,17 +49,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  if (['delivered', 'cancelled'].includes(order.status)) {
+  if (['shipped', 'out_for_delivery', 'delivered', 'cancelled'].includes(order.status)) {
     return NextResponse.json(
-      { error: 'Cannot cancel this order' },
+      { error: 'Cannot cancel this order after shipment' },
       { status: 400 }
     )
   }
 
-  const newStatus =
-    ['shipped', 'out_for_delivery'].includes(order.status)
-      ? 'cancel_requested'
-      : 'cancelled'
+  const newStatus = 'cancelled'
 
   if (newStatus === 'cancelled') {
     const delhiveryCancel = await cancelDelhiveryShipmentForOrder(item.order_id)
@@ -118,6 +116,25 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  let refund = null
+  let refundError: string | null = null
+
+  if (
+    order.payment_status === 'completed' &&
+    order.payment_method !== 'cod'
+  ) {
+    try {
+      refund = await processItemRefund(order_item_id)
+    } catch (error) {
+      refundError = error instanceof Error ? error.message : 'Refund failed'
+      logger.error('Cancellation refund failed', {
+        error,
+        orderId: item.order_id,
+        orderItemId: order_item_id,
+      })
+    }
+  }
+
   if (newStatus === 'cancelled' || newStatus === 'cancel_requested') {
     const { data: orderDetails } = await supabase
       .from('orders')
@@ -144,5 +161,9 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  return NextResponse.json({ success: true })
+  return NextResponse.json({
+    success: true,
+    refund,
+    refund_error: refundError,
+  })
 }

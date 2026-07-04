@@ -95,6 +95,8 @@ export default async function OrdersPage() {
       *,
       items:order_items(
         id,
+        product_id,
+        variant_id,
         status,
         return_status,
         cancel_custom_reason,
@@ -105,7 +107,16 @@ export default async function OrdersPage() {
         quantity,
         total_price,
         variant_size,
-        variant_color
+        variant_color,
+        product:products(
+          variants:product_variants(
+            id,
+            size,
+            color,
+            stock,
+            is_active
+          )
+        )
       ),
       shipping_method:shipping_methods(name, estimated_days_min, estimated_days_max)
       ,
@@ -270,7 +281,7 @@ export default async function OrdersPage() {
                               />
 
                               {/* CANCEL */}
-                              {['pending', 'paid', 'processing', 'shipped'].includes(order.status) &&
+                              {['pending', 'paid', 'processing'].includes(order.status) &&
                                 !isItemCancelled &&
                                 !item.return_status && (
                                   <OrderItemActions item={item} />
@@ -286,7 +297,13 @@ export default async function OrdersPage() {
                               ].includes(order.status) &&
                                 !isItemCancelled &&
                                 !item.return_status && (
-                                  <ReturnItemActions item={item} />
+                                  <ReturnItemActions
+                                    item={{
+                                      ...item,
+                                      order_payment_method:
+                                        order.payment_method,
+                                    }}
+                                  />
                                 )}
                             </div>
                           </div>

@@ -39,20 +39,47 @@ export async function POST(req: NextRequest) {
             )
         }
 
+        if (!['return', 'exchange'].includes(return_type)) {
+            return NextResponse.json(
+                { error: 'Invalid request type' },
+                { status: 400 }
+            )
+        }
+
         // HANDLE OTHER REASON
         const finalReasonId =
             return_reason_id === 'other'
                 ? null
-                : return_reason_id
+                : return_reason_id || null
 
         const finalCustomReason =
-            return_reason_id === 'other'
-                ? return_custom_reason
+            return_reason_id === 'other' || !return_reason_id
+                ? return_custom_reason?.trim() || null
                 : null
+
+        if (!finalReasonId && !finalCustomReason) {
+            return NextResponse.json(
+                { error: 'Reason required' },
+                { status: 400 }
+            )
+        }
 
         const { data: item } = await supabase
             .from('order_items')
-            .select('id, order_id, orders!inner(user_id)')
+            .select(`
+                id,
+                order_id,
+                product_id,
+                variant_size,
+                variant_color,
+                status,
+                return_status,
+                orders!inner(
+                    user_id,
+                    status,
+                    payment_method
+                )
+            `)
             .eq('id', order_item_id)
             .single()
 
@@ -66,9 +93,102 @@ export async function POST(req: NextRequest) {
         const orderOwnerId = Array.isArray(item.orders)
             ? item.orders[0]?.user_id
             : (item.orders as { user_id?: string } | null)?.user_id
+        const orderData = Array.isArray(item.orders)
+            ? item.orders[0]
+            : (item.orders as {
+                user_id?: string
+                status?: string
+                payment_method?: string
+              } | null)
 
         if (orderOwnerId !== user.id) {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+        }
+
+        if (orderData?.status !== 'delivered') {
+            return NextResponse.json(
+                { error: 'Return or exchange is available only after delivery' },
+                { status: 400 }
+            )
+        }
+
+        if (item.status === 'cancelled' || item.return_status) {
+            return NextResponse.json(
+                { error: 'This item is not eligible for a new return or exchange request' },
+                { status: 400 }
+            )
+        }
+
+        const isExchange = return_type === 'exchange'
+        const isCodOrder = orderData?.payment_method === 'cod'
+        let finalRefundMethod: string | null = null
+        let finalBankAccount = null
+        let finalExchangeSize = null
+        let finalExchangeColor = null
+
+        if (isExchange) {
+            if (!exchange_size || !exchange_color) {
+                return NextResponse.json(
+                    { error: 'Select exchange size and color' },
+                    { status: 400 }
+                )
+            }
+
+            if (
+                exchange_size === item.variant_size &&
+                exchange_color === item.variant_color
+            ) {
+                return NextResponse.json(
+                    { error: 'Select a different size or color for exchange' },
+                    { status: 400 }
+                )
+            }
+
+            const { data: exchangeVariant } = await supabase
+                .from('product_variants')
+                .select('id')
+                .eq('product_id', item.product_id)
+                .eq('size', exchange_size)
+                .eq('color', exchange_color)
+                .eq('is_active', true)
+                .gt('stock', 0)
+                .maybeSingle()
+
+            if (!exchangeVariant) {
+                return NextResponse.json(
+                    { error: 'Selected exchange variant is unavailable' },
+                    { status: 400 }
+                )
+            }
+
+            finalExchangeSize = exchange_size
+            finalExchangeColor = exchange_color
+        } else if (isCodOrder) {
+            if (!['bank', 'store_credit'].includes(refund_method)) {
+                return NextResponse.json(
+                    { error: 'Select refund payment method for COD return' },
+                    { status: 400 }
+                )
+            }
+
+            if (refund_method === 'bank') {
+                if (
+                    !bank_account?.bank_name ||
+                    !bank_account?.account_number ||
+                    !bank_account?.ifsc
+                ) {
+                    return NextResponse.json(
+                        { error: 'Bank details required for COD refund' },
+                        { status: 400 }
+                    )
+                }
+
+                finalBankAccount = bank_account
+            }
+
+            finalRefundMethod = refund_method
+        } else {
+            finalRefundMethod = 'source'
         }
 
         // UPDATE ITEM
@@ -84,22 +204,17 @@ export async function POST(req: NextRequest) {
 
                 return_type,
 
-                refund_method,
+                refund_method:
+                    finalRefundMethod,
 
                 bank_account:
-                    refund_method === 'bank'
-                        ? bank_account
-                        : null,
+                    finalBankAccount,
 
                 exchange_size:
-                    return_type === 'exchange'
-                        ? exchange_size
-                        : null,
+                    finalExchangeSize,
 
                 exchange_color:
-                    return_type === 'exchange'
-                        ? exchange_color
-                        : null,
+                    finalExchangeColor,
 
                 return_requested_at:
                     new Date().toISOString(),

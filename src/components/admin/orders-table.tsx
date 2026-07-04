@@ -151,7 +151,8 @@ function canProcessItemRefund(
 
   const refundableState =
     (item.return_status === 'return_approved' &&
-      item.return_type === 'return') ||
+      item.return_type === 'return' &&
+      item.status === 'returned') ||
     item.status === 'cancelled'
 
   if (!refundableState) return false
