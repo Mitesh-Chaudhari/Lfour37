@@ -16,11 +16,15 @@ type ProductCategoryJoin =
   | { category?: CategoryRef | null }
   | CategoryRef
 
+export type CategoryTreeNode<T extends CategoryRef = CategoryRef> = T & {
+  children: CategoryTreeNode<T>[]
+}
+
 export function buildCategoryTree<T extends CategoryRef>(
   categories: T[]
-): Array<T & { children: Array<T & { children: never[] }> }> {
-  const map = new Map<string, T & { children: Array<T & { children: never[] }> }>()
-  const roots: Array<T & { children: Array<T & { children: never[] }> }> = []
+): CategoryTreeNode<T>[] {
+  const map = new Map<string, CategoryTreeNode<T>>()
+  const roots: CategoryTreeNode<T>[] = []
 
   categories.forEach((category) => {
     map.set(category.id, { ...category, children: [] })
@@ -50,7 +54,7 @@ export function getCategoryDepth(
     const category = byId.get(current)
     if (!category?.parent_id) break
     depth++
-    current = category.parent_id
+    current = category.parent_id ?? null
   }
 
   return depth
@@ -122,7 +126,7 @@ export function getCategoryPathLabel(
     const category = byId.get(current)
     if (!category) break
     parts.unshift(category.name)
-    current = category.parent_id
+    current = category.parent_id ?? null
   }
 
   return parts.join(' > ')
@@ -140,10 +144,22 @@ export function getCategoryPath(
     const category = byId.get(current)
     if (!category) break
     path.unshift(category)
-    current = category.parent_id
+    current = category.parent_id ?? null
   }
 
   return path
+}
+
+function getCategoryIdFromJoin(row: ProductCategoryJoin): string | null {
+  if ('id' in row && row.id) {
+    return row.id
+  }
+
+  if ('category' in row && row.category?.id) {
+    return row.category.id
+  }
+
+  return null
 }
 
 export function extractCategoryIdsFromProduct(
@@ -152,7 +168,7 @@ export function extractCategoryIdsFromProduct(
   if (!productCategories?.length) return []
 
   return productCategories
-    .map((row) => ('category' in row ? row.category?.id : row.id))
+    .map(getCategoryIdFromJoin)
     .filter((id): id is string => Boolean(id))
 }
 
@@ -204,7 +220,12 @@ export function getProductCategoryDisplay(product: {
   const first = product.categories?.[0]
   if (!first) return null
 
-  const category = 'category' in first ? first.category : first
+  const category =
+    'category' in first && first.category
+      ? first.category
+      : 'id' in first
+        ? first
+        : null
   if (!category?.name) return null
 
   return {
