@@ -166,7 +166,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
 
       <div className="container mx-auto px-4 py-8">
         {/* Breadcrumb */}
-        <nav className="flex items-center gap-2 text-sm text-gray-500 mb-8">
+        <nav className="flex flex-wrap items-center gap-2 text-sm text-gray-500 mb-8">
           <a href="/" className="hover:text-purple-600">Home</a>
           <span>/</span>
           <a href="/products" className="hover:text-purple-600">Products</a>

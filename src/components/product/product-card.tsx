@@ -39,7 +39,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
   const hasMultipleImages = mobileSlideImages.length > 1
 
   const imageTransitionClass =
-    'object-cover transition-opacity duration-900 ease-in-out'
+    'transition-opacity duration-700 ease-in-out'
 
   useEffect(() => {
     if (mobileSlideImages.length <= 1) return
@@ -122,20 +122,27 @@ export function ProductCard({ product, className }: ProductCardProps) {
             >
               {hasMultipleImages ? (
                 mobileSlideImages.map((url, index) => (
-                  <OptimizedImage
+                  <div
                     key={url}
-                    src={url}
-                    alt={product.name}
-                    fill
-                    variant="card"
-                    priority={index === 0}
-                    loading="eager"
-                    placeholderImage={DEFAULT_PRODUCT_IMAGE}
                     className={cn(
+                      'absolute inset-0',
                       imageTransitionClass,
-                      index === slideIndex ? 'opacity-100' : 'opacity-0'
+                      index === slideIndex ? 'opacity-100 z-[1]' : 'opacity-0 z-0'
                     )}
-                  />
+                    aria-hidden={index !== slideIndex}
+                  >
+                    <OptimizedImage
+                      src={url}
+                      alt={product.name}
+                      fill
+                      variant="card"
+                      priority
+                      loading="eager"
+                      fadeOnLoad={false}
+                      placeholderImage={DEFAULT_PRODUCT_IMAGE}
+                      className="object-cover"
+                    />
+                  </div>
                 ))
               ) : (
                 <OptimizedImage
@@ -171,29 +178,41 @@ export function ProductCard({ product, className }: ProductCardProps) {
             {/* Desktop: smooth crossfade on hover */}
             {hasMultipleImages && (
               <div className="absolute inset-0 hidden md:block">
-                <OptimizedImage
-                  src={primaryImage}
-                  alt={product.name}
-                  fill
-                  variant="card"
-                  placeholderImage={DEFAULT_PRODUCT_IMAGE}
+                <div
                   className={cn(
+                    'absolute inset-0 z-[1]',
                     imageTransitionClass,
                     'group-hover:opacity-0'
                   )}
-                />
-                {secondaryImage && (
+                >
                   <OptimizedImage
-                    src={secondaryImage}
+                    src={primaryImage}
                     alt={product.name}
                     fill
                     variant="card"
+                    fadeOnLoad={false}
                     placeholderImage={DEFAULT_PRODUCT_IMAGE}
+                    className="object-cover"
+                  />
+                </div>
+                {secondaryImage && (
+                  <div
                     className={cn(
+                      'absolute inset-0 z-[2]',
                       imageTransitionClass,
                       'opacity-0 group-hover:opacity-100'
                     )}
-                  />
+                  >
+                    <OptimizedImage
+                      src={secondaryImage}
+                      alt={product.name}
+                      fill
+                      variant="card"
+                      fadeOnLoad={false}
+                      placeholderImage={DEFAULT_PRODUCT_IMAGE}
+                      className="object-cover"
+                    />
+                  </div>
                 )}
               </div>
             )}

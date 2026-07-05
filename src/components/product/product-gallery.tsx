@@ -6,9 +6,20 @@ import { LoadingOverlay } from '@/components/ui/loading-overlay'
 import { ChevronLeft, ChevronRight, ZoomIn, Share2, Check, X } from 'lucide-react'
 import { ProductImage } from '@/types'
 import { normalizeProductImages } from '@/lib/product-images'
-import { DEFAULT_PRODUCT_IMAGE } from '@/lib/images'
+import {
+  DEFAULT_PRODUCT_IMAGE,
+  getSupabaseTransformedImageSrc,
+} from '@/lib/images'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
+
+/**
+ * When `true`, gallery images auto-advance on desktop and mobile.
+ * Set to `true` here to re-enable without changing any other code.
+ */
+const GALLERY_AUTO_SLIDE_ENABLED = false
+
+const GALLERY_AUTO_SLIDE_INTERVAL_MS = 4000
 
 interface ProductGalleryProps {
   images: ProductImage[]
@@ -17,7 +28,12 @@ interface ProductGalleryProps {
 
 export function ProductGallery({ images, productName }: ProductGalleryProps) {
   const galleryImages = useMemo(() => normalizeProductImages(images), [images])
+  const galleryKey = useMemo(
+    () => galleryImages.map((img) => img.url).join('|'),
+    [galleryImages]
+  )
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [visibleIndex, setVisibleIndex] = useState(0)
   const [isZoomed, setIsZoomed] = useState(false)
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
   const [copied, setCopied] = useState(false)
@@ -30,6 +46,10 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
   const touchMoved = useRef(false)
   const lightboxTouchStartX = useRef<number | null>(null)
   const lightboxTouchEndX = useRef<number | null>(null)
+  const selectedIndexRef = useRef(selectedIndex)
+  const preloadedUrlsRef = useRef<Set<string>>(new Set())
+
+  selectedIndexRef.current = selectedIndex
 
   const currentImage = galleryImages[selectedIndex]
 
@@ -45,13 +65,28 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
     })
   }
 
+  const handleMainImageLoad = (url: string, index: number) => {
+    markImageLoaded(url)
+    if (index === selectedIndexRef.current) {
+      setVisibleIndex(index)
+    }
+  }
+
   const isImageLoading = Boolean(
     currentImage?.url && !loadedUrls.has(currentImage.url)
   )
 
+  // Only show loader while switching to an image that has not finished loading yet.
+  // Avoid overlay on first paint when the image is already visible but onLoad has not fired.
+  const showLoadingOverlay =
+    visibleIndex !== selectedIndex && isImageLoading
+
   useEffect(() => {
     setLoadedUrls(new Set())
-  }, [galleryImages])
+    setVisibleIndex(0)
+    setSelectedIndex(0)
+    preloadedUrlsRef.current = new Set()
+  }, [galleryKey])
 
   useEffect(() => {
     setSelectedIndex((index) =>
@@ -60,8 +95,52 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
   }, [galleryImages.length])
 
   useEffect(() => {
+    const url = galleryImages[selectedIndex]?.url
+    if (url && loadedUrls.has(url)) {
+      setVisibleIndex(selectedIndex)
+    }
+  }, [selectedIndex, loadedUrls, galleryImages])
+
+  useEffect(() => {
+    const preloadImage = (index: number, variant: 'gallery' | 'galleryZoom') => {
+      if (index < 0 || index >= galleryImages.length) return
+
+      const url = galleryImages[index]?.url
+      if (!url || preloadedUrlsRef.current.has(url)) return
+
+      preloadedUrlsRef.current.add(url)
+
+      const preloadSrc =
+        getSupabaseTransformedImageSrc(url, variant) ?? url
+      const img = new window.Image()
+      img.decoding = 'async'
+      img.src = preloadSrc
+      img.onload = () => markImageLoaded(url)
+    }
+
+    preloadImage(selectedIndex + 1, 'gallery')
+    preloadImage(selectedIndex - 1, 'gallery')
+    preloadImage(selectedIndex + 1, 'galleryZoom')
+    preloadImage(selectedIndex - 1, 'galleryZoom')
+  }, [selectedIndex, galleryImages])
+
+  useEffect(() => {
     setIsZoomed(false)
   }, [selectedIndex])
+
+  useEffect(() => {
+    if (!GALLERY_AUTO_SLIDE_ENABLED) return
+    if (galleryImages.length <= 1) return
+    if (isFullscreenOpen || isZoomed) return
+
+    const timer = window.setInterval(() => {
+      setSelectedIndex((index) =>
+        index === galleryImages.length - 1 ? 0 : index + 1
+      )
+    }, GALLERY_AUTO_SLIDE_INTERVAL_MS)
+
+    return () => window.clearInterval(timer)
+  }, [galleryImages.length, isFullscreenOpen, isZoomed])
 
   useEffect(() => {
     if (!isFullscreenOpen) return
@@ -211,7 +290,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        <LoadingOverlay show={isImageLoading} className="z-10" />
+        <LoadingOverlay show={showLoadingOverlay} className="z-10" />
 
         {galleryImages.map((img, i) => (
           <OptimizedImage
@@ -221,21 +300,19 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
             fill
             variant="gallery"
             priority={i === 0}
-            loading="eager"
-            onLoad={() => markImageLoaded(img.url)}
-            onError={() => markImageLoaded(img.url)}
+            loading={i <= 1 ? 'eager' : 'lazy'}
+            onLoad={() => handleMainImageLoad(img.url, i)}
+            onError={() => handleMainImageLoad(img.url, i)}
             className={cn(
               imageTransitionClass,
-              i === selectedIndex
-                ? 'opacity-100 z-[1]'
-                : 'opacity-0 z-0 pointer-events-none',
-              isZoomed &&
-                i === selectedIndex &&
-                'md:scale-[2] md:transition-[opacity,transform] md:duration-200',
-              isImageLoading && i === selectedIndex && 'opacity-0'
+              'absolute inset-0',
+              i === visibleIndex ? 'opacity-100 z-[2]' : 'opacity-0 z-[1]',
+              i === visibleIndex &&
+                isZoomed &&
+                'md:scale-[2] md:transition-[opacity,transform] md:duration-200'
             )}
             style={
-              isZoomed && i === selectedIndex
+              i === visibleIndex && isZoomed
                 ? { transformOrigin: `${mousePosition.x}% ${mousePosition.y}%` }
                 : undefined
             }
@@ -320,7 +397,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
             onTouchEnd={handleLightboxTouchEnd}
           >
             <LoadingOverlay
-              show={isImageLoading}
+              show={showLoadingOverlay}
               className="z-10 bg-black/60"
             />
 
@@ -330,16 +407,14 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
                 src={img.url}
                 alt={img.alt || productName}
                 fill
-                variant="gallery"
-                loading="eager"
-                onLoad={() => markImageLoaded(img.url)}
-                onError={() => markImageLoaded(img.url)}
+                variant="galleryZoom"
+                loading={i <= selectedIndex + 1 ? 'eager' : 'lazy'}
+                onLoad={() => handleMainImageLoad(img.url, i)}
+                onError={() => handleMainImageLoad(img.url, i)}
                 className={cn(
                   imageTransitionClass,
-                  i === selectedIndex
-                    ? 'opacity-100 z-[1]'
-                    : 'opacity-0 z-0 pointer-events-none',
-                  isImageLoading && i === selectedIndex && 'opacity-0'
+                  'absolute inset-0',
+                  i === visibleIndex ? 'opacity-100 z-[2]' : 'opacity-0 z-[1]'
                 )}
               />
             ))}
@@ -402,7 +477,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
                 alt={img.alt || `Image ${i + 1}`}
                 fill
                 variant="galleryThumb"
-                loading="eager"
+                loading={i === selectedIndex ? 'eager' : 'lazy'}
                 placeholderImage={DEFAULT_PRODUCT_IMAGE}
                 className="object-cover"
               />

@@ -24,6 +24,8 @@ export interface OptimizedImageProps extends Omit<ImageProps, 'src' | 'alt'> {
   /** Local placeholder shown until `src` finishes loading (e.g. product default image) */
   placeholderImage?: string
   placeholderClassName?: string
+  /** When false, parent controls opacity (e.g. crossfade carousels). Default true. */
+  fadeOnLoad?: boolean
 }
 
 export function OptimizedImage({
@@ -36,6 +38,7 @@ export function OptimizedImage({
   fallbackClassName,
   placeholderClassName,
   placeholderImage,
+  fadeOnLoad = true,
   priority,
   unoptimized,
   showFallback = true,
@@ -166,8 +169,8 @@ export function OptimizedImage({
         className={cn(
           className,
           fill && 'absolute inset-0 z-[1]',
-          'transition-opacity duration-300 ease-in-out',
-          !loaded && 'opacity-0'
+          fadeOnLoad && 'transition-opacity duration-300 ease-in-out',
+          fadeOnLoad && !loaded && 'opacity-0'
         )}
         sizes={resolvedSizes}
         priority={priority}
