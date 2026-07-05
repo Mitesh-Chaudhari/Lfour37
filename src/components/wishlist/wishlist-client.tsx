@@ -75,7 +75,7 @@ export function WishlistClient({ items: initialItems, userId }: { items: Wishlis
       trackAddToCart({
         productId: product.id,
         productName: product.name,
-        price: product.price + (availableVariant.price_modifier || 0),
+        price: product.price,
         quantity: 1,
       })
       toast.success('Added to cart!')
