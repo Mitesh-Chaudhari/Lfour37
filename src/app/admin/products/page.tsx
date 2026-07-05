@@ -18,6 +18,7 @@ async function getProducts() {
         *,
         product_categories(category:categories(id, name, slug, parent_id))
       `)
+      .order('list_sort_order', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: false }),
     supabase
       .from('categories')
@@ -59,6 +60,7 @@ export default async function AdminProductsPage() {
               <tr className="border-b border-gray-100 bg-gray-50">
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Product</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Category</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Sort Order</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Price</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Sold</th>
@@ -92,6 +94,11 @@ export default async function AdminProductsPage() {
                   <td className="px-4 py-3">
                     <span className="text-gray-600 text-xs">
                       {getProductCategoryPathLabel(product.product_categories, categories) || '-'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="text-gray-600">
+                      {product.list_sort_order ?? '-'}
                     </span>
                   </td>
                   <td className="px-4 py-3">

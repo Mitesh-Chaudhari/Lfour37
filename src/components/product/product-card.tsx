@@ -13,7 +13,6 @@ import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
 import { useNavigationStore } from '@/store/navigation-store'
-import { getProductCategoryDisplay } from '@/lib/categories'
 
 interface ProductCardProps {
   product: Product
@@ -93,12 +92,6 @@ export function ProductCard({ product, className }: ProductCardProps) {
       setWishlistLoading(false)
     }
   }
-
-  const categoryDisplay = getProductCategoryDisplay({
-    primary_category_label: product.primary_category_label,
-    primary_category_slug: product.primary_category_slug,
-    categories: product.categories as Parameters<typeof getProductCategoryDisplay>[0]['categories'],
-  })
 
   const handleCardClick = (event: MouseEvent<HTMLAnchorElement>) => {
     if (isNavigating) {
@@ -222,6 +215,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
 
         {/* Badges */}
         <div className="absolute top-2 left-2 flex flex-col gap-1">
+          {product.is_best_seller && <Badge variant="bestseller">Best Seller</Badge>}
           {product.is_new_arrival && <Badge variant="new">New</Badge>}
           {discount > 0 && <Badge variant="sale">-{discount}%</Badge>}
           {product.is_trending && <Badge variant="trending">Trending</Badge>}
@@ -259,9 +253,6 @@ export function ProductCard({ product, className }: ProductCardProps) {
 
       {/* Product info */}
       <div className="mt-3 space-y-1">
-        <p className="text-xs text-gray-500 line-clamp-1">
-          {categoryDisplay?.label || ''}
-        </p>
         <h3
           className={cn(
             'text-sm font-medium line-clamp-1 transition-colors',

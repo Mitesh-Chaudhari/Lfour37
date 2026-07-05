@@ -15,9 +15,12 @@ import {
 } from '@/lib/search'
 import {
   buildCategoryTree,
-  enrichProductsWithCategoryDisplay,
   getCategoryDescendantIds,
 } from '@/lib/categories'
+import {
+  enrichProductsWithBestSeller,
+  getBestSellerProductIds,
+} from '@/lib/products'
 
 interface PageProps {
   searchParams: Promise<{
@@ -137,7 +140,9 @@ async function getProducts(
       query = query.order('price', { ascending: false })
       break
     case 'newest':
-      query = query.order('created_at', { ascending: false })
+      query = query
+        .order('list_sort_order', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: false })
       break
     case 'popular':
       query = query.order('total_sold', { ascending: false })
@@ -146,7 +151,9 @@ async function getProducts(
       query = query.order('average_rating', { ascending: false })
       break
     default:
-      query = query.order('created_at', { ascending: false })
+      query = query
+        .order('list_sort_order', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: false })
   }
 
   query = query.range(from, to)
@@ -192,7 +199,8 @@ async function getProducts(
     )
   }
 
-  products = enrichProductsWithCategoryDisplay(products, allCategories)
+  const bestSellerIds = await getBestSellerProductIds(supabase)
+  products = enrichProductsWithBestSeller(products, bestSellerIds)
 
   return { products, total: count || 0, page, perPage }
 }

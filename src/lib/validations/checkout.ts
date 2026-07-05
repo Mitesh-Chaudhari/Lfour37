@@ -65,6 +65,15 @@ export const productSchema = z.object({
   is_featured: z.boolean().optional().default(false),
   is_new_arrival: z.boolean().optional().default(false),
   is_trending: z.boolean().optional().default(false),
+  list_sort_order: z.preprocess(
+    (value) => {
+      if (value === '' || value === null || value === undefined || Number.isNaN(value)) {
+        return null
+      }
+      return Number(value)
+    },
+    z.number().int().min(0).nullable().optional()
+  ),
   tags: z.array(z.string()).optional().default([]),
   seo_title: z.string().max(200).optional(),
   seo_description: z.string().max(500).optional(),

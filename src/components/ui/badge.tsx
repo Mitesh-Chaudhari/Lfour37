@@ -14,6 +14,7 @@ const badgeVariants = cva(
         success: 'border-transparent bg-green-100 text-green-800',
         warning: 'border-transparent bg-yellow-100 text-yellow-800',
         info: 'border-transparent bg-blue-100 text-blue-800',
+        bestseller: 'border-transparent bg-[#c39c41] text-black shadow-sm',
         // new: 'border-transparent bg-green-500 text-white',
         // sale: 'border-transparent bg-red-500 text-white',
         // trending: 'border-transparent bg-orange-500 text-white',

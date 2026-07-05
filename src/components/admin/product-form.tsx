@@ -39,6 +39,7 @@ interface ProductFormProps {
     is_featured: boolean
     is_new_arrival: boolean
     is_trending: boolean
+    list_sort_order?: number | null
     images: ProductImage[]
     tags: string[]
     seo_title?: string
@@ -282,7 +283,7 @@ export function ProductForm({
   }, [initialData])
   const categoryTree = buildCategoryTree(categories);
 
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<ProductFormData>({
+  const { register, handleSubmit, watch, setValue, setError, formState: { errors } } = useForm<ProductFormData>({
     resolver: zodResolver(productSchema) as any,
     defaultValues: {
       name: initialData?.name || '',
@@ -297,6 +298,7 @@ export function ProductForm({
       is_featured: initialData?.is_featured || false,
       is_new_arrival: initialData?.is_new_arrival || false,
       is_trending: initialData?.is_trending || false,
+      list_sort_order: initialData?.list_sort_order ?? null,
       tags: initialData?.tags || [],
       seo_title: initialData?.seo_title || '',
       seo_description: initialData?.seo_description || '',
@@ -479,6 +481,31 @@ export function ProductForm({
         return
       }
 
+      const listSortOrder =
+        data.list_sort_order != null && !Number.isNaN(data.list_sort_order)
+          ? data.list_sort_order
+          : null
+
+      if (listSortOrder != null) {
+        let duplicateQuery = supabase
+          .from('products')
+          .select('id, name')
+          .eq('list_sort_order', listSortOrder)
+
+        if (initialData?.id) {
+          duplicateQuery = duplicateQuery.neq('id', initialData.id)
+        }
+
+        const { data: duplicateProduct } = await duplicateQuery.limit(1).maybeSingle()
+
+        if (duplicateProduct) {
+          const message = `This sort order is already used by "${duplicateProduct.name}"`
+          setError('list_sort_order', { message })
+          toast.error(message)
+          return
+        }
+      }
+
       const productData = {
         name: data.name,
         slug: data.slug || slugify(data.name),
@@ -496,6 +523,7 @@ export function ProductForm({
         is_featured: data.is_featured || false,
         is_new_arrival: data.is_new_arrival || false,
         is_trending: data.is_trending || false,
+        list_sort_order: listSortOrder,
         images: images,
         tags: tags,
         seo_title: data.seo_title || null,
@@ -614,6 +642,19 @@ export function ProductForm({
       router.push('/admin/products')
     } catch (err) {
       console.error(err)
+      const duplicateSortOrder =
+        typeof err === 'object' &&
+        err !== null &&
+        'code' in err &&
+        (err as { code?: string }).code === '23505'
+
+      if (duplicateSortOrder) {
+        const message = 'This sort order is already used by another product'
+        setError('list_sort_order', { message })
+        toast.error(message)
+        return
+      }
+
       toast.error('Failed to save product')
     } finally {
       setIsSaving(false)
@@ -1017,8 +1058,8 @@ export function ProductForm({
       </div>
 
       {/* Flags */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold mb-4">Product Flags</h2>
+      <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+        <h2 className="text-lg font-semibold">Product Flags</h2>
         <div className="flex flex-wrap gap-6">
           {[
             { field: 'is_featured', label: 'Featured' },
@@ -1035,6 +1076,17 @@ export function ProductForm({
             </label>
           ))}
         </div>
+        <Input
+          label="Products page sort order (optional)"
+          type="number"
+          min={0}
+          placeholder="Lower number appears first"
+          error={errors.list_sort_order?.message}
+          {...register('list_sort_order', { valueAsNumber: true })}
+        />
+        <p className="text-xs text-gray-500">
+          Leave empty to use default sorting. Products with a number here appear above others on the shop page.
+        </p>
       </div>
 
       {/* SEO */}

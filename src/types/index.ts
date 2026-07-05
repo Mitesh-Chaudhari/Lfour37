@@ -61,6 +61,7 @@ export interface Product {
   is_featured: boolean
   is_new_arrival: boolean
   is_trending: boolean
+  list_sort_order?: number | null
   weight: number | null
   images: ProductImage[]
   tags: string[]
@@ -76,6 +77,7 @@ export interface Product {
   categories?: Category[]
   primary_category_label?: string
   primary_category_slug?: string
+  is_best_seller?: boolean
 }
 
 export interface ProductVariant {

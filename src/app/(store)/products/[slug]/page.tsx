@@ -12,6 +12,7 @@ import {
   getDeepestCategoryId,
   extractCategoryIdsFromProduct,
 } from '@/lib/categories'
+import { enrichProductsWithBestSeller, getBestSellerProductIds } from '@/lib/products'
 import type { Metadata } from 'next'
 
 interface PageProps {
@@ -122,9 +123,9 @@ export default async function ProductDetailPage({ params }: PageProps) {
     allCategories || []
   )[0]
 
-  const relatedProducts = enrichProductsWithCategoryDisplay(
+  const relatedProducts = enrichProductsWithBestSeller(
     relatedProductsRaw,
-    allCategories || []
+    await getBestSellerProductIds(supabase)
   )
 
   // JSON-LD structured data

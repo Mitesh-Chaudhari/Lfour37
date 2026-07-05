@@ -5,7 +5,12 @@ import {
   getProductIdsFromCategorySearch,
   sanitizeSearchTerm,
 } from '@/lib/search'
-import { getCategoryDescendantIds, enrichProductsWithCategoryDisplay } from '@/lib/categories'
+import { getCategoryDescendantIds } from '@/lib/categories'
+import {
+  enrichProductsWithBestSeller,
+  getBestSellerProductIds,
+  shouldApplyListSortOrder,
+} from '@/lib/products'
 
 export async function GET(
   req: NextRequest
@@ -267,13 +272,9 @@ export async function GET(
       break
 
     case 'newest':
-      query =
-        query.order(
-          'created_at',
-          {
-            ascending: false,
-          }
-        )
+      query = query
+        .order('list_sort_order', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: false })
       break
 
     case 'popular':
@@ -297,13 +298,9 @@ export async function GET(
       break
 
     default:
-      query =
-        query.order(
-          'created_at',
-          {
-            ascending: false,
-          }
-        )
+      query = query
+        .order('list_sort_order', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: false })
   }
 
   //////////////////////////////////////////////////////
@@ -391,9 +388,9 @@ export async function GET(
       )
   }
 
-  products = enrichProductsWithCategoryDisplay(
+  products = enrichProductsWithBestSeller(
     products,
-    allCategories || []
+    await getBestSellerProductIds(supabase)
   )
 
   //////////////////////////////////////////////////////
