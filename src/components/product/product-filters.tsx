@@ -9,6 +9,7 @@ interface FilterOption {
   id: string
   name: string
   slug: string
+  children?: FilterOption[]
 }
 
 interface ProductFiltersPanelProps {
@@ -39,6 +40,17 @@ export function ProductFiltersPanel({ categories, sizes, colors, searchParams }:
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] =
   useState<string | null>(null)
+
+  const currentCategory =
+    typeof searchParams.category === 'string' ? searchParams.category : null
+
+  const [optimisticCategory, setOptimisticCategory] = useState<string | null>(
+    currentCategory
+  )
+
+  useEffect(() => {
+    setOptimisticCategory(currentCategory)
+  }, [currentCategory])
 
   // 🔥 RANGE LIMITS (you can make dynamic later)
   const MIN = 0
@@ -99,30 +111,59 @@ export function ProductFiltersPanel({ categories, sizes, colors, searchParams }:
 
   const clearAllFilters = () => router.push(pathname)
 
+  const closeMobilePanel = () => setMobileOpen(null)
+
+  const handleMobileCategoryChange = (value: string | null) => {
+    setOptimisticCategory(value)
+    updateFilter('category', value)
+    closeMobilePanel()
+  }
+
+  const handleMobileArrayFilter = (key: string, value: string) => {
+    toggleArrayFilter(key, value)
+    closeMobilePanel()
+  }
+
   const hasFilters = Object.keys(searchParams).some((k) => k !== 'page' && searchParams[k])
 
   const selectedSizes = typeof searchParams.sizes === 'string' ? [searchParams.sizes] : searchParams.sizes || []
   const selectedColors = typeof searchParams.colors === 'string' ? [searchParams.colors] : searchParams.colors || []
 
-  function renderCategories(cats: any[], level = 0) {
-    return cats.map((cat) => (
-      <div key={cat.id} style={{ paddingLeft: level * 12 }}>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="radio"
-            name="category"
-            checked={searchParams.category === cat.slug}
-            onChange={() => updateFilter('category', cat.slug)}
-            className="accent-primary-600"
-          />
-          <span className="text-sm text-gray-700">
-            {level > 0} {cat.name}
-          </span>
-        </label>
+  function renderCategories(
+    cats: FilterOption[],
+    config: {
+      radioName: string
+      selectedSlug: string | null
+      onCategorySelect: (slug: string) => void
+    },
+    level = 0
+  ) {
+    return cats.map((cat) => {
+      const inputId = `${config.radioName}-${cat.id}`
 
-        {cat.children?.length > 0 && renderCategories(cat.children, level + 1)}
-      </div>
-    ))
+      return (
+        <div key={cat.id} style={{ paddingLeft: level * 12 }}>
+          <label
+            htmlFor={inputId}
+            className="flex items-center gap-2 cursor-pointer py-1"
+          >
+            <input
+              id={inputId}
+              type="radio"
+              name={config.radioName}
+              checked={config.selectedSlug === cat.slug}
+              onChange={() => config.onCategorySelect(cat.slug)}
+              className="accent-primary-600 shrink-0"
+            />
+            <span className="text-sm text-gray-700">{cat.name}</span>
+          </label>
+
+          {cat.children?.length
+            ? renderCategories(cat.children, config, level + 1)
+            : null}
+        </div>
+      )
+    })
   }
 
   return (
@@ -246,31 +287,32 @@ export function ProductFiltersPanel({ categories, sizes, colors, searchParams }:
               bg-white
               p-4
               shadow-sm
-              absolute left-0 right-0 w-full z-10
+              absolute left-0 right-0 w-full z-50
             "
           >
             {mobileOpen ===
               'category' && (
               <div className="space-y-2">
-                <label className="flex items-center gap-2">
+                <label
+                  htmlFor="mobile-category-all"
+                  className="flex items-center gap-2 cursor-pointer py-1"
+                >
                   <input
+                    id="mobile-category-all"
                     type="radio"
-                    checked={
-                      !searchParams.category
-                    }
-                    onChange={() =>
-                      updateFilter(
-                        'category',
-                        null
-                      )
-                    }
+                    name="mobile-category-filter"
+                    checked={optimisticCategory === null}
+                    onChange={() => handleMobileCategoryChange(null)}
+                    className="accent-primary-600 shrink-0"
                   />
-                  All Categories
+                  <span className="text-sm text-gray-700">All Categories</span>
                 </label>
 
-                {renderCategories(
-                  categories
-                )}
+                {renderCategories(categories, {
+                  radioName: 'mobile-category-filter',
+                  selectedSlug: optimisticCategory,
+                  onCategorySelect: (slug) => handleMobileCategoryChange(slug),
+                })}
               </div>
             )}
 
@@ -282,7 +324,7 @@ export function ProductFiltersPanel({ categories, sizes, colors, searchParams }:
                     <button
                       key={size}
                       onClick={() =>
-                        toggleArrayFilter(
+                        handleMobileArrayFilter(
                           'sizes',
                           size
                         )
@@ -310,7 +352,7 @@ export function ProductFiltersPanel({ categories, sizes, colors, searchParams }:
                     <button
                       key={color}
                       onClick={() =>
-                        toggleArrayFilter(
+                        handleMobileArrayFilter(
                           'colors',
                           color
                         )
@@ -405,29 +447,25 @@ export function ProductFiltersPanel({ categories, sizes, colors, searchParams }:
         {/* Category */}
         <FilterSection title="Category">
           <div className="space-y-2">
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label
+              htmlFor="desktop-category-all"
+              className="flex items-center gap-2 cursor-pointer py-1"
+            >
               <input
+                id="desktop-category-all"
                 type="radio"
-                name="category"
-                checked={!searchParams.category}
+                name="desktop-category-filter"
+                checked={!currentCategory}
                 onChange={() => updateFilter('category', null)}
-                className="accent-primary-600"
+                className="accent-primary-600 shrink-0"
               />
               <span className="text-sm text-gray-700">All Categories</span>
             </label>
-            {/* {categories.map((cat) => (
-              <label key={cat.id} className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="category"
-                  checked={searchParams.category === cat.slug}
-                  onChange={() => updateFilter('category', cat.slug)}
-                  className="accent-primary-600"
-                />
-                <span className="text-sm text-gray-700">{cat.name}</span>
-              </label>
-            ))} */}
-            {renderCategories(categories)}
+            {renderCategories(categories, {
+              radioName: 'desktop-category-filter',
+              selectedSlug: currentCategory,
+              onCategorySelect: (slug) => updateFilter('category', slug),
+            })}
           </div>
         </FilterSection>
 
