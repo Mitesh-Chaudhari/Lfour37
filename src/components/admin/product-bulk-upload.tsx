@@ -22,6 +22,10 @@ type ProductRecord = {
   slug: string
 }
 
+type CategoryIdRecord = {
+  id: string
+}
+
 function buildProductInsert(row: BulkUploadRow, productSlug: string) {
   const listSortOrder = parseOptionalNumber(row.list_sort_order)
   const comparePrice = parseOptionalNumber(row.compare_price)
@@ -67,14 +71,16 @@ export function ProductBulkUpload() {
     for (let index = 0; index < categorySlugs.length; index++) {
       const slug = categorySlugs[index]
 
-      let { data: category } = await supabase
+      const { data: existingCategory } = await supabase
         .from('categories')
         .select('id')
         .eq('slug', slug)
         .maybeSingle()
 
+      let category: CategoryIdRecord | null = existingCategory
+
       if (!category) {
-        const { data: newCategory, error } = await supabase
+        const { data: createdCategory, error } = await supabase
           .from('categories')
           .insert({
             name: slug.replace(/-/g, ' '),
@@ -85,11 +91,11 @@ export function ProductBulkUpload() {
           .select('id')
           .single()
 
-        if (error || !newCategory) {
+        if (error || !createdCategory) {
           throw error ?? new Error(`Failed to create category: ${slug}`)
         }
 
-        category = newCategory
+        category = createdCategory
       }
 
       if (index === categorySlugs.length - 1) {
