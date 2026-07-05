@@ -26,6 +26,73 @@ type CategoryIdRecord = {
   id: string
 }
 
+async function getOrCreateCategory(
+  supabase: ReturnType<typeof createClient>,
+  slug: string,
+  parentId: string | null
+): Promise<CategoryIdRecord> {
+  const { data: existingCategory, error: fetchError } = await supabase
+    .from('categories')
+    .select('id')
+    .eq('slug', slug)
+    .maybeSingle()
+
+  if (fetchError) {
+    throw fetchError
+  }
+
+  if (existingCategory) {
+    return existingCategory
+  }
+
+  const { data: createdCategory, error: createError } = await supabase
+    .from('categories')
+    .insert({
+      name: slug.replace(/-/g, ' '),
+      slug,
+      parent_id: parentId,
+      is_active: true,
+    })
+    .select('id')
+    .single()
+
+  if (createError || !createdCategory) {
+    throw createError ?? new Error(`Failed to create category: ${slug}`)
+  }
+
+  return createdCategory
+}
+
+async function linkProductCategory(
+  supabase: ReturnType<typeof createClient>,
+  productId: string,
+  categorySlugPath?: string
+) {
+  if (!categorySlugPath?.trim()) return
+
+  const categorySlugs = parseSemicolonList(categorySlugPath).map(slugifyProduct)
+  if (categorySlugs.length === 0) return
+
+  let parentId: string | null = null
+
+  for (let index = 0; index < categorySlugs.length; index++) {
+    const slug = categorySlugs[index]
+    const category = await getOrCreateCategory(supabase, slug, parentId)
+
+    if (index === categorySlugs.length - 1) {
+      await supabase.from('product_categories').upsert(
+        {
+          product_id: productId,
+          category_id: category.id,
+        },
+        { onConflict: 'product_id,category_id' }
+      )
+    }
+
+    parentId = category.id
+  }
+}
+
 function buildProductInsert(row: BulkUploadRow, productSlug: string) {
   const listSortOrder = parseOptionalNumber(row.list_sort_order)
   const comparePrice = parseOptionalNumber(row.compare_price)
@@ -55,62 +122,6 @@ export function ProductBulkUpload() {
   const router = useRouter()
   const [isUploading, setIsUploading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
-
-  const linkCategory = async (
-    supabase: ReturnType<typeof createClient>,
-    productId: string,
-    categorySlugPath?: string
-  ) => {
-    if (!categorySlugPath?.trim()) return
-
-    const categorySlugs = parseSemicolonList(categorySlugPath).map(slugifyProduct)
-    if (categorySlugs.length === 0) return
-
-    let parentId: string | null = null
-
-    for (let index = 0; index < categorySlugs.length; index++) {
-      const slug = categorySlugs[index]
-
-      const { data: existingCategory } = await supabase
-        .from('categories')
-        .select('id')
-        .eq('slug', slug)
-        .maybeSingle()
-
-      let category: CategoryIdRecord | null = existingCategory
-
-      if (!category) {
-        const { data: createdCategory, error } = await supabase
-          .from('categories')
-          .insert({
-            name: slug.replace(/-/g, ' '),
-            slug,
-            parent_id: parentId,
-            is_active: true,
-          })
-          .select('id')
-          .single()
-
-        if (error || !createdCategory) {
-          throw error ?? new Error(`Failed to create category: ${slug}`)
-        }
-
-        category = createdCategory
-      }
-
-      if (index === categorySlugs.length - 1) {
-        await supabase.from('product_categories').upsert(
-          {
-            product_id: productId,
-            category_id: category.id,
-          },
-          { onConflict: 'product_id,category_id' }
-        )
-      }
-
-      parentId = category.id
-    }
-  }
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -187,7 +198,7 @@ export function ProductBulkUpload() {
             productCache[productSlug] = product
 
             try {
-              await linkCategory(supabase, product.id, row.category_slug)
+              await linkProductCategory(supabase, product.id, row.category_slug)
             } catch (categoryError) {
               console.error(categoryError)
               errorCount++
