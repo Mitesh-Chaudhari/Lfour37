@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { CheckoutForm } from '@/components/checkout/checkout-form'
+import { MetaInitiateCheckoutTracker } from '@/components/meta-pixel/event-trackers'
 
 async function getCheckoutData() {
   const supabase = await createClient()
@@ -50,6 +51,7 @@ export default async function CheckoutPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
+      <MetaInitiateCheckoutTracker />
       <h1 className="text-3xl font-bold text-gray-900 mb-8">Checkout</h1>
       <CheckoutForm
         addresses={checkoutData.addresses}

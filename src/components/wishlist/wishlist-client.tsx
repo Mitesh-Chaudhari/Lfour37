@@ -11,6 +11,7 @@ import { formatPrice } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import toast from 'react-hot-toast'
+import { trackAddToCart } from '@/lib/meta-pixel'
 
 interface WishlistProduct {
   id: string
@@ -71,6 +72,12 @@ export function WishlistClient({ items: initialItems, userId }: { items: Wishlis
     setAddingId(item.id)
     try {
       addItem(product as any, availableVariant as any, 1)
+      trackAddToCart({
+        productId: product.id,
+        productName: product.name,
+        price: product.price + (availableVariant.price_modifier || 0),
+        quantity: 1,
+      })
       toast.success('Added to cart!')
     } finally {
       setAddingId(null)

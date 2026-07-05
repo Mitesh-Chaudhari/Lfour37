@@ -17,6 +17,7 @@ import { isVirtualTryOnEnabled } from '@/lib/virtual-try-on'
 import type { SizeGuide } from '@/lib/size-guides'
 import { SizeGuideList } from '@/components/size-guide/size-guide-section'
 import toast from 'react-hot-toast'
+import { trackAddToCart } from '@/lib/meta-pixel'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getProductCategoryDisplay } from '@/lib/categories'
 
@@ -190,6 +191,12 @@ export function ProductInfo({ product, sizeOrder = [], sizeGuides = [] }: Produc
     if (quantity > currentStock) { toast.error(`Only ${currentStock} left in stock`); return }
 
     addItem(product, selectedVariant, quantity)
+    trackAddToCart({
+      productId: product.id,
+      productName: product.name,
+      price: currentPrice,
+      quantity,
+    })
     toast.success(`${product.name} added to cart!`)
     openCart()
   }

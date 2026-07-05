@@ -21,6 +21,7 @@ import {
   enrichProductsWithBestSeller,
   getBestSellerProductIds,
 } from '@/lib/products'
+import { MetaSearchTracker } from '@/components/meta-pixel/event-trackers'
 
 interface PageProps {
   searchParams: Promise<{
@@ -284,8 +285,11 @@ export default async function ProductsPage({ searchParams }: PageProps) {
 
   const totalPages = Math.ceil(total / perPage)
 
+  const searchTerm = params.search ? sanitizeSearchTerm(params.search) : ''
+
   return (
     <div className="container mx-auto px-4 py-8">
+      {searchTerm ? <MetaSearchTracker searchTerm={searchTerm} /> : null}
       <div className="flex flex-col md:flex-row gap-8">
         {/* Filters */}
         <aside className="w-full md:w-64 flex-shrink-0">

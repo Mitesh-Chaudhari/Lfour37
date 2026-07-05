@@ -13,6 +13,7 @@ import {
   extractCategoryIdsFromProduct,
 } from '@/lib/categories'
 import { enrichProductsWithBestSeller, getBestSellerProductIds } from '@/lib/products'
+import { MetaViewContentTracker } from '@/components/meta-pixel/event-trackers'
 import type { Metadata } from 'next'
 
 interface PageProps {
@@ -157,11 +158,19 @@ export default async function ProductDetailPage({ params }: PageProps) {
 
   const reviews = (product.reviews || []).filter((r: { status: string }) => r.status === 'approved')
 
+  const primaryCategory = categoryBreadcrumb[categoryBreadcrumb.length - 1]?.name
+
   return (
     <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <MetaViewContentTracker
+        productId={product.id}
+        productName={product.name}
+        price={product.price}
+        category={primaryCategory}
       />
 
       <div className="container mx-auto px-4 py-8">
