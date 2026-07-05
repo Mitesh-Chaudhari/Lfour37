@@ -165,6 +165,7 @@ const CategoryNode = ({
         <input
           type="checkbox"
           checked={isChecked}
+          className='accent-primary-600'
           onChange={(e) =>
             handleToggle(
               e.target.checked

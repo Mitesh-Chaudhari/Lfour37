@@ -298,6 +298,7 @@ export default function HeroSlidesAdmin() {
                 <input
                   type="checkbox"
                   checked={slide.is_active}
+                  className="accent-primary-600"
                   onChange={(e) => handleChange(i, 'is_active', e.target.checked)}
                 />
               </label>

@@ -338,7 +338,7 @@ export function CategoriesClient({ categories: initialCategories }: { categories
             <Input label="SEO Title (optional)" {...register('seo_title')} />
             <Input label="SEO Description (optional)" {...register('seo_description')} />
             <div className="flex items-center gap-2">
-              <input type="checkbox" id="is_active_cat" {...register('is_active')} className="rounded" />
+              <input type="checkbox" id="is_active_cat" {...register('is_active')} className="rounded accent-primary-600" />
               <label htmlFor="is_active_cat" className="text-sm font-medium text-gray-700">Active</label>
             </div>
             <div className="col-span-2 flex gap-3">
