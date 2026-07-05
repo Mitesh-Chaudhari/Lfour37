@@ -20,7 +20,7 @@ const badgeVariants = cva(
         // trending: 'border-transparent bg-orange-500 text-white',
         new: 'border-transparent bg-[#c39c41] text-black shadow-sm', // Solid Gold
         sale: 'border-[#c39c41] bg-black text-[#c39c41]',           // Black background, Gold text/border
-        trending: 'border-transparent bg-[#c39c41]/10 text-[#c39c41] border border-[#c39c41]/20', // Subtle Gold tint
+        trending: 'border-transparent bg-[#c39c41]/80 text-[#222]', // Subtle Gold tint
       },
     },
     defaultVariants: { variant: 'default' },

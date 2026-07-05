@@ -206,16 +206,17 @@ export function ProductCard({ product, className }: ProductCardProps) {
 
         {/* Out of stock overlay */}
         {isOutOfStock && (
-          <div className="absolute inset-0 bg-white/60 flex items-center justify-center">
+          <div className="absolute inset-0 z-30 bg-white/60 flex items-center justify-center">
             <span className="bg-gray-900 text-white text-xs font-semibold px-3 py-1.5 rounded-full">
               Out of Stock
             </span>
           </div>
         )}
 
-        {/* Badges */}
-        <div className="absolute top-2 left-2 flex flex-col gap-1">
+        {/* Badges — z-20 keeps tags above OptimizedImage layers (z-[1]) */}
+        <div className="pointer-events-none absolute top-2 left-2 z-20 flex flex-col gap-1">
           {product.is_best_seller && <Badge variant="bestseller">Best Seller</Badge>}
+          {product.is_featured && <Badge variant="default">Featured</Badge>}
           {product.is_new_arrival && <Badge variant="new">New</Badge>}
           {discount > 0 && <Badge variant="sale">-{discount}%</Badge>}
           {product.is_trending && <Badge variant="trending">Trending</Badge>}
@@ -226,7 +227,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
           onClick={handleWishlistToggle}
           disabled={wishlistLoading}
           className={cn(
-            'absolute top-2 right-2 h-8 w-8 rounded-full bg-white shadow flex items-center justify-center transition-all duration-200',
+            'absolute top-2 right-2 z-20 h-8 w-8 rounded-full bg-white shadow flex items-center justify-center transition-all duration-200',
             'opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0',
             inWishlist && 'opacity-100 translate-y-0',
             wishlistLoading && 'opacity-100 translate-y-0'
@@ -244,7 +245,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
 
         {/* Quick view on hover (bottom) */}
         <div className={cn(
-          'absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm py-2 px-3 text-center',
+          'absolute bottom-0 left-0 right-0 z-10 bg-white/95 backdrop-blur-sm py-2 px-3 text-center',
           'opacity-0 translate-y-full group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300'
         )}>
           <span className="text-xs font-semibold text-gray-900">Quick View</span>
