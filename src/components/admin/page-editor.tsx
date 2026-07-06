@@ -6,8 +6,92 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { prepareCmsHtmlForRender, type CmsPage } from '@/lib/cms'
-import { CMS_EDITOR_CONFIG } from '@/lib/ckeditor-upload-adapter'
 import toast from 'react-hot-toast'
+
+const CKEDITOR_UPLOAD_URL = '/api/upload/ckeditor'
+
+class CmsUploadAdapter {
+  private loader: { file: Promise<File | null> }
+
+  constructor(loader: { file: Promise<File | null> }) {
+    this.loader = loader
+  }
+
+  upload() {
+    return this.loader.file.then((file) => {
+      if (!file) {
+        return Promise.reject(new Error('No file selected'))
+      }
+
+      const formData = new FormData()
+      formData.append('upload', file)
+
+      return fetch(CKEDITOR_UPLOAD_URL, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      }).then(async (response) => {
+        const data = await response.json().catch(() => null)
+
+        if (!response.ok) {
+          throw new Error(data?.error || 'Image upload failed')
+        }
+
+        if (!data?.url) {
+          throw new Error('Image upload failed')
+        }
+
+        return { default: data.url as string }
+      })
+    })
+  }
+
+  abort() {}
+}
+
+function CmsUploadAdapterPlugin(editor: {
+  plugins: {
+    get: (name: string) => {
+      createUploadAdapter: (loader: { file: Promise<File | null> }) => CmsUploadAdapter
+    }
+  }
+}) {
+  editor.plugins.get('FileRepository').createUploadAdapter = (loader) => {
+    return new CmsUploadAdapter(loader)
+  }
+}
+
+CmsUploadAdapterPlugin.pluginName = 'CmsUploadAdapterPlugin'
+
+const CMS_EDITOR_CONFIG = {
+  extraPlugins: [CmsUploadAdapterPlugin],
+  toolbar: [
+    'heading',
+    '|',
+    'bold',
+    'italic',
+    'link',
+    'bulletedList',
+    'numberedList',
+    'uploadImage',
+    'mediaEmbed',
+    '|',
+    'undo',
+    'redo',
+  ],
+  mediaEmbed: {
+    previewsInData: true,
+  },
+  image: {
+    toolbar: [
+      'imageTextAlternative',
+      '|',
+      'imageStyle:inline',
+      'imageStyle:block',
+      'imageStyle:side',
+    ],
+  },
+}
 
 const CKEditor = dynamic(
   () => import('@ckeditor/ckeditor5-react').then((mod) => mod.CKEditor),
