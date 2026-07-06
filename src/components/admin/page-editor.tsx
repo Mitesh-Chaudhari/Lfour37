@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { prepareCmsHtmlForRender, type CmsPage } from '@/lib/cms'
+import { CMS_EDITOR_CONFIG } from '@/lib/ckeditor-upload-adapter'
 import toast from 'react-hot-toast'
 
 const CKEditor = dynamic(
@@ -109,8 +110,9 @@ export default function PageEditor({ page }: PageEditorProps) {
 
       <div className="bg-white border rounded-lg p-2">
         <p className="px-2 pt-2 text-xs text-gray-500">
-          For Google Maps, use the media embed button and paste the maps embed URL
-          (starts with https://www.google.com/maps/embed). Do not paste raw iframe HTML.
+          Use the image button to upload JPG, PNG, or WebP files (max 10MB). For Google Maps,
+          use media embed and paste the maps embed URL (starts with
+          https://www.google.com/maps/embed).
         </p>
         <CKEditor
           editor={editor}
@@ -118,24 +120,7 @@ export default function PageEditor({ page }: PageEditorProps) {
           onChange={(_event: unknown, editorInstance: { getData: () => string }) => {
             setContent(editorInstance.getData())
           }}
-          config={{
-            toolbar: [
-              'heading',
-              '|',
-              'bold',
-              'italic',
-              'link',
-              'bulletedList',
-              'numberedList',
-              'mediaEmbed',
-              '|',
-              'undo',
-              'redo',
-            ],
-            mediaEmbed: {
-              previewsInData: true,
-            },
-          }}
+          config={CMS_EDITOR_CONFIG}
         />
       </div>
 

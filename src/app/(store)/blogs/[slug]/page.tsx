@@ -55,7 +55,7 @@ export default async function BlogPostPage({ params }: Props) {
       </div>
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         <div
-          className="prose prose-gray max-w-none [&_iframe]:my-6 [&_iframe]:w-full [&_iframe]:min-h-[400px] [&_iframe]:rounded-xl [&_iframe]:border [&_iframe]:border-gray-200"
+          className="blog-wrapper prose prose-gray max-w-none [&_iframe]:my-6 [&_iframe]:w-full [&_iframe]:min-h-[400px] [&_iframe]:rounded-xl [&_iframe]:border [&_iframe]:border-gray-200 [&_img]:my-6 [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-xl"
           dangerouslySetInnerHTML={{
             __html: prepareCmsHtmlForRender(post.content || ''),
           }}

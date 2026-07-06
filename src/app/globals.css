@@ -196,3 +196,6 @@ button.cancel-order-btn{
 .text-purple-500{
   color: #c39c41;
 }
+.blog-wrapper img{
+  width: 100% !important;
+}
