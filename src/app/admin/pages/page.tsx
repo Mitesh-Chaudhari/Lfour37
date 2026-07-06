@@ -68,7 +68,7 @@ export default async function AdminPages() {
         <div className="flex items-center justify-between gap-4">
           <h2 className="text-lg font-semibold">Blog Posts</h2>
           <Link
-            href="/admin/pages/blogs/new"
+            href="/admin/blogs/new"
             className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700"
           >
             <Plus className="h-4 w-4" />
@@ -76,15 +76,23 @@ export default async function AdminPages() {
           </Link>
         </div>
 
+        <p className="text-sm text-gray-600">
+          Manage all blog posts from the{' '}
+          <Link href="/admin/blogs" className="text-primary-600 hover:underline">
+            Blog admin page
+          </Link>
+          .
+        </p>
+
         {!blogs?.length ? (
           <p className="text-sm text-gray-600">No blog posts yet.</p>
         ) : (
           <div className="flex flex-col gap-3">
-            {blogs.map((blog) => (
+            {blogs.slice(0, 5).map((blog) => (
               <Link
                 key={blog.id}
                 className="flex items-center justify-between gap-2 p-3 manage-page-link"
-                href={`/admin/pages/${blog.slug}`}
+                href={`/admin/blogs/${blog.slug}`}
               >
                 <div>
                   <p className="font-medium">{blog.title}</p>
@@ -96,6 +104,14 @@ export default async function AdminPages() {
                 <ChevronRight />
               </Link>
             ))}
+            {blogs.length > 5 ? (
+              <Link
+                href="/admin/blogs"
+                className="text-sm text-primary-600 hover:underline px-3"
+              >
+                View all {blogs.length} blog posts →
+              </Link>
+            ) : null}
           </div>
         )}
       </section>

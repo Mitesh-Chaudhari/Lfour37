@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
-import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { prepareCmsHtmlForRender, type CmsPage } from '@/lib/cms'
@@ -18,7 +18,7 @@ interface PageEditorProps {
 }
 
 export default function PageEditor({ page }: PageEditorProps) {
-  const supabase = createClient()
+  const router = useRouter()
   const isBlog = page.page_type === 'blog'
 
   const [title, setTitle] = useState(page.title || '')
@@ -44,7 +44,6 @@ export default function PageEditor({ page }: PageEditorProps) {
 
     const payload: Record<string, unknown> = {
       content: prepareCmsHtmlForRender(content),
-      updated_at: new Date().toISOString(),
     }
 
     if (isBlog) {
@@ -53,15 +52,27 @@ export default function PageEditor({ page }: PageEditorProps) {
       payload.is_published = isPublished
     }
 
-    const { error } = await supabase.from('pages').update(payload).eq('id', page.id)
+    try {
+      const res = await fetch(`/api/admin/pages/${page.slug}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
 
-    if (error) {
-      toast.error(error.message)
-    } else {
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        toast.error(data?.error || 'Failed to save')
+        return
+      }
+
       toast.success('Updated successfully')
+      router.refresh()
+    } catch {
+      toast.error('Failed to save')
+    } finally {
+      setLoading(false)
     }
-
-    setLoading(false)
   }
 
   if (!editor) return <p>Loading editor...</p>

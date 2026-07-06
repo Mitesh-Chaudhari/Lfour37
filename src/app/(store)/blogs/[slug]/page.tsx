@@ -47,7 +47,7 @@ export default async function BlogPostPage({ params }: Props) {
       <div className="px-4 py-3 bg-primary-400">
         <div className="container mx-auto max-w-4xl">
           <Link href="/blogs" className="text-sm text-gray-800 hover:underline mb-2 inline-block">
-            ← Back to Blog
+            ← Back to Blogs
           </Link>
           <h1 className="text-3xl font-bold">{post.title}</h1>
           <p className="text-sm text-gray-700 mt-2">{formatCmsDate(post.created_at)}</p>

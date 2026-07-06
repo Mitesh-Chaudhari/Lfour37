@@ -4,7 +4,7 @@ import { formatCmsDate } from '@/lib/cms'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Blog',
+  title: 'Blogs',
   description: 'Style tips, brand updates, and news from Lfour37.',
 }
 
@@ -21,7 +21,7 @@ export default async function BlogsPage() {
   return (
     <>
       <div className="px-4 py-3 bg-primary-400">
-        <h1 className="text-3xl font-bold container mx-auto max-w-4xl">Blog</h1>
+        <h1 className="text-3xl font-bold container mx-auto max-w-4xl">Blogs</h1>
       </div>
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         {!posts?.length ? (

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 import { slugifyTitle } from '@/lib/cms'
+import { requireAdminUser } from '@/lib/admin-auth'
 import logger from '@/lib/logger'
 
 const createPageSchema = z.object({
@@ -12,24 +13,7 @@ const createPageSchema = z.object({
 })
 
 async function requireAdmin() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) return null
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile || !['admin', 'super_admin'].includes(profile.role)) {
-    return null
-  }
-
-  return user
+  return requireAdminUser()
 }
 
 export async function POST(request: NextRequest) {
