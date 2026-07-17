@@ -223,13 +223,10 @@ export function ProductCard({ product, className }: ProductCardProps) {
           </div>
         )}
 
-        {/* Out of stock overlay */}
+        {/* Out of stock strip */}
         {isOutOfStock && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/40">
-            <span
-              className="-rotate-12 select-none whitespace-nowrap rounded-md border-2 border-[#c39c41] px-4 py-1.5 text-lg font-extrabold uppercase tracking-[0.2em] text-[#c39c41] shadow-lg sm:text-2xl"
-              style={{ textShadow: '0 1px 2px rgba(0,0,0,0.4)' }}
-            >
+          <div className="absolute inset-x-0 bottom-0 z-30 bg-[#c39c41] py-2 text-center">
+            <span className="select-none text-sm font-bold uppercase tracking-[0.2em] text-white">
               Sold Out
             </span>
           </div>
