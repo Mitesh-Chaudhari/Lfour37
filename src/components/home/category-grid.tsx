@@ -23,7 +23,7 @@ export function CategoryGrid({ categories }: CategoryGridProps) {
 
   return (
     <section className="py-20 bg-white">
-      <div className="container mx-auto px-4">
+      <div className="container mx-auto px-3">
         {/* Header */}
         <div className="flex items-end justify-between mb-10">
           <div>

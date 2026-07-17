@@ -288,7 +288,7 @@ export default async function ProductsPage({ searchParams }: PageProps) {
   const searchTerm = params.search ? sanitizeSearchTerm(params.search) : ''
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-3 py-8">
       {searchTerm ? <MetaSearchTracker searchTerm={searchTerm} /> : null}
       <div className="flex flex-col md:flex-row gap-8">
         {/* Filters */}
