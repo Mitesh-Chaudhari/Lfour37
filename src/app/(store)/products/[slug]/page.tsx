@@ -140,7 +140,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
     offers: {
       '@type': 'Offer',
       price: product.price,
-      priceCurrency: 'USD',
+      priceCurrency: 'INR',
       availability: product.variants?.some((v: { stock: number }) => v.stock > 0)
         ? 'https://schema.org/InStock'
         : 'https://schema.org/OutOfStock',
