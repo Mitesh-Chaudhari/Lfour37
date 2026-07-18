@@ -79,11 +79,10 @@ function csvEscape(value: string): string {
   return value
 }
 
-function getAvailability(variants?: CatalogVariant[] | null): 'in stock' | 'out of stock' {
-  const inStock = (variants || []).some(
+function isProductInStock(variants?: CatalogVariant[] | null): boolean {
+  return (variants || []).some(
     (variant) => variant.is_active !== false && (variant.stock ?? 0) > 0
   )
-  return inStock ? 'in stock' : 'out of stock'
 }
 
 function getUniqueVariantValues(
@@ -123,6 +122,8 @@ export function buildCatalogRow(
   allCategories: CategoryRef[]
 ): CatalogRow | null {
   if (!product.id || !product.slug || !product.name) return null
+  // Exclude out-of-stock products entirely (do not advertise unavailable items).
+  if (!isProductInStock(product.variants)) return null
 
   const images = normalizeProductImages(product.images)
   const primaryImage = images[0]?.url
@@ -148,6 +149,11 @@ export function buildCatalogRow(
     .map((image) => image.url)
     .join(',')
 
+  // Only in-stock variants contribute to color/size columns.
+  const inStockVariants = (product.variants || []).filter(
+    (variant) => variant.is_active !== false && (variant.stock ?? 0) > 0
+  )
+
   return {
     id: product.id,
     title: toPlainText(product.name, 200),
@@ -155,7 +161,7 @@ export function buildCatalogRow(
       toPlainText(product.short_description) ||
       toPlainText(product.description) ||
       toPlainText(product.name, 200),
-    availability: getAvailability(product.variants),
+    availability: 'in stock',
     condition: 'new',
     price: formatMoney(regularPrice),
     sale_price: salePrice != null ? formatMoney(salePrice) : '',
@@ -165,8 +171,8 @@ export function buildCatalogRow(
     brand: getCatalogBrand(),
     product_type: productType,
     item_group_id: product.id,
-    color: getUniqueVariantValues(product.variants, 'color'),
-    size: getUniqueVariantValues(product.variants, 'size'),
+    color: getUniqueVariantValues(inStockVariants, 'color'),
+    size: getUniqueVariantValues(inStockVariants, 'size'),
   }
 }
 
