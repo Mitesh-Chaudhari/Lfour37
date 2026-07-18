@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Facebook, Instagram, Twitter, Youtube } from 'lucide-react'
+import { Facebook, Instagram, Target, Twitter, Youtube } from 'lucide-react'
 import { OptimizedImage } from '@/components/ui/optimized-image'
 
 const FOOTER_LINKS = {
@@ -55,16 +55,17 @@ export function Footer() {
             </p>
             <div className="flex gap-3">
               {[
-                { Icon: Instagram, href: '#', label: 'Instagram' },
-                { Icon: Facebook, href: '#', label: 'Facebook' },
-                { Icon: Twitter, href: '#', label: 'Twitter' },
-                { Icon: Youtube, href: '#', label: 'YouTube' },
-              ].map(({ Icon, href, label }) => (
+                { Icon: Instagram, href: 'https://www.instagram.com/lfour37/', label: 'Instagram', Target: '_blank' },
+                { Icon: Facebook, href: 'https://www.facebook.com/people/Lfour37/61587464264078/?', label: 'Facebook', Target: '_blank' },
+                // { Icon: Twitter, href: '#', label: 'Twitter' },
+                // { Icon: Youtube, href: '#', label: 'YouTube' },
+              ].map(({ Icon, href, label, Target }) => (
                 <a
                   key={label}
                   href={href}
                   aria-label={label}
                   className="p-2 rounded-lg bg-gray-800 hover:bg-purple-600 transition-colors"
+                  target={Target}
                 >
                   <Icon className="h-4 w-4" />
                 </a>
