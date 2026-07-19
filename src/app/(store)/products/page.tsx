@@ -21,6 +21,10 @@ import {
   enrichProductsWithBestSeller,
   getBestSellerProductIds,
 } from '@/lib/products'
+import {
+  getProductIdsMatchingVariantFilters,
+  normalizeSearchParamList,
+} from '@/lib/product-variant-filters'
 import { MetaSearchTracker } from '@/components/meta-pixel/event-trackers'
 
 interface PageProps {
@@ -133,6 +137,24 @@ async function getProducts(
     query = applyProductSearchFilter(query, searchTerm, categoryProductIds)
   }
 
+  const sizes = normalizeSearchParamList(searchParams.sizes)
+  const colors = normalizeSearchParamList(searchParams.colors)
+  const inStockOnly = searchParams.inStock === 'true'
+
+  // Apply size/color/stock BEFORE pagination so matching products are not dropped.
+  const variantMatchedIds = await getProductIdsMatchingVariantFilters(supabase, {
+    sizes,
+    colors,
+    inStockOnly,
+  })
+
+  if (variantMatchedIds) {
+    if (variantMatchedIds.length === 0) {
+      return { products: [], total: 0, page, perPage }
+    }
+    query = query.in('id', variantMatchedIds)
+  }
+
   switch (searchParams.sortBy) {
     case 'price_asc':
       query = query.order('price', { ascending: true })
@@ -162,43 +184,6 @@ async function getProducts(
   const { data, count } = await query
 
   let products = (data as unknown as Product[]) || []
-
-  const sizes =
-    typeof searchParams.sizes === 'string'
-      ? [searchParams.sizes]
-      : searchParams.sizes || []
-
-  const colors =
-    typeof searchParams.colors === 'string'
-      ? [searchParams.colors]
-      : searchParams.colors || []
-
-  const inStockOnly = searchParams.inStock === 'true'
-
-  if (sizes.length > 0) {
-    products = products.filter((p) =>
-      p.variants?.some((v) => sizes.includes(v.size))
-    )
-  }
-
-  if (colors.length > 0) {
-    products = products.filter((p) =>
-      p.variants?.some((v) =>
-        colors
-          .map((c) => c.toLowerCase())
-          .includes(
-            (v.color_group || '')
-              .toLowerCase()
-          )
-      )
-    )
-  }
-
-  if (inStockOnly) {
-    products = products.filter((p) =>
-      p.variants?.some((v) => v.stock > 0)
-    )
-  }
 
   const bestSellerIds = await getBestSellerProductIds(supabase)
   products = enrichProductsWithBestSeller(products, bestSellerIds)

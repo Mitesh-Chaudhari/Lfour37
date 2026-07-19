@@ -11,6 +11,7 @@ import {
   getBestSellerProductIds,
   shouldApplyListSortOrder,
 } from '@/lib/products'
+import { getProductIdsMatchingVariantFilters } from '@/lib/product-variant-filters'
 
 export async function GET(
   req: NextRequest
@@ -246,6 +247,28 @@ export async function GET(
   }
 
   //////////////////////////////////////////////////////
+  // SIZE / COLOR / STOCK (before pagination)
+  //////////////////////////////////////////////////////
+
+  const variantMatchedIds = await getProductIdsMatchingVariantFilters(supabase, {
+    sizes,
+    colors,
+    inStockOnly: inStock === 'true',
+  })
+
+  if (variantMatchedIds) {
+    if (variantMatchedIds.length === 0) {
+      return NextResponse.json({
+        products: [],
+        total: 0,
+        page,
+        hasMore: false,
+      })
+    }
+    query = query.in('id', variantMatchedIds)
+  }
+
+  //////////////////////////////////////////////////////
   // SORTING
   //////////////////////////////////////////////////////
 
@@ -331,62 +354,8 @@ export async function GET(
     )
   }
 
-  //////////////////////////////////////////////////////
-  // CLIENT-SIDE FILTERS
-  // (variants are nested)
-  //////////////////////////////////////////////////////
-
   let products =
     data || []
-
-  if (
-    sizes.length > 0
-  ) {
-    products =
-      products.filter(
-        (product: any) =>
-          product.variants?.some(
-            (variant: any) =>
-              sizes.includes(
-                variant.size
-              )
-          )
-      )
-  }
-
-    if (colors.length > 0) {
-    products =
-        products.filter(
-        (product: any) =>
-            product.variants?.some(
-            (variant: any) =>
-                colors
-                .map((c) =>
-                    c.toLowerCase()
-                )
-                .includes(
-                    (
-                    variant.color_group ||
-                    ''
-                    ).toLowerCase()
-                )
-            )
-        )
-    }
-
-  if (
-    inStock ===
-    'true'
-  ) {
-    products =
-      products.filter(
-        (product: any) =>
-          product.variants?.some(
-            (variant: any) =>
-              variant.stock > 0
-          )
-      )
-  }
 
   products = enrichProductsWithBestSeller(
     products,
