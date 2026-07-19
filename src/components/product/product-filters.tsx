@@ -330,7 +330,7 @@ export function ProductFiltersPanel({ categories, sizes, colors, searchParams }:
                         )
                       }
                       className={cn(
-                        'px-3 py-1 rounded border text-xs',
+                        'px-3 py-2 rounded border text-xs',
                         selectedSizes.includes(
                           size
                         ) &&
@@ -358,7 +358,7 @@ export function ProductFiltersPanel({ categories, sizes, colors, searchParams }:
                         )
                       }
                       className={cn(
-                        'px-3 py-1 rounded border text-xs',
+                        'px-3 py-2 rounded border text-xs',
                         selectedColors.includes(
                           color
                         ) &&
