@@ -46,16 +46,18 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
   return (
     <div className="container mx-auto px-4 py-16 max-w-2xl">
       {order && (
-        <MetaPurchaseTracker
-          orderId={order.id}
-          value={order.total}
-          items={order.items || []}
-        />
-        <GaPurchaseTracker
-          orderId={order.id}
-          value={order.total}
-          items={order.items || []}
-        />
+        <>
+          <MetaPurchaseTracker
+            orderId={order.id}
+            value={order.total}
+            items={order.items || []}
+          />
+          <GaPurchaseTracker
+            orderId={order.id}
+            value={order.total}
+            items={order.items || []}
+          />
+        </>
       )}
       <div className="text-center mb-10">
         <div className="flex justify-center mb-4">
