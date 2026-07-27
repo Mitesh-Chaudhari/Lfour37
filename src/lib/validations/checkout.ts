@@ -43,6 +43,15 @@ export const productSchema = z.object({
   slug: z.string().min(2).max(200).regex(/^[a-z0-9-]+$/, 'Slug can only contain lowercase letters, numbers, and hyphens'),
   description: z.string().optional(),
   short_description: z.string().max(500).optional(),
+  key_highlights: z
+    .array(
+      z.object({
+        label: z.string().min(1).max(80),
+        value: z.string().min(1).max(120),
+      })
+    )
+    .optional()
+    .default([]),
   price: z.number().min(0, 'Price must be positive'),
   compare_price: z.preprocess(
     (value) => {

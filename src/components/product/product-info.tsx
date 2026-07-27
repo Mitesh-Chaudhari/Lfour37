@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Heart, ShoppingBag, Truck, RotateCcw, Shield, ChevronDown, ChevronUp, RectangleGoggles, Loader2 } from 'lucide-react'
+import { Heart, ShoppingBag, Truck, RotateCcw, Shield, RectangleGoggles, Loader2, ChevronUp, ChevronDown } from 'lucide-react'
 import { Product, ProductVariant } from '@/types'
 import { useCartStore } from '@/store/cart-store'
 import { useWishlistStore } from '@/store/wishlist-store'
@@ -10,6 +10,7 @@ import { useUIStore } from '@/store/ui-store'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { StarRating } from '@/components/ui/star-rating'
+import { ProductDetailsSections } from '@/components/product/product-details-sections'
 import { createClient } from '@/lib/supabase/client'
 import { formatPrice, calculateDiscount } from '@/lib/utils'
 import { cn } from '@/lib/utils'
@@ -18,6 +19,7 @@ import type { SizeGuide } from '@/lib/size-guides'
 import { SizeGuideList } from '@/components/size-guide/size-guide-section'
 import toast from 'react-hot-toast'
 import { trackAddToCart } from '@/lib/meta-pixel'
+import { trackGaAddToCart } from '@/lib/google-analytics'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getProductCategoryDisplay } from '@/lib/categories'
 
@@ -32,7 +34,6 @@ export function ProductInfo({ product, sizeOrder = [], sizeGuides = [] }: Produc
   const { isInWishlist, toggleWishlist } = useWishlistStore()
   const { openCart } = useUIStore()
   const [quantity, setQuantity] = useState(1)
-  const [expandedSection, setExpandedSection] = useState<string | null>('details')
   const router = useRouter()
   const searchParams = useSearchParams()
     const initialColor =
@@ -84,13 +85,6 @@ export function ProductInfo({ product, sizeOrder = [], sizeGuides = [] }: Produc
     (sum, variant) => sum + variant.stock,
       0
     )
-    console.log(
-  variants.map(v => ({
-    color: v.color,
-    size: v.size,
-    stock: v.stock
-  }))
-)
   const isProductOutOfStock = totalStock === 0
   const sizes = [...new Set(variants.map((v) => v.size))].sort((a, b) => {
     const aIndex = sizeOrder.indexOf(a)
@@ -192,6 +186,12 @@ export function ProductInfo({ product, sizeOrder = [], sizeGuides = [] }: Produc
 
     addItem(product, selectedVariant, quantity)
     trackAddToCart({
+      productId: product.id,
+      productName: product.name,
+      price: currentPrice,
+      quantity,
+    })
+    trackGaAddToCart({
       productId: product.id,
       productName: product.name,
       price: currentPrice,
@@ -582,33 +582,7 @@ export function ProductInfo({ product, sizeOrder = [], sizeGuides = [] }: Produc
         ))}
       </div>
 
-      {/* Expandable sections */}
-      {[
-        {
-          id: 'details',
-          title: 'Product Details',
-          content: product.description || 'No description available.',
-        },
-      ].map((section) => (
-        <div key={section.id} className="border-b border-gray-100 pb-4">
-          <button
-            onClick={() => setExpandedSection(expandedSection === section.id ? null : section.id)}
-            className="flex items-center justify-between w-full py-1 text-sm font-semibold text-gray-900"
-          >
-            {section.title}
-            {expandedSection === section.id ? (
-              <ChevronUp className="h-4 w-4 text-gray-500" />
-            ) : (
-              <ChevronDown className="h-4 w-4 text-gray-500" />
-            )}
-          </button>
-          {expandedSection === section.id && (
-            <div className="mt-3 text-sm text-gray-600 leading-relaxed whitespace-pre-line">
-              {section.content}
-            </div>
-          )}
-        </div>
-      ))}
+      <ProductDetailsSections product={product} />
     </div>
   )
 }

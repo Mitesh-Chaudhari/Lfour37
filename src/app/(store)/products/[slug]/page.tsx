@@ -14,6 +14,7 @@ import {
 } from '@/lib/categories'
 import { enrichProductsWithBestSeller, getBestSellerProductIds } from '@/lib/products'
 import { MetaViewContentTracker } from '@/components/meta-pixel/event-trackers'
+import { GaViewItemTracker } from '@/components/google-analytics/event-trackers'
 import type { Metadata } from 'next'
 
 interface PageProps {
@@ -167,6 +168,12 @@ export default async function ProductDetailPage({ params }: PageProps) {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <MetaViewContentTracker
+        productId={product.id}
+        productName={product.name}
+        price={product.price}
+        category={primaryCategory}
+      />
+      <GaViewItemTracker
         productId={product.id}
         productName={product.name}
         price={product.price}

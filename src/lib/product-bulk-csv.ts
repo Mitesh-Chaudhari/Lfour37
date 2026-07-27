@@ -7,6 +7,7 @@ export const BULK_UPLOAD_COLUMNS = [
   'compare_price',
   'short_description',
   'description',
+  'key_highlights',
   'sku',
   'status',
   'hsn_code',
@@ -142,6 +143,7 @@ export function generateBulkUploadTemplateCsv(): string {
     '1299',
     'Soft everyday cotton tee',
     'Premium cotton t-shirt for daily wear',
+    'Color:Black;Pattern:Solid;Brand Fabric:Pure Cotton;Fit:Regular Fit;Sleeve:Half Sleeve;Collar:Crew Neck',
     'TEE-001',
     'active',
     '61091000',
@@ -166,6 +168,7 @@ export function generateBulkUploadTemplateCsv(): string {
   const exampleVariant = [
     'Classic Cotton Tee',
     'classic-cotton-tee',
+    '',
     '',
     '',
     '',

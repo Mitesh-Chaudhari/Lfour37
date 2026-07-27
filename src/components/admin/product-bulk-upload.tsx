@@ -15,6 +15,7 @@ import {
   slugifyProduct,
   type BulkUploadRow,
 } from '@/lib/product-bulk-csv'
+import { parseKeyHighlightsCsv } from '@/lib/product-details'
 import toast from 'react-hot-toast'
 
 type ProductRecord = {
@@ -104,6 +105,7 @@ function buildProductInsert(row: BulkUploadRow, productSlug: string) {
     compare_price: comparePrice != null && comparePrice > 0 ? comparePrice : null,
     description: row.description || null,
     short_description: row.short_description || null,
+    key_highlights: parseKeyHighlightsCsv(row.key_highlights),
     sku: row.sku || null,
     hsn_code: row.hsn_code?.trim() || null,
     status: (row.status || 'draft') as 'active' | 'inactive' | 'draft',

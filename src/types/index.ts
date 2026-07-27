@@ -8,6 +8,11 @@ export type DiscountType = 'percentage' | 'fixed'
 export type ReviewStatus = 'pending' | 'approved' | 'rejected'
 export type ProductStatus = 'active' | 'inactive' | 'draft'
 
+export interface ProductKeyHighlight {
+  label: string
+  value: string
+}
+
 export interface User {
   id: string
   email: string
@@ -51,6 +56,7 @@ export interface Product {
   slug: string
   description: string | null
   short_description: string | null
+  key_highlights?: ProductKeyHighlight[] | null
   price: number
   compare_price: number | null
   cost_price: number | null

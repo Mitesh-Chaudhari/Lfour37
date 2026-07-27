@@ -70,7 +70,7 @@ export function ProductReviews({ productId, reviews, averageRating, reviewCount 
   }
 
   return (
-    <section className="border-t border-gray-200 pt-12">
+    <section id="reviews" className="border-t border-gray-200 pt-12 scroll-mt-24">
       <div className="flex items-center justify-between mb-8">
         <h2 className="text-2xl font-bold text-gray-900">
           Customer Reviews ({reviewCount})

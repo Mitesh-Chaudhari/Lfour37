@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import toast from 'react-hot-toast'
 import { trackAddToCart } from '@/lib/meta-pixel'
+import { trackGaAddToCart } from '@/lib/google-analytics'
 
 interface WishlistProduct {
   id: string
@@ -73,6 +74,12 @@ export function WishlistClient({ items: initialItems, userId }: { items: Wishlis
     try {
       addItem(product as any, availableVariant as any, 1)
       trackAddToCart({
+        productId: product.id,
+        productName: product.name,
+        price: product.price,
+        quantity: 1,
+      })
+      trackGaAddToCart({
         productId: product.id,
         productName: product.name,
         price: product.price,

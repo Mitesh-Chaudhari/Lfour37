@@ -1,5 +1,5 @@
 export const META_PIXEL_ID =
-  process.env.NEXT_PUBLIC_META_PIXEL_ID ?? '1629025605190039'
+  process.env.NEXT_PUBLIC_META_PIXEL_ID ?? '1915574589141335'
 
 export const META_CURRENCY = 'INR'
 

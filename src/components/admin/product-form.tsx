@@ -9,13 +9,17 @@ import { productSchema, ProductFormData } from '@/lib/validations/checkout'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ProductImage } from '@/types'
+import { ProductImage, ProductKeyHighlight } from '@/types'
 import { slugify } from '@/lib/utils'
 import { OptimizedImage } from '@/components/ui/optimized-image'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { resolveHsnFromCategories } from '@/lib/hsn'
 import { buildCategoryTree, getDeepestSelectedCategoryIds } from '@/lib/categories'
+import {
+  buildKeyHighlightsForForm,
+  DEFAULT_KEY_HIGHLIGHT_LABELS,
+} from '@/lib/product-details'
 
 interface ProductFormProps {
   categories: {
@@ -42,6 +46,7 @@ interface ProductFormProps {
     list_sort_order?: number | null
     images: ProductImage[]
     tags: string[]
+    key_highlights?: ProductKeyHighlight[] | null
     seo_title?: string
     seo_description?: string
     category_ids: string[]
@@ -221,6 +226,9 @@ export function ProductForm({
   const [isSaving, setIsSaving] = useState(false)
   const [tags, setTags] = useState<string[]>(initialData?.tags || [])
   const [tagInput, setTagInput] = useState('')
+  const [keyHighlights, setKeyHighlights] = useState<ProductKeyHighlight[]>(() =>
+    buildKeyHighlightsForForm(initialData?.key_highlights)
+  )
   const [availableColorGroups, setAvailableColorGroups] =
   useState<string[]>([
     ...new Set([
@@ -527,6 +535,12 @@ export function ProductForm({
         list_sort_order: listSortOrder,
         images: images,
         tags: tags,
+        key_highlights: keyHighlights
+          .map((item) => ({
+            label: item.label.trim(),
+            value: item.value.trim(),
+          }))
+          .filter((item) => item.label && item.value),
         seo_title: data.seo_title || null,
         seo_description: data.seo_description || null,
       }
@@ -711,6 +725,84 @@ export function ProductForm({
             {...register('description')}
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
           />
+        </div>
+      </div>
+
+      {/* Key Highlights */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Key Highlights</h2>
+            <p className="text-xs text-gray-500 mt-1">
+              Fill values for Color, Pattern, Brand Fabric, Fit, Sleeve, and Collar.
+              These appear on the product page.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              setKeyHighlights((current) => [...current, { label: '', value: '' }])
+            }
+          >
+            <Plus className="h-4 w-4" /> Add Custom
+          </Button>
+        </div>
+
+        <div className="space-y-3">
+          <div className="grid grid-cols-[1fr_1fr_auto] gap-2 text-xs font-medium text-gray-500 px-0.5">
+            <span>Label</span>
+            <span>Value</span>
+            <span className="w-10" />
+          </div>
+          {keyHighlights.map((item, index) => {
+            const isDefaultRow = DEFAULT_KEY_HIGHLIGHT_LABELS.some(
+              (label) => label === item.label
+            )
+
+            return (
+              <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+                <Input
+                  value={item.label}
+                  placeholder="e.g. Material"
+                  readOnly={isDefaultRow}
+                  onChange={(e) => {
+                    if (isDefaultRow) return
+                    const next = [...keyHighlights]
+                    next[index] = { ...next[index], label: e.target.value }
+                    setKeyHighlights(next)
+                  }}
+                  className={isDefaultRow ? 'bg-gray-50' : undefined}
+                />
+                <Input
+                  value={item.value}
+                  placeholder="Enter value"
+                  onChange={(e) => {
+                    const next = [...keyHighlights]
+                    next[index] = { ...next[index], value: e.target.value }
+                    setKeyHighlights(next)
+                  }}
+                />
+                {isDefaultRow ? (
+                  <div className="h-10 w-10" aria-hidden />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setKeyHighlights((current) =>
+                        current.filter((_, i) => i !== index)
+                      )
+                    }
+                    className="h-10 w-10 rounded-lg border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 flex items-center justify-center"
+                    aria-label="Remove highlight"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
 

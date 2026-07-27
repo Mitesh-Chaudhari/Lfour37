@@ -6,6 +6,7 @@ import { formatPrice, formatDate } from '@/lib/utils'
 import { getExplorerTxUrl } from '@/lib/crypto/networks'
 import { CryptoNetwork } from '@/types'
 import { MetaPurchaseTracker } from '@/components/meta-pixel/event-trackers'
+import { GaPurchaseTracker } from '@/components/google-analytics/event-trackers'
 
 interface PageProps {
   searchParams: Promise<{ order_id?: string; tx?: string }>
@@ -46,6 +47,11 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
     <div className="container mx-auto px-4 py-16 max-w-2xl">
       {order && (
         <MetaPurchaseTracker
+          orderId={order.id}
+          value={order.total}
+          items={order.items || []}
+        />
+        <GaPurchaseTracker
           orderId={order.id}
           value={order.total}
           items={order.items || []}

@@ -26,6 +26,7 @@ import {
   normalizeSearchParamList,
 } from '@/lib/product-variant-filters'
 import { MetaSearchTracker } from '@/components/meta-pixel/event-trackers'
+import { GaSearchTracker } from '@/components/google-analytics/event-trackers'
 
 interface PageProps {
   searchParams: Promise<{
@@ -274,7 +275,12 @@ export default async function ProductsPage({ searchParams }: PageProps) {
 
   return (
     <div className="container mx-auto px-3 py-8">
-      {searchTerm ? <MetaSearchTracker searchTerm={searchTerm} /> : null}
+      {searchTerm ? (
+        <>
+          <MetaSearchTracker searchTerm={searchTerm} />
+          <GaSearchTracker searchTerm={searchTerm} />
+        </>
+      ) : null}
       <div className="flex flex-col md:flex-row gap-8">
         {/* Filters */}
         <aside className="w-full md:w-64 flex-shrink-0">
