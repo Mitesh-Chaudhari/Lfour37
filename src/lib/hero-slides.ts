@@ -1,4 +1,5 @@
-import { createClient } from '@/lib/supabase/server'
+import { unstable_cache } from 'next/cache'
+import { createClient, createPublicClient } from '@/lib/supabase/server'
 
 export interface HeroSlide {
   id: string
@@ -17,12 +18,14 @@ export interface HeroSlide {
   sort_order: number
 }
 
-export async function getActiveHeroSlides(): Promise<HeroSlide[]> {
-  const supabase = await createClient()
+async function fetchActiveHeroSlides(): Promise<HeroSlide[]> {
+  const supabase = createPublicClient()
 
   const { data, error } = await supabase
     .from('hero_slides')
-    .select('*')
+    .select(
+      'id, badge, title, subtitle, cta_text, cta_link, secondary_text, secondary_link, highlight_index, image_url, mobile_image_url, accent, is_active, sort_order'
+    )
     .eq('is_active', true)
     .order('sort_order')
 
@@ -33,6 +36,12 @@ export async function getActiveHeroSlides(): Promise<HeroSlide[]> {
 
   return (data as HeroSlide[]) || []
 }
+
+export const getActiveHeroSlides = unstable_cache(
+  fetchActiveHeroSlides,
+  ['active-hero-slides'],
+  { revalidate: 120 }
+)
 
 export async function getAllHeroSlides(): Promise<HeroSlide[]> {
   const supabase = await createClient()

@@ -1,4 +1,5 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createPublicClient } from '@/lib/supabase/server'
+import { LISTING_PRODUCT_SELECT } from '@/lib/catalog-queries'
 import { ProductCard } from '@/components/product/product-card'
 import { ProductFiltersPanel } from '@/components/product/product-filters'
 import { ProductSort } from '@/components/product/product-sort'
@@ -93,10 +94,9 @@ async function getProducts(
     .from('products')
     .select(
       `
-      *,
-      variants:product_variants(*),
+      ${LISTING_PRODUCT_SELECT},
       ${categoryJoin}(
-        category:categories(*)
+        category:categories(id, name, slug, parent_id)
       )
     `,
       { count: 'exact' }
@@ -186,7 +186,7 @@ async function getProducts(
 
   let products = (data as unknown as Product[]) || []
 
-  const bestSellerIds = await getBestSellerProductIds(supabase)
+  const bestSellerIds = await getBestSellerProductIds()
   products = enrichProductsWithBestSeller(products, bestSellerIds)
 
   return { products, total: count || 0, page, perPage }
@@ -199,26 +199,14 @@ async function getProducts(
 async function getFilterOptions(
   allCategories: { id: string; name: string; slug: string; parent_id: string | null }[]
 ) {
-  const supabase = await createClient()
+  const supabase = createPublicClient()
 
   const [variantsRes, sizesRes] = await Promise.all([
     supabase
       .from('product_variants')
-      .select(`
-        size,
-        color_group,
-        products!inner(
-          status
-        )
-      `)
-      .eq(
-        'is_active',
-        true
-      )
-      .eq(
-        'products.status',
-        'active'
-      ),
+      .select('size, color_group, products!inner(status)')
+      .eq('is_active', true)
+      .eq('products.status', 'active'),
     supabase
       .from('product_sizes')
       .select('name')

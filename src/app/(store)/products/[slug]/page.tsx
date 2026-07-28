@@ -1,4 +1,6 @@
-import { createClient } from '@/lib/supabase/server'
+import { cache } from 'react'
+import { createPublicClient } from '@/lib/supabase/server'
+import { LISTING_PRODUCT_SELECT } from '@/lib/catalog-queries'
 import { notFound } from 'next/navigation'
 import { ProductGallery } from '@/components/product/product-gallery'
 import { ProductInfo } from '@/components/product/product-info'
@@ -16,43 +18,58 @@ import { enrichProductsWithBestSeller, getBestSellerProductIds } from '@/lib/pro
 import { MetaViewContentTracker } from '@/components/meta-pixel/event-trackers'
 import { GaViewItemTracker } from '@/components/google-analytics/event-trackers'
 import type { Metadata } from 'next'
+import type { Product } from '@/types'
+
+export const revalidate = 60
 
 interface PageProps {
   params: Promise<{ slug: string }>
 }
 
-async function getProduct(slug: string) {
-  const supabase = await createClient()
+const getProduct = cache(async (slug: string) => {
+  const supabase = createPublicClient()
 
-  const { data } = await supabase
+  const { data: product } = await supabase
     .from('products')
     .select(`
       *,
       variants:product_variants(*),
       categories:product_categories(
-        category:categories(*)
-      ),
-      reviews(
-        *,
-        user:users(id, full_name, avatar_url)
+        category:categories(id, name, slug, parent_id)
       )
     `)
     .eq('slug', slug)
     .eq('status', 'active')
     .single()
 
-  return data
-}
+  if (!product) return null
+
+  const { data: reviews } = await supabase
+    .from('reviews')
+    .select(`
+      *,
+      user:users(id, full_name, avatar_url)
+    `)
+    .eq('product_id', product.id)
+    .order('created_at', { ascending: false })
+    .limit(50)
+
+  return {
+    ...product,
+    reviews: reviews || [],
+  }
+})
 
 async function getRelatedProducts(categoryIds: string[], currentProductId: string) {
-  const supabase = await createClient()
+  if (categoryIds.length === 0) return []
+
+  const supabase = createPublicClient()
 
   const { data } = await supabase
     .from('products')
     .select(`
-      *,
-      variants:product_variants(*),
-      categories:product_categories(category:categories(*))
+      ${LISTING_PRODUCT_SELECT},
+      categories:product_categories(category:categories(id, name, slug, parent_id))
     `)
     .eq('status', 'active')
     .in('product_categories.category_id', categoryIds)
@@ -63,7 +80,7 @@ async function getRelatedProducts(categoryIds: string[], currentProductId: strin
 }
 
 async function getSizeOrder() {
-  const supabase = await createClient()
+  const supabase = createPublicClient()
   const { data } = await supabase
     .from('product_sizes')
     .select('name')
@@ -71,6 +88,16 @@ async function getSizeOrder() {
     .order('name')
 
   return (data || []).map((size) => size.name)
+}
+
+async function getAllCategories() {
+  const supabase = createPublicClient()
+  const { data } = await supabase
+    .from('categories')
+    .select('id, name, slug, parent_id')
+    .eq('is_active', true)
+
+  return data || []
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -102,32 +129,30 @@ export default async function ProductDetailPage({ params }: PageProps) {
 
   if (!product) notFound()
 
-  const supabase = await createClient()
-  const { data: allCategories } = await supabase
-    .from('categories')
-    .select('id, name, slug, parent_id')
-    .eq('is_active', true)
-
   const categoryIds = extractCategoryIdsFromProduct(product.categories)
-  const deepestCategoryId = getDeepestCategoryId(categoryIds, allCategories || [])
-  const categoryBreadcrumb = deepestCategoryId
-    ? getCategoryPath(deepestCategoryId, allCategories || [])
-    : []
 
-  const [relatedProductsRaw, sizeOrder, sizeGuides] = await Promise.all([
-    getRelatedProducts(categoryIds, product.id),
-    getSizeOrder(),
-    getSizeGuidesForCategories(categoryIds),
-  ])
+  const [relatedProductsRaw, sizeOrder, sizeGuides, allCategories, bestSellerIds] =
+    await Promise.all([
+      getRelatedProducts(categoryIds, product.id),
+      getSizeOrder(),
+      getSizeGuidesForCategories(categoryIds),
+      getAllCategories(),
+      getBestSellerProductIds(),
+    ])
+
+  const resolvedDeepestCategoryId = getDeepestCategoryId(categoryIds, allCategories)
+  const categoryBreadcrumb = resolvedDeepestCategoryId
+    ? getCategoryPath(resolvedDeepestCategoryId, allCategories)
+    : []
 
   const enrichedProduct = enrichProductsWithCategoryDisplay(
     [product],
-    allCategories || []
+    allCategories
   )[0]
 
   const relatedProducts = enrichProductsWithBestSeller(
     relatedProductsRaw,
-    await getBestSellerProductIds(supabase)
+    bestSellerIds
   )
 
   // JSON-LD structured data
@@ -227,7 +252,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
           <div className="mt-16">
             <ProductSection
               title="You May Also Like"
-              products={relatedProducts}
+              products={relatedProducts as unknown as Product[]}
             />
           </div>
         )}

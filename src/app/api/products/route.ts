@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { LISTING_PRODUCT_SELECT } from '@/lib/catalog-queries'
 import {
   applyProductSearchFilter,
   getProductIdsFromCategorySearch,
@@ -114,10 +115,9 @@ export async function GET(
     .from('products')
     .select(
       `
-      *,
-      variants:product_variants(*),
+      ${LISTING_PRODUCT_SELECT},
       ${categoryJoin}(
-        category:categories(*)
+        category:categories(id, name, slug, parent_id)
       )
     `,
       {
@@ -359,7 +359,7 @@ export async function GET(
 
   products = enrichProductsWithBestSeller(
     products,
-    await getBestSellerProductIds(supabase)
+    await getBestSellerProductIds()
   )
 
   //////////////////////////////////////////////////////

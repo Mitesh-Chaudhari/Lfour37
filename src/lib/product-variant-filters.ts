@@ -10,17 +10,83 @@ function normalizeFilterValue(value: string): string {
   return value.trim().toLowerCase()
 }
 
+async function getProductIdsForSizeFilter(
+  supabase: SupabaseClient,
+  sizes: string[]
+): Promise<Set<string>> {
+  const { data } = await supabase
+    .from('product_variants')
+    .select('product_id')
+    .eq('is_active', true)
+    .in('size', sizes)
+
+  return new Set(
+    (data || [])
+      .map((variant) => variant.product_id)
+      .filter((id): id is string => Boolean(id))
+  )
+}
+
+async function getProductIdsForColorFilter(
+  supabase: SupabaseClient,
+  colors: string[]
+): Promise<Set<string>> {
+  const [byGroupRes, byColorRes] = await Promise.all([
+    supabase
+      .from('product_variants')
+      .select('product_id')
+      .eq('is_active', true)
+      .in('color_group', colors),
+    supabase
+      .from('product_variants')
+      .select('product_id')
+      .eq('is_active', true)
+      .in('color', colors),
+  ])
+
+  const productIds = new Set<string>()
+
+  for (const variant of [...(byGroupRes.data || []), ...(byColorRes.data || [])]) {
+    if (variant.product_id) productIds.add(variant.product_id)
+  }
+
+  return productIds
+}
+
+async function getProductIdsForStockFilter(
+  supabase: SupabaseClient
+): Promise<Set<string>> {
+  const { data } = await supabase
+    .from('product_variants')
+    .select('product_id')
+    .eq('is_active', true)
+    .gt('stock', 0)
+
+  return new Set(
+    (data || [])
+      .map((variant) => variant.product_id)
+      .filter((id): id is string => Boolean(id))
+  )
+}
+
+function intersectSets(sets: Set<string>[]): Set<string> {
+  if (sets.length === 0) return new Set()
+  if (sets.length === 1) return sets[0]
+
+  return sets.reduce((acc, current) => {
+    const next = new Set<string>()
+    for (const id of acc) {
+      if (current.has(id)) next.add(id)
+    }
+    return next
+  })
+}
+
 /**
  * Returns product IDs that match size/color/stock variant filters.
  * - `null` → no variant filters requested
  * - `[]` → filters requested but nothing matched
  * - `string[]` → matching product IDs
- *
- * Filtering must happen before product pagination; applying it after
- * `.range()` incorrectly drops matching products that fall outside the page.
- *
- * Size / color / stock are applied independently at product level
- * (same behavior as the previous in-memory filters).
  */
 export async function getProductIdsMatchingVariantFilters(
   supabase: SupabaseClient,
@@ -34,56 +100,25 @@ export async function getProductIdsMatchingVariantFilters(
     return null
   }
 
-  const { data, error } = await supabase
-    .from('product_variants')
-    .select('product_id, size, color_group, color, stock, is_active')
-    .eq('is_active', true)
+  const filterSets: Set<string>[] = []
 
-  if (error || !data) {
+  if (sizes.length > 0) {
+    filterSets.push(await getProductIdsForSizeFilter(supabase, sizes))
+  }
+
+  if (colors.length > 0) {
+    filterSets.push(await getProductIdsForColorFilter(supabase, colors))
+  }
+
+  if (inStockOnly) {
+    filterSets.push(await getProductIdsForStockFilter(supabase))
+  }
+
+  if (filterSets.some((set) => set.size === 0)) {
     return []
   }
 
-  const sizeSet = new Set(sizes)
-  const colorSet = new Set(colors)
-
-  const byProduct = new Map<
-    string,
-    { hasSize: boolean; hasColor: boolean; hasStock: boolean }
-  >()
-
-  for (const variant of data) {
-    if (!variant.product_id) continue
-
-    const current = byProduct.get(variant.product_id) || {
-      hasSize: sizeSet.size === 0,
-      hasColor: colorSet.size === 0,
-      hasStock: !inStockOnly,
-    }
-
-    if (sizeSet.size > 0) {
-      const size = normalizeFilterValue(variant.size || '')
-      if (sizeSet.has(size)) current.hasSize = true
-    }
-
-    if (colorSet.size > 0) {
-      const colorGroup = normalizeFilterValue(variant.color_group || '')
-      const colorName = normalizeFilterValue(variant.color || '')
-      // Prefer filter color (color_group); fall back to product color name.
-      if (colorSet.has(colorGroup) || colorSet.has(colorName)) {
-        current.hasColor = true
-      }
-    }
-
-    if (inStockOnly && Number(variant.stock) > 0) {
-      current.hasStock = true
-    }
-
-    byProduct.set(variant.product_id, current)
-  }
-
-  return [...byProduct.entries()]
-    .filter(([, flags]) => flags.hasSize && flags.hasColor && flags.hasStock)
-    .map(([productId]) => productId)
+  return [...intersectSets(filterSets)]
 }
 
 export function normalizeSearchParamList(
