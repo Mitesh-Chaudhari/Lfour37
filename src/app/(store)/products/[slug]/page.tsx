@@ -20,7 +20,8 @@ import { GaViewItemTracker } from '@/components/google-analytics/event-trackers'
 import type { Metadata } from 'next'
 import type { ListingProduct } from '@/lib/catalog-queries'
 
-export const revalidate = 60
+/** Skip build-time static generation — product data is fetched at runtime. */
+export const dynamic = 'force-dynamic'
 
 interface PageProps {
   params: Promise<{ slug: string }>

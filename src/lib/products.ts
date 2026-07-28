@@ -1,6 +1,7 @@
 import { unstable_cache } from 'next/cache'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createPublicClient } from '@/lib/supabase/server'
+import { withTimeout } from '@/lib/fetch-with-timeout'
 
 /** Share of top-selling active products that receive the Best Seller badge. */
 const BEST_SELLER_TOP_PERCENT = 0.2
@@ -29,7 +30,13 @@ async function fetchBestSellerProductIds(
 }
 
 const getCachedBestSellerProductIds = unstable_cache(
-  async () => fetchBestSellerProductIds(createPublicClient()),
+  async () => {
+    const ids = await withTimeout(
+      fetchBestSellerProductIds(createPublicClient()),
+      new Set<string>()
+    )
+    return [...ids]
+  },
   ['best-seller-product-ids'],
   { revalidate: 300 }
 )
@@ -38,7 +45,8 @@ export async function getBestSellerProductIds(
   supabase?: SupabaseClient
 ): Promise<Set<string>> {
   if (!supabase) {
-    return getCachedBestSellerProductIds()
+    const ids = await getCachedBestSellerProductIds()
+    return new Set(ids)
   }
 
   return fetchBestSellerProductIds(supabase)

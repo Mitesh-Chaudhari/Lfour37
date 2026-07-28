@@ -1,5 +1,6 @@
 import { unstable_cache } from 'next/cache'
 import { createClient, createPublicClient } from '@/lib/supabase/server'
+import { withTimeout } from '@/lib/fetch-with-timeout'
 
 export interface HeroSlide {
   id: string
@@ -38,7 +39,7 @@ async function fetchActiveHeroSlides(): Promise<HeroSlide[]> {
 }
 
 export const getActiveHeroSlides = unstable_cache(
-  fetchActiveHeroSlides,
+  async () => withTimeout(fetchActiveHeroSlides(), []),
   ['active-hero-slides'],
   { revalidate: 120 }
 )
