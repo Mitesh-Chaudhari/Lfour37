@@ -2,6 +2,15 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  experimental: {
+    optimizePackageImports: [
+      '@rainbow-me/rainbowkit',
+      'wagmi',
+      'lucide-react',
+      'date-fns',
+      'recharts',
+    ],
+  },
   images: {
     remotePatterns: [
       {
