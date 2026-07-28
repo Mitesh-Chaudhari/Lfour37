@@ -18,7 +18,7 @@ import { enrichProductsWithBestSeller, getBestSellerProductIds } from '@/lib/pro
 import { MetaViewContentTracker } from '@/components/meta-pixel/event-trackers'
 import { GaViewItemTracker } from '@/components/google-analytics/event-trackers'
 import type { Metadata } from 'next'
-import type { Product } from '@/types'
+import type { ListingProduct } from '@/lib/catalog-queries'
 
 export const revalidate = 60
 
@@ -252,7 +252,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
           <div className="mt-16">
             <ProductSection
               title="You May Also Like"
-              products={relatedProducts as unknown as Product[]}
+              products={relatedProducts as ListingProduct[]}
             />
           </div>
         )}

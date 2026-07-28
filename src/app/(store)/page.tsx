@@ -3,6 +3,7 @@ import { LISTING_PRODUCT_SELECT } from '@/lib/catalog-queries'
 import { HeroBanner } from '@/components/home/hero-banner'
 import { getActiveHeroSlides } from '@/lib/hero-slides'
 import { enrichProductsWithBestSeller, getBestSellerProductIds } from '@/lib/products'
+import type { ListingProduct } from '@/lib/catalog-queries'
 import { ProductSection } from '@/components/home/product-section'
 import { NewsletterSection } from '@/components/home/newsletter-section'
 import { TrustBadges } from '@/components/home/trust-badges'
@@ -49,9 +50,18 @@ async function getHomeData() {
     ])
 
   return {
-    featured: enrichProductsWithBestSeller(featuredRes.data || [], bestSellerIds),
-    newArrivals: enrichProductsWithBestSeller(newArrivalsRes.data || [], bestSellerIds),
-    trending: enrichProductsWithBestSeller(trendingRes.data || [], bestSellerIds),
+    featured: enrichProductsWithBestSeller(
+      (featuredRes.data || []) as ListingProduct[],
+      bestSellerIds
+    ),
+    newArrivals: enrichProductsWithBestSeller(
+      (newArrivalsRes.data || []) as ListingProduct[],
+      bestSellerIds
+    ),
+    trending: enrichProductsWithBestSeller(
+      (trendingRes.data || []) as ListingProduct[],
+      bestSellerIds
+    ),
     heroSlides,
   }
 }

@@ -1,12 +1,12 @@
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
-import { Product } from '@/types'
+import type { ListingProduct } from '@/lib/catalog-queries'
 import { ProductCard } from '@/components/product/product-card'
 
 interface ProductSectionProps {
   title: string
   subtitle?: string
-  products: Product[]
+  products: ListingProduct[]
   viewAllHref?: string
   badge?: string
 }

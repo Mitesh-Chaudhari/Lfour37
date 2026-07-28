@@ -6,6 +6,7 @@ import { DEFAULT_PRODUCT_IMAGE } from '@/lib/images'
 import { useState, useEffect, type MouseEvent } from 'react'
 import { Heart, ShoppingBag, Star, Loader2 } from 'lucide-react'
 import { Product } from '@/types'
+import type { ListingProduct } from '@/lib/catalog-queries'
 import { useWishlistStore } from '@/store/wishlist-store'
 import { Badge } from '@/components/ui/badge'
 import { formatPrice, calculateDiscount } from '@/lib/utils'
@@ -15,7 +16,7 @@ import toast from 'react-hot-toast'
 import { useNavigationStore } from '@/store/navigation-store'
 
 interface ProductCardProps {
-  product: Product
+  product: Product | ListingProduct
   className?: string
 }
 
