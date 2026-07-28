@@ -26,51 +26,117 @@ function WashCareIcon({
   const common = 'h-7 w-7 text-[#c39c41]'
 
   switch (icon) {
-    case 'machine-wash':
+    case 'machine-wash-cold':
       return (
         <svg viewBox="0 0 24 24" fill="none" className={common} aria-hidden>
           <rect x="4" y="3" width="16" height="18" rx="2" stroke="currentColor" strokeWidth="1.6" />
           <circle cx="12" cy="13" r="4.5" stroke="currentColor" strokeWidth="1.6" />
           <circle cx="12" cy="13" r="2" stroke="currentColor" strokeWidth="1.4" />
-          <circle cx="8" cy="6.5" r="0.9" fill="currentColor" />
-          <circle cx="11" cy="6.5" r="0.9" fill="currentColor" />
-        </svg>
-      )
-    case 'cold-wash':
-      return (
-        <svg viewBox="0 0 24 24" fill="none" className={common} aria-hidden>
+          <path d="M16 6.5h1.5M16 8.5h1.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
           <path
-            d="M5 8h14v8a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3V8Z"
+            d="M7.5 6.2c.4-.8 1.2-1.2 2-1.2"
             stroke="currentColor"
-            strokeWidth="1.6"
+            strokeWidth="1.4"
+            strokeLinecap="round"
           />
-          <path d="M5 11h14" stroke="currentColor" strokeWidth="1.6" />
-          <path d="M8 15h8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
         </svg>
       )
-    case 'reverse-dry':
+    case 'inside-out':
       return (
         <svg viewBox="0 0 24 24" fill="none" className={common} aria-hidden>
-          <path d="M6 5h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-          <path d="M12 5v3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
           <path
-            d="M8 8h8l-1.2 10.2a2 2 0 0 1-2 1.8h-1.6a2 2 0 0 1-2-1.8L8 8Z"
+            d="M8 6.5h8l1.5 2.5v9.5a2 2 0 0 1-2 2H8.5a2 2 0 0 1-2-2V6.5Z"
             stroke="currentColor"
             strokeWidth="1.6"
             strokeLinejoin="round"
           />
+          <path d="M8 6.5 12 4l4 2.5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+          <path
+            d="M9.5 11.5c1.2 1.2 3.8 1.2 5 0"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+          />
+          <path d="M14.5 9.5 16 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
         </svg>
       )
-    case 'avoid-sun':
+    case 'mild-detergent':
       return (
         <svg viewBox="0 0 24 24" fill="none" className={common} aria-hidden>
-          <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.6" />
           <path
-            d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M5.8 5.8l1.6 1.6M16.6 16.6l1.6 1.6M5.8 18.2l1.6-1.6M16.6 7.4l1.6-1.6"
+            d="M9 4.5h6l1 3H8l1-3Z"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinejoin="round"
+          />
+          <rect x="8" y="7.5" width="8" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
+          <path d="M10 11h4M10 14h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+        </svg>
+      )
+    case 'no-bleach':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" className={common} aria-hidden>
+          <path
+            d="M10 4.5h4l1 2.5H9l1-2.5Z"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinejoin="round"
+          />
+          <rect x="9" y="7" width="6" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
+          <path d="M11 10.5h2M11 13.5h2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          <path d="m6.5 6.5 11 11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      )
+    case 'no-iron-print':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" className={common} aria-hidden>
+          <path
+            d="M5.5 14.5h13l-1.2-4.5H6.7L5.5 14.5Z"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinejoin="round"
+          />
+          <path d="M8.5 10h7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          <path d="M12 14.5v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          <circle cx="12" cy="9" r="1.2" fill="currentColor" />
+          <path d="m6.5 6.5 11 11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      )
+    case 'dry-shade':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" className={common} aria-hidden>
+          <path
+            d="M6 16.5h12"
             stroke="currentColor"
             strokeWidth="1.6"
             strokeLinecap="round"
           />
+          <path
+            d="M8 16.5V13a4 4 0 0 1 8 0v3.5"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M15.5 8.5c1.2-1.1 2.8-1.5 4-1.2"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+          />
+          <path d="M14 7.5 15.5 6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+        </svg>
+      )
+    case 'no-tumble-dry':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" className={common} aria-hidden>
+          <circle cx="12" cy="12" r="7.5" stroke="currentColor" strokeWidth="1.6" />
+          <path
+            d="M9.5 9.5c1.2 2.2 3.8 2.2 5 0M9.5 14.5c1.2-2.2 3.8-2.2 5 0"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+          />
+          <path d="m6.5 6.5 11 11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
         </svg>
       )
   }
@@ -167,13 +233,13 @@ export function ProductDetailsSections({ product }: ProductDetailsSectionsProps)
 
       <section>
         <h3 className="text-base font-bold text-gray-900 mb-4">Wash Care</h3>
-        <div className="grid grid-cols-4 gap-2 sm:gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
           {PRODUCT_WASH_CARE_ITEMS.map((item) => (
             <div key={item.id} className="flex flex-col items-center text-center gap-2">
               <div className="flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-md border border-gray-200 bg-gray-50">
                 <WashCareIcon icon={item.icon} />
               </div>
-              <p className="text-[11px] sm:text-xs text-gray-800 leading-tight">
+              <p className="text-[10px] sm:text-xs text-gray-800 leading-snug px-1">
                 {item.label}
               </p>
             </div>

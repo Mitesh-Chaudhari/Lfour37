@@ -39,35 +39,47 @@ export function buildKeyHighlightsForForm(
 
 export const PRODUCT_WASH_CARE_ITEMS = [
   {
-    id: 'machine-wash',
-    label: 'Machine Wash',
-    icon: 'machine-wash' as const,
+    id: 'machine-wash-cold',
+    label: 'Machine wash cold with similar colours',
+    icon: 'machine-wash-cold' as const,
   },
   {
-    id: 'cold-wash',
-    label: 'Cold wash only',
-    icon: 'cold-wash' as const,
+    id: 'inside-out',
+    label: 'Turn the T-shirt inside out before washing',
+    icon: 'inside-out' as const,
   },
   {
-    id: 'reverse-dry',
-    label: 'Reverse and dry',
-    icon: 'reverse-dry' as const,
+    id: 'mild-detergent',
+    label: 'Use mild detergent',
+    icon: 'mild-detergent' as const,
   },
   {
-    id: 'avoid-sun',
-    label: 'Avoid direct sun',
-    icon: 'avoid-sun' as const,
+    id: 'no-bleach',
+    label: 'Do not bleach',
+    icon: 'no-bleach' as const,
+  },
+  {
+    id: 'no-iron-print',
+    label: 'Do not iron directly over the print or embellishments',
+    icon: 'no-iron-print' as const,
+  },
+  {
+    id: 'dry-shade',
+    label: 'Dry in shade',
+    icon: 'dry-shade' as const,
+  },
+  {
+    id: 'no-tumble-dry',
+    label: 'Do not tumble dry',
+    icon: 'no-tumble-dry' as const,
   },
 ] as const
 
 export const PRODUCT_INFO_STATIC = {
   manufacturing: {
     title: 'Manufacturing Details',
-    subtitle: 'Marketed & Manufactured By',
-    body: `Yadevi Lifestyle Private Limited
-Shop No.2, Swagat Complex, Pandit Nehru Marg, Valkeshwari, Park Colony, Jamnagar, Gujarat 361008
-Phone: +91-9978437437
-Email: support@lfour37.com`,
+    subtitle: 'Sold and Marketed by Yadevi Lifestyle Private Limited',
+    body: 'Sold and Marketed by Yadevi Lifestyle Private Limited',
   },
   shipping: {
     title: 'Free Shipping',

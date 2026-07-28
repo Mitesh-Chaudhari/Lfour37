@@ -435,11 +435,11 @@ export function ProductInfo({ product, sizeOrder = [], sizeGuides = [] }: Produc
                       <span className="absolute h-px w-full bg-gray-300 rotate-45" />
                     </span>
                   )}
-                  {stock !== null && stock > 0 && stock <= 5 && (
+                  {/* {stock !== null && stock > 0 && stock <= 5 && (
                     <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-orange-500 text-white text-[9px] flex items-center justify-center">
                       {stock}
                     </span>
-                  )}
+                  )} */}
                 </button>
               )
             })}
