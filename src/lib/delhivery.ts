@@ -349,8 +349,11 @@ export function mapDelhiveryStatusToOrderStatus(
 ): 'processing' | 'shipped' | 'delivered' | 'cancelled' | null {
   const normalized = status.toLowerCase()
 
+  // Cancel / RTO from Delhivery portal or network — check before "delivered"
   if (
+    normalized.includes('cancel') ||
     normalized.includes('rto delivered') ||
+    normalized.includes('rto') ||
     normalized.includes('returned to origin') ||
     normalized.includes('return to origin')
   ) {
@@ -385,8 +388,12 @@ export function mapDelhiveryStatusToOrderStatus(
 export function getTrackingMilestone(status: string): string {
   const normalized = status.toLowerCase()
 
-  if (normalized.includes('rto') || normalized.includes('return to origin')) {
-    return 'return_to_origin'
+  if (
+    normalized.includes('cancel') ||
+    normalized.includes('rto') ||
+    normalized.includes('return to origin')
+  ) {
+    return 'cancelled'
   }
   if (normalized.includes('out for delivery')) return 'out_for_delivery'
   if (normalized.includes('delivered') && !normalized.includes('undelivered')) {

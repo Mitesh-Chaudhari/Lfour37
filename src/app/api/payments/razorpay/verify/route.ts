@@ -199,59 +199,50 @@ export async function POST(request: NextRequest) {
       description: 'Order placed successfully',
     })
 
-    const shipment = await ensureDelhiveryShipmentForPaidOrder(order_id)
-
-    const { data: updatedOrder } = await admin
-      .from('orders')
-      .select('tracking_number')
-      .eq('id', order_id)
-      .single()
-
     const orderUser = Array.isArray(order.user) ? order.user[0] : order.user
     const confirmedOrder = {
       ...order,
       status: 'paid',
       payment_status: 'completed',
-      tracking_number:
-        updatedOrder?.tracking_number || order.tracking_number,
     }
 
-    sendNewOrderOwnerNotificationEmail(
-      confirmedOrder as typeof order,
-      orderUser?.email
-    ).catch((error) =>
-      logger.error('Owner new order notification failed', {
-        error,
-        orderId: order_id,
-      })
-    )
-
-    if (orderUser?.email) {
-      sendOrderConfirmationEmail(
-        confirmedOrder,
-        orderUser.email
+    // Confirmation before Delhivery so "shipped/pickup" cannot arrive first.
+    await Promise.all([
+      sendNewOrderOwnerNotificationEmail(
+        confirmedOrder as typeof order,
+        orderUser?.email
       ).catch((error) =>
-        logger.error('Razorpay order confirmation email failed', {
+        logger.error('Owner new order notification failed', {
           error,
           orderId: order_id,
         })
-      )
-    }
+      ),
+      orderUser?.email
+        ? sendOrderConfirmationEmail(confirmedOrder, orderUser.email).catch(
+            (error) =>
+              logger.error('Razorpay order confirmation email failed', {
+                error,
+                orderId: order_id,
+              })
+          )
+        : Promise.resolve(),
+      notifyOrderConfirmation({
+        id: order.id,
+        order_number: order.order_number,
+        total: order.total,
+        created_at: order.created_at,
+        user_id: order.user_id,
+        shipping_address: order.shipping_address,
+        items: order.items,
+      }).catch((error) =>
+        logger.error('Razorpay order confirmation WhatsApp failed', {
+          error,
+          orderId: order_id,
+        })
+      ),
+    ])
 
-    notifyOrderConfirmation({
-      id: order.id,
-      order_number: order.order_number,
-      total: order.total,
-      created_at: order.created_at,
-      user_id: order.user_id,
-      shipping_address: order.shipping_address,
-      items: order.items,
-    }).catch((error) =>
-      logger.error('Razorpay order confirmation WhatsApp failed', {
-        error,
-        orderId: order_id,
-      })
-    )
+    const shipment = await ensureDelhiveryShipmentForPaidOrder(order_id)
 
     return NextResponse.json({ success: true, shipment })
   } catch (error) {

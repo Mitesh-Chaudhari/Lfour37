@@ -16,8 +16,9 @@ import {
   type DelhiveryOrderItem,
   type NormalizedDelhiveryTracking,
 } from '@/lib/delhivery'
-import { sendReversePickupStatusEmail, sendShipmentStatusEmail } from '@/lib/email'
+import { sendOrderStatusEmail, sendReversePickupStatusEmail, sendShipmentStatusEmail } from '@/lib/email'
 import {
+  notifyOrderCancelled,
   notifyOrderDelivered,
   notifyOrderShipmentMilestone,
   notifyReversePickupMilestone,
@@ -85,6 +86,15 @@ async function notifyCustomerOfShipmentMilestone(
   }
 ): Promise<void> {
   if (milestone === shipment.last_notified_milestone) return
+  // AWB/manifest create is tracked but not messaged as "shipped"
+  if (milestone === 'shipment_created') {
+    const supabase = createAdminClient()
+    await supabase
+      .from('delhivery_shipments')
+      .update({ last_notified_milestone: milestone })
+      .eq('id', shipment.id)
+    return
+  }
 
   const supabase = createAdminClient()
   const { data: order } = await supabase
@@ -99,6 +109,30 @@ async function notifyCustomerOfShipmentMilestone(
   if (!orderUser?.email && !order.shipping_address?.phone) return
 
   try {
+    const orderForWhatsApp = {
+      id: order.id,
+      order_number: order.order_number,
+      user_id: order.user_id,
+      shipping_address: order.shipping_address,
+      items: order.items,
+    }
+
+    // Portal cancel / RTO → proper cancellation email + WhatsApp
+    if (milestone === 'cancelled' || milestone === 'return_to_origin') {
+      if (orderUser?.email) {
+        await sendOrderStatusEmail(order, orderUser.email, 'cancelled')
+      }
+      await notifyOrderCancelled({
+        order: orderForWhatsApp,
+        item: order.items?.[0] ?? null,
+      })
+      await supabase
+        .from('delhivery_shipments')
+        .update({ last_notified_milestone: 'cancelled' })
+        .eq('id', shipment.id)
+      return
+    }
+
     if (orderUser?.email) {
       await sendShipmentStatusEmail({
         order,
@@ -109,14 +143,6 @@ async function notifyCustomerOfShipmentMilestone(
         expectedDeliveryDate,
         instructions,
       })
-    }
-
-    const orderForWhatsApp = {
-      id: order.id,
-      order_number: order.order_number,
-      user_id: order.user_id,
-      shipping_address: order.shipping_address,
-      items: order.items,
     }
 
     if (milestone === 'delivered') {
@@ -336,11 +362,13 @@ export async function createDelhiveryShipmentForOrder(
       awb: created.awb,
     })
 
-    await notifyCustomerOfShipmentMilestone(saved as ShipmentRow, {
-      milestone: 'shipment_created',
-      carrierStatus: created.status,
-      trackingNumber: created.awb,
-    })
+    // Do NOT notify customer here. AWB creation is not "shipped".
+    // Mark milestone so sync won't send a fake shipment_created "shipped" message.
+    // Real customer updates start at picked_up / in_transit via syncDelhiveryShipment.
+    await supabase
+      .from('delhivery_shipments')
+      .update({ last_notified_milestone: 'shipment_created' })
+      .eq('id', saved.id)
 
     return saved as ShipmentRow
   } catch (error) {

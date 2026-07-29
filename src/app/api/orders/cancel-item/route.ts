@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { cancelDelhiveryShipmentForOrder } from '@/lib/delhivery-shipping'
 import { processItemRefund } from '@/lib/refunds'
 import { notifyOrderCancelled } from '@/lib/whatsapp/order-notifications'
+import { sendOrderStatusEmail } from '@/lib/email'
 import logger from '@/lib/logger'
 
 export async function POST(req: NextRequest) {
@@ -138,7 +139,7 @@ export async function POST(req: NextRequest) {
   if (newStatus === 'cancelled' || newStatus === 'cancel_requested') {
     const { data: orderDetails } = await supabase
       .from('orders')
-      .select('order_number, shipping_address')
+      .select('*, user:users(email), items:order_items(*)')
       .eq('id', item.order_id)
       .single()
 
@@ -147,6 +148,17 @@ export async function POST(req: NextRequest) {
       .select('product_name, quantity, variant_size, variant_color')
       .eq('id', order_item_id)
       .single()
+
+    const orderUser = Array.isArray(orderDetails?.user)
+      ? orderDetails?.user[0]
+      : orderDetails?.user
+
+    if (newStatus === 'cancelled' && orderUser?.email && orderDetails) {
+      sendOrderStatusEmail(orderDetails, orderUser.email, 'cancelled').catch(
+        (err) =>
+          logger.error('Cancel email failed', { err, orderId: item.order_id })
+      )
+    }
 
     notifyOrderCancelled({
       order: {

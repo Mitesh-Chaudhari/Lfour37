@@ -19,7 +19,6 @@ export const VEBLIKA_TEMPLATE_CONFIG = {
 export type VeblikaTemplateName = keyof typeof VEBLIKA_TEMPLATE_CONFIG
 
 export type ShipmentWhatsAppMilestone =
-  | 'shipment_created'
   | 'picked_up'
   | 'in_transit'
   | 'out_for_delivery'
@@ -28,7 +27,7 @@ export const SHIPMENT_MILESTONE_TEMPLATES: Record<
   ShipmentWhatsAppMilestone,
   VeblikaTemplateName
 > = {
-  shipment_created: 'order_shipped_updated',
+  // Skip shipment_created — AWB generate is not "shipped". First ship WhatsApp is pickup.
   picked_up: 'order_picked_up',
   in_transit: 'order_in_transit',
   out_for_delivery: 'order_out_for_delivery',

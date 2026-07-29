@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { cancelDelhiveryShipmentForOrder } from '@/lib/delhivery-shipping'
 import { processItemRefund } from '@/lib/refunds'
+import { sendOrderStatusEmail } from '@/lib/email'
+import { notifyOrderCancelled } from '@/lib/whatsapp/order-notifications'
 import logger from '@/lib/logger'
 
 export async function POST(req: NextRequest) {
@@ -114,6 +116,46 @@ export async function POST(req: NextRequest) {
           cancelled_at: new Date().toISOString(),
         })
         .eq('id', item.order_id)
+
+      const { data: fullOrder } = await supabase
+        .from('orders')
+        .select('*, user:users(email), items:order_items(*)')
+        .eq('id', item.order_id)
+        .single()
+
+      if (fullOrder) {
+        const orderUser = Array.isArray(fullOrder.user)
+          ? fullOrder.user[0]
+          : fullOrder.user
+        const cancelledItem =
+          fullOrder.items?.find((orderItem: { id: string }) => orderItem.id === item_id) ||
+          fullOrder.items?.[0]
+
+        if (orderUser?.email) {
+          sendOrderStatusEmail(fullOrder, orderUser.email, 'cancelled').catch(
+            (error) =>
+              logger.error('Cancel approve email failed', {
+                error,
+                orderId: item.order_id,
+              })
+          )
+        }
+
+        notifyOrderCancelled({
+          order: {
+            id: fullOrder.id,
+            order_number: fullOrder.order_number,
+            user_id: fullOrder.user_id,
+            shipping_address: fullOrder.shipping_address,
+          },
+          item: cancelledItem,
+        }).catch((error) =>
+          logger.error('Cancel approve WhatsApp failed', {
+            error,
+            orderId: item.order_id,
+          })
+        )
+      }
     }
 
     return NextResponse.json({

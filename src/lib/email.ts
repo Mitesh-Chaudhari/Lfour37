@@ -487,9 +487,10 @@ export async function sendShipmentStatusEmail({
 
   const messages: Record<string, { subject: string; heading: string; message: string }> = {
     shipment_created: {
-      subject: `Your order ${order.order_number} has been shipped!`,
-      heading: 'Your order has been shipped 🚚',
-      message: 'Delhivery has received your shipment and it is on the way.',
+      subject: `Shipment registered for order ${order.order_number}`,
+      heading: 'Your shipment has been registered',
+      message:
+        'Your order has been handed to Delhivery and a tracking number has been generated. We will notify you when the package is picked up.',
     },
     picked_up: {
       subject: `Order ${order.order_number} has been picked up`,
