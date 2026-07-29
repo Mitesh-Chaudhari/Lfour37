@@ -49,10 +49,7 @@ export async function GET(
   // FILTERS
   //////////////////////////////////////////////////////
 
-  const category =
-    searchParams.get(
-      'category'
-    )
+  const categorySlugs = searchParams.getAll('category')
 
   const minPrice =
     searchParams.get(
@@ -107,9 +104,8 @@ export async function GET(
     ? sanitizeSearchTerm(search)
     : ''
 
-  const categoryJoin = searchTerm
-    ? 'product_categories'
-    : 'product_categories!inner'
+  const categoryJoin =
+    categorySlugs.length > 0 ? 'product_categories!inner' : 'product_categories'
 
   let query = supabase
     .from('products')
@@ -130,15 +126,22 @@ export async function GET(
     )
 
   //////////////////////////////////////////////////////
-  // CATEGORY FILTER
+  // CATEGORY FILTER (multi-select, OR match)
   //////////////////////////////////////////////////////
 
-  if (category) {
-    const selected = allCategories?.find((item) => item.slug === category)
+  if (categorySlugs.length > 0) {
+    const ids = new Set<string>()
 
-    if (selected) {
-      const ids = getCategoryDescendantIds(selected.id, allCategories || [])
-      query = query.in('product_categories.category_id', ids)
+    for (const slug of categorySlugs) {
+      const selected = allCategories?.find((item) => item.slug === slug)
+      if (!selected) continue
+      getCategoryDescendantIds(selected.id, allCategories || []).forEach((id) =>
+        ids.add(id)
+      )
+    }
+
+    if (ids.size > 0) {
+      query = query.in('product_categories.category_id', [...ids])
     }
   }
 

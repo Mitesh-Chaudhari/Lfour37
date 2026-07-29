@@ -12,7 +12,7 @@ const BADGES = [
   {
     icon: RotateCcw,
     title: 'Easy Returns',
-    description: '30-day return policy',
+    description: '7-day return policy',
     color: 'text-emerald-600',
     bg: 'bg-emerald-50',
     border: 'border-emerald-100',

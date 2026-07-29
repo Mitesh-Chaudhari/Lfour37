@@ -199,3 +199,6 @@ button.cancel-order-btn{
 .blog-wrapper img{
   width: 100% !important;
 }
+.accent-purple-600{
+  accent-color: #c39c41 !important;
+}

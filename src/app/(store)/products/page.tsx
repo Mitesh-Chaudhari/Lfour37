@@ -31,7 +31,7 @@ import { GaSearchTracker } from '@/components/google-analytics/event-trackers'
 
 interface PageProps {
   searchParams: Promise<{
-    category?: string
+    category?: string | string[]
     minPrice?: string
     maxPrice?: string
     sizes?: string | string[]
@@ -53,11 +53,18 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
       description: `Find products matching "${params.search}" in our collection.`,
     }
   }
-  const category = params.category
+
+  const categories = normalizeSearchParamList(params.category)
+  if (categories.length === 1) {
+    const category = categories[0]
+    return {
+      title: `${category.charAt(0).toUpperCase() + category.slice(1)} Clothing`,
+      description: 'Browse our full collection of premium clothing.',
+    }
+  }
+
   return {
-    title: category
-      ? `${category.charAt(0).toUpperCase() + category.slice(1)} Clothing`
-      : 'All Products',
+    title: categories.length > 1 ? 'Filtered Products' : 'All Products',
     description: 'Browse our full collection of premium clothing.',
   }
 }
@@ -88,7 +95,11 @@ async function getProducts(
     ? sanitizeSearchTerm(searchParams.search)
     : ''
 
-  const categoryJoin = searchTerm ? 'product_categories' : 'product_categories!inner'
+  const categorySlugs = normalizeSearchParamList(searchParams.category)
+  // Only force inner join when filtering by category, so color/size-only
+  // filters still return products that have no category mapping.
+  const categoryJoin =
+    categorySlugs.length > 0 ? 'product_categories!inner' : 'product_categories'
 
   let query = supabase
     .from('products')
@@ -104,17 +115,22 @@ async function getProducts(
     .eq('status', 'active')
 
   ////////////////////////////////////////////////////////////////
-  // ✅ FIXED CATEGORY FILTER (parent + children)
+  // ✅ MULTI CATEGORY FILTER (parent + children, OR match)
   ////////////////////////////////////////////////////////////////
 
-  if (searchParams.category) {
-    const selected = allCategories.find(
-      (category) => category.slug === searchParams.category
-    )
+  if (categorySlugs.length > 0) {
+    const ids = new Set<string>()
 
-    if (selected) {
-      const ids = getCategoryDescendantIds(selected.id, allCategories)
-      query = query.in('product_categories.category_id', ids)
+    for (const slug of categorySlugs) {
+      const selected = allCategories.find((category) => category.slug === slug)
+      if (!selected) continue
+      getCategoryDescendantIds(selected.id, allCategories).forEach((id) =>
+        ids.add(id)
+      )
+    }
+
+    if (ids.size > 0) {
+      query = query.in('product_categories.category_id', [...ids])
     }
   }
 

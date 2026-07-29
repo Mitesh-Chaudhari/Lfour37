@@ -10,44 +10,72 @@ function normalizeFilterValue(value: string): string {
   return value.trim().toLowerCase()
 }
 
+function uniqueTrimmed(values: string[]): string[] {
+  return [
+    ...new Set(
+      values
+        .map((value) => value.trim())
+        .filter(Boolean)
+    ),
+  ]
+}
+
+/**
+ * Case-insensitive size match. Keeps original URL/UI values for exact `.in()`,
+ * and also compares normalized values in memory so "m" matches "M".
+ */
 async function getProductIdsForSizeFilter(
   supabase: SupabaseClient,
   sizes: string[]
 ): Promise<Set<string>> {
-  const { data } = await supabase
-    .from('product_variants')
-    .select('product_id')
-    .eq('is_active', true)
-    .in('size', sizes)
+  const sizeSet = new Set(sizes.map(normalizeFilterValue))
 
-  return new Set(
-    (data || [])
-      .map((variant) => variant.product_id)
-      .filter((id): id is string => Boolean(id))
-  )
+  const { data, error } = await supabase
+    .from('product_variants')
+    .select('product_id, size')
+    .eq('is_active', true)
+
+  if (error || !data) return new Set()
+
+  const productIds = new Set<string>()
+  for (const variant of data) {
+    if (!variant.product_id) continue
+    if (sizeSet.has(normalizeFilterValue(variant.size || ''))) {
+      productIds.add(variant.product_id)
+    }
+  }
+
+  return productIds
 }
 
+/**
+ * Match against both `color_group` (filter chips) and `color` (variant name),
+ * case-insensitively. The previous `.in(color_group, lowercased)` path failed
+ * because DB values are typically "Black" while the query used "black".
+ */
 async function getProductIdsForColorFilter(
   supabase: SupabaseClient,
   colors: string[]
 ): Promise<Set<string>> {
-  const [byGroupRes, byColorRes] = await Promise.all([
-    supabase
-      .from('product_variants')
-      .select('product_id')
-      .eq('is_active', true)
-      .in('color_group', colors),
-    supabase
-      .from('product_variants')
-      .select('product_id')
-      .eq('is_active', true)
-      .in('color', colors),
-  ])
+  const colorSet = new Set(colors.map(normalizeFilterValue))
+
+  const { data, error } = await supabase
+    .from('product_variants')
+    .select('product_id, color_group, color')
+    .eq('is_active', true)
+
+  if (error || !data) return new Set()
 
   const productIds = new Set<string>()
+  for (const variant of data) {
+    if (!variant.product_id) continue
 
-  for (const variant of [...(byGroupRes.data || []), ...(byColorRes.data || [])]) {
-    if (variant.product_id) productIds.add(variant.product_id)
+    const colorGroup = normalizeFilterValue(variant.color_group || '')
+    const colorName = normalizeFilterValue(variant.color || '')
+
+    if (colorSet.has(colorGroup) || colorSet.has(colorName)) {
+      productIds.add(variant.product_id)
+    }
   }
 
   return productIds
@@ -87,13 +115,16 @@ function intersectSets(sets: Set<string>[]): Set<string> {
  * - `null` → no variant filters requested
  * - `[]` → filters requested but nothing matched
  * - `string[]` → matching product IDs
+ *
+ * Size / color / stock are applied independently at product level (AND across
+ * filter types, OR within a filter type). Multi-select sizes/colors use OR.
  */
 export async function getProductIdsMatchingVariantFilters(
   supabase: SupabaseClient,
   options: VariantFilterOptions
 ): Promise<string[] | null> {
-  const sizes = (options.sizes || []).map(normalizeFilterValue).filter(Boolean)
-  const colors = (options.colors || []).map(normalizeFilterValue).filter(Boolean)
+  const sizes = uniqueTrimmed(options.sizes || [])
+  const colors = uniqueTrimmed(options.colors || [])
   const inStockOnly = Boolean(options.inStockOnly)
 
   if (sizes.length === 0 && colors.length === 0 && !inStockOnly) {

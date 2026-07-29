@@ -3,7 +3,6 @@
 import { useRouter, usePathname } from 'next/navigation'
 import { useCallback, useState, useEffect } from 'react'
 import { SlidersHorizontal, X, ChevronDown, ChevronUp } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
 interface FilterOption {
   id: string
@@ -19,11 +18,18 @@ interface ProductFiltersPanelProps {
   searchParams: Record<string, string | string[] | undefined>
 }
 
-function FilterSection({ title, children }: { title: string; children: React.ReactNode }) {
+function FilterSection({
+  title,
+  children,
+}: {
+  title: string
+  children: React.ReactNode
+}) {
   const [open, setOpen] = useState(true)
   return (
     <div className="border-b border-gray-200 py-4">
       <button
+        type="button"
         onClick={() => setOpen(!open)}
         className="flex items-center justify-between w-full text-sm font-semibold text-gray-900 mb-2"
       >
@@ -35,39 +41,30 @@ function FilterSection({ title, children }: { title: string; children: React.Rea
   )
 }
 
-export function ProductFiltersPanel({ categories, sizes, colors, searchParams }: ProductFiltersPanelProps) {
+function toParamList(value: string | string[] | undefined): string[] {
+  if (!value) return []
+  return Array.isArray(value) ? value.filter(Boolean) : [value]
+}
+
+export function ProductFiltersPanel({
+  categories,
+  sizes,
+  colors,
+  searchParams,
+}: ProductFiltersPanelProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const [mobileOpen, setMobileOpen] =
-  useState<string | null>(null)
+  const [mobileOpen, setMobileOpen] = useState<string | null>(null)
 
-  const currentCategory =
-    typeof searchParams.category === 'string' ? searchParams.category : null
+  const selectedCategories = toParamList(searchParams.category)
+  const selectedSizes = toParamList(searchParams.sizes)
+  const selectedColors = toParamList(searchParams.colors)
 
-  const [optimisticCategory, setOptimisticCategory] = useState<string | null>(
-    currentCategory
-  )
-
-  useEffect(() => {
-    setOptimisticCategory(currentCategory)
-  }, [currentCategory])
-
-  // 🔥 RANGE LIMITS (you can make dynamic later)
   const MIN = 0
   const MAX = 3000
 
   const [minPrice, setMinPrice] = useState(Number(searchParams.minPrice) || MIN)
   const [maxPrice, setMaxPrice] = useState(Number(searchParams.maxPrice) || MAX)
-
-  // 🔥 debounce update
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      updateFilter('minPrice', String(minPrice))
-      updateFilter('maxPrice', String(maxPrice))
-    }, 400)
-
-    return () => clearTimeout(timer)
-  }, [minPrice, maxPrice])
 
   const updateFilter = useCallback(
     (key: string, value: string | null) => {
@@ -88,8 +85,11 @@ export function ProductFiltersPanel({ categories, sizes, colors, searchParams }:
 
   const toggleArrayFilter = useCallback(
     (key: string, value: string) => {
-      const current = searchParams[key]
-      const currentArray = Array.isArray(current) ? current : current ? [current] : []
+      const current = toParamList(searchParams[key])
+      const next = current.includes(value)
+        ? current.filter((item) => item !== value)
+        : [...current, value]
+
       const params = new URLSearchParams()
 
       Object.entries(searchParams).forEach(([k, v]) => {
@@ -98,62 +98,52 @@ export function ProductFiltersPanel({ categories, sizes, colors, searchParams }:
         else if (v) params.set(k, v)
       })
 
-      if (currentArray.includes(value)) {
-        currentArray.filter((v) => v !== value).forEach((v) => params.append(key, v))
-      } else {
-        [...currentArray, value].forEach((v) => params.append(key, v))
-      }
-
+      next.forEach((item) => params.append(key, item))
       router.push(`${pathname}?${params.toString()}`)
     },
     [searchParams, pathname, router]
   )
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      updateFilter('minPrice', String(minPrice))
+      updateFilter('maxPrice', String(maxPrice))
+    }, 400)
+
+    return () => clearTimeout(timer)
+  }, [minPrice, maxPrice])
+
   const clearAllFilters = () => router.push(pathname)
 
-  const closeMobilePanel = () => setMobileOpen(null)
-
-  const handleMobileCategoryChange = (value: string | null) => {
-    setOptimisticCategory(value)
-    updateFilter('category', value)
-    closeMobilePanel()
-  }
-
-  const handleMobileArrayFilter = (key: string, value: string) => {
-    toggleArrayFilter(key, value)
-    closeMobilePanel()
-  }
-
-  const hasFilters = Object.keys(searchParams).some((k) => k !== 'page' && searchParams[k])
-
-  const selectedSizes = typeof searchParams.sizes === 'string' ? [searchParams.sizes] : searchParams.sizes || []
-  const selectedColors = typeof searchParams.colors === 'string' ? [searchParams.colors] : searchParams.colors || []
+  const hasFilters = Object.keys(searchParams).some(
+    (key) => key !== 'page' && searchParams[key]
+  )
 
   function renderCategories(
     cats: FilterOption[],
     config: {
-      radioName: string
-      selectedSlug: string | null
-      onCategorySelect: (slug: string) => void
+      idPrefix: string
+      selectedSlugs: string[]
+      onToggle: (slug: string) => void
     },
     level = 0
   ) {
     return cats.map((cat) => {
-      const inputId = `${config.radioName}-${cat.id}`
+      const inputId = `${config.idPrefix}-${cat.id}`
+      const checked = config.selectedSlugs.includes(cat.slug)
 
       return (
         <div key={cat.id} style={{ paddingLeft: level * 12 }}>
           <label
             htmlFor={inputId}
-            className="flex items-center gap-2 cursor-pointer py-1"
+            className="inline-flex items-center gap-2 cursor-pointer py-1"
           >
             <input
               id={inputId}
-              type="radio"
-              name={config.radioName}
-              checked={config.selectedSlug === cat.slug}
-              onChange={() => config.onCategorySelect(cat.slug)}
-              className="accent-primary-600 shrink-0"
+              type="checkbox"
+              checked={checked}
+              onChange={() => config.onToggle(cat.slug)}
+              className="h-4 w-4 rounded border-gray-300 accent-purple-600 shrink-0"
             />
             <span className="text-sm text-gray-700">{cat.name}</span>
           </label>
@@ -166,112 +156,76 @@ export function ProductFiltersPanel({ categories, sizes, colors, searchParams }:
     })
   }
 
+  function renderCheckboxList(
+    items: string[],
+    selected: string[],
+    key: 'sizes' | 'colors',
+    idPrefix: string
+  ) {
+    return (
+      <div className="space-y-2 flex flex-wrap justify-between items-center">
+        {items.map((item) => {
+          const inputId = `${idPrefix}-${item}`
+          const checked = selected.includes(item)
+
+          return (
+            <label
+              key={item}
+              htmlFor={inputId}
+              className="inline-flex items-center gap-2 cursor-pointer py-1 w-1/2 mb-0"
+            >
+              <input
+                id={inputId}
+                type="checkbox"
+                checked={checked}
+                onChange={() => toggleArrayFilter(key, item)}
+                className="h-4 w-4 rounded border-gray-300 accent-purple-600 shrink-0"
+              />
+              <span className="text-sm text-gray-700">{item}</span>
+            </label>
+          )
+        })}
+      </div>
+    )
+  }
+
   return (
     <>
       {/* MOBILE FILTERS */}
-
       <div className="md:hidden mb-4 relative">
-        <div
-          className="
-            flex
-            gap-2
-            overflow-x-auto
-            pb-2
-            scrollbar-hide
-          "
-        >
-          <button
-            onClick={() =>
-              setMobileOpen(
-                mobileOpen === 'category'
-                  ? null
-                  : 'category'
-              )
-            }
-            className="
-              whitespace-nowrap
-              px-4
-              py-2
-              border
-              rounded-full
-              text-sm
-            "
-          >
-            Category
-          </button>
-
-          <button
-            onClick={() =>
-              setMobileOpen(
-                mobileOpen === 'price'
-                  ? null
-                  : 'price'
-              )
-            }
-            className="
-              whitespace-nowrap
-              px-4
-              py-2
-              border
-              rounded-full
-              text-sm
-            "
-          >
-            Price
-          </button>
-
-          <button
-            onClick={() =>
-              setMobileOpen(
-                mobileOpen === 'size'
-                  ? null
-                  : 'size'
-              )
-            }
-            className="
-              whitespace-nowrap
-              px-4
-              py-2
-              border
-              rounded-full
-              text-sm
-            "
-          >
-            Size
-          </button>
-
-          <button
-            onClick={() =>
-              setMobileOpen(
-                mobileOpen === 'color'
-                  ? null
-                  : 'color'
-              )
-            }
-            className="
-              whitespace-nowrap
-              px-4
-              py-2
-              border
-              rounded-full
-              text-sm
-            "
-          >
-            Color
-          </button>
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+          {(
+            [
+              ['category', 'Category'],
+              ['price', 'Price'],
+              ['size', 'Size'],
+              ['color', 'Color'],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setMobileOpen(mobileOpen === id ? null : id)}
+              className="whitespace-nowrap px-4 py-2 border rounded-full text-sm"
+            >
+              {label}
+              {id === 'category' && selectedCategories.length > 0
+                ? ` (${selectedCategories.length})`
+                : null}
+              {id === 'size' && selectedSizes.length > 0
+                ? ` (${selectedSizes.length})`
+                : null}
+              {id === 'color' && selectedColors.length > 0
+                ? ` (${selectedColors.length})`
+                : null}
+            </button>
+          ))}
 
           {hasFilters && (
             <button
+              type="button"
               onClick={clearAllFilters}
-              className="
-                whitespace-nowrap
-                px-4
-                py-2
-                border
-                rounded-full
-                text-sm
-                text-red-500
-              "
+              className="whitespace-nowrap px-4 py-2 border rounded-full text-sm text-red-500"
             >
               Clear
             </button>
@@ -279,109 +233,33 @@ export function ProductFiltersPanel({ categories, sizes, colors, searchParams }:
         </div>
 
         {mobileOpen && (
-          <div
-            className="
-              mt-3
-              border
-              rounded-xl
-              bg-white
-              p-4
-              shadow-sm
-              absolute left-0 right-0 w-full z-50
-            "
-          >
-            {mobileOpen ===
-              'category' && (
-              <div className="space-y-2">
-                <label
-                  htmlFor="mobile-category-all"
-                  className="flex items-center gap-2 cursor-pointer py-1"
-                >
-                  <input
-                    id="mobile-category-all"
-                    type="radio"
-                    name="mobile-category-filter"
-                    checked={optimisticCategory === null}
-                    onChange={() => handleMobileCategoryChange(null)}
-                    className="accent-primary-600 shrink-0"
-                  />
-                  <span className="text-sm text-gray-700">All Categories</span>
-                </label>
-
+          <div className="mt-3 border rounded-xl bg-white p-4 shadow-sm absolute left-0 right-0 w-full z-50">
+            {mobileOpen === 'category' && (
+              <div className="space-y-2 max-h-72 overflow-y-auto">
                 {renderCategories(categories, {
-                  radioName: 'mobile-category-filter',
-                  selectedSlug: optimisticCategory,
-                  onCategorySelect: (slug) => handleMobileCategoryChange(slug),
+                  idPrefix: 'mobile-category',
+                  selectedSlugs: selectedCategories,
+                  onToggle: (slug) => toggleArrayFilter('category', slug),
                 })}
               </div>
             )}
 
-            {mobileOpen ===
-              'size' && (
-              <div className="flex flex-wrap gap-2">
-                {sizes.map(
-                  (size) => (
-                    <button
-                      key={size}
-                      onClick={() =>
-                        handleMobileArrayFilter(
-                          'sizes',
-                          size
-                        )
-                      }
-                      className={cn(
-                        'px-3 py-2 rounded border text-xs',
-                        selectedSizes.includes(
-                          size
-                        ) &&
-                          'bg-purple-600 text-white'
-                      )}
-                    >
-                      {size}
-                    </button>
-                  )
-                )}
-              </div>
-            )}
+            {mobileOpen === 'size' &&
+              renderCheckboxList(sizes, selectedSizes, 'sizes', 'mobile-size')}
 
-            {mobileOpen ===
-              'color' && (
-              <div className="flex flex-wrap gap-2">
-                {colors.map(
-                  (color) => (
-                    <button
-                      key={color}
-                      onClick={() =>
-                        handleMobileArrayFilter(
-                          'colors',
-                          color
-                        )
-                      }
-                      className={cn(
-                        'px-3 py-2 rounded border text-xs',
-                        selectedColors.includes(
-                          color
-                        ) &&
-                          'bg-purple-600 text-white'
-                      )}
-                    >
-                      {color}
-                    </button>
-                  )
-                )}
-              </div>
-            )}
+            {mobileOpen === 'color' &&
+              renderCheckboxList(
+                colors,
+                selectedColors,
+                'colors',
+                'mobile-color'
+              )}
 
-            {mobileOpen ===
-              'price' && (
+            {mobileOpen === 'price' && (
               <div className="space-y-4">
                 <div className="flex justify-between">
-                  <span>
-                    ₹{minPrice}
-                  </span>
-                  <span>
-                    ₹{maxPrice}
-                  </span>
+                  <span>₹{minPrice}</span>
+                  <span>₹{maxPrice}</span>
                 </div>
 
                 <input
@@ -389,15 +267,8 @@ export function ProductFiltersPanel({ categories, sizes, colors, searchParams }:
                   min={MIN}
                   max={MAX}
                   value={minPrice}
-                  onChange={(e) =>
-                    setMinPrice(
-                      Number(
-                        e.target.value
-                      )
-                    )
-                  }
+                  onChange={(e) => setMinPrice(Number(e.target.value))}
                   className="w-full"
-                // className="w-full pointer-events-none appearance-none bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto"
                 />
 
                 <input
@@ -405,79 +276,50 @@ export function ProductFiltersPanel({ categories, sizes, colors, searchParams }:
                   min={MIN}
                   max={MAX}
                   value={maxPrice}
-                  onChange={(e) =>
-                    setMaxPrice(
-                      Number(
-                        e.target.value
-                      )
-                    )
-                  }
+                  onChange={(e) => setMaxPrice(Number(e.target.value))}
                   className="w-full"
-                // className="w-full pointer-events-none appearance-none bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto"
                 />
               </div>
             )}
           </div>
         )}
       </div>
-      <div
-          className="
-            hidden
-            md:block
-            bg-white
-            rounded-xl
-            border
-            border-gray-200
-            p-4
-          "
-        >
-        {/* Header */}
+
+      {/* DESKTOP FILTERS */}
+      <div className="hidden md:block bg-white rounded-xl border border-gray-200 p-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <SlidersHorizontal className="h-4 w-4 text-gray-600" />
             <span className="font-semibold text-gray-900">Filters</span>
           </div>
           {hasFilters && (
-            <button onClick={clearAllFilters} className="text-xs text-purple-600 hover:underline flex items-center gap-1">
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              className="text-xs text-purple-600 hover:underline flex items-center gap-1"
+            >
               <X className="h-3 w-3" /> Clear all
             </button>
           )}
         </div>
 
-        {/* Category */}
         <FilterSection title="Category">
-          <div className="space-y-2">
-            <label
-              htmlFor="desktop-category-all"
-              className="flex items-center gap-2 cursor-pointer py-1"
-            >
-              <input
-                id="desktop-category-all"
-                type="radio"
-                name="desktop-category-filter"
-                checked={!currentCategory}
-                onChange={() => updateFilter('category', null)}
-                className="accent-primary-600 shrink-0"
-              />
-              <span className="text-sm text-gray-700">All Categories</span>
-            </label>
+          <div className="space-y-1">
             {renderCategories(categories, {
-              radioName: 'desktop-category-filter',
-              selectedSlug: currentCategory,
-              onCategorySelect: (slug) => updateFilter('category', slug),
+              idPrefix: 'desktop-category',
+              selectedSlugs: selectedCategories,
+              onToggle: (slug) => toggleArrayFilter('category', slug),
             })}
           </div>
         </FilterSection>
 
         <FilterSection title="Price Range">
           <div className="space-y-4">
-            {/* Labels */}
             <div className="flex justify-between text-sm font-medium">
               <span>₹{minPrice}</span>
               <span>₹{maxPrice}</span>
             </div>
 
-            {/* Slider */}
             <div className="relative h-2 bg-gray-200 rounded-full">
               <div
                 className="absolute h-2 bg-purple-600 rounded-full"
@@ -487,28 +329,29 @@ export function ProductFiltersPanel({ categories, sizes, colors, searchParams }:
                 }}
               />
 
-              {/* Min */}
               <input
                 type="range"
                 min={MIN}
                 max={MAX}
                 value={minPrice}
-                onChange={(e) => setMinPrice(Math.min(Number(e.target.value), maxPrice - 50))}
+                onChange={(e) =>
+                  setMinPrice(Math.min(Number(e.target.value), maxPrice - 50))
+                }
                 className="absolute w-full top-0 pointer-events-none appearance-none bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto"
               />
 
-              {/* Max */}
               <input
                 type="range"
                 min={MIN}
                 max={MAX}
                 value={maxPrice}
-                onChange={(e) => setMaxPrice(Math.max(Number(e.target.value), minPrice + 50))}
+                onChange={(e) =>
+                  setMaxPrice(Math.max(Number(e.target.value), minPrice + 50))
+                }
                 className="absolute w-full top-0 pointer-events-none appearance-none bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto"
               />
             </div>
 
-            {/* Presets */}
             <div className="flex flex-wrap gap-2">
               {[
                 [99, 499],
@@ -518,6 +361,7 @@ export function ProductFiltersPanel({ categories, sizes, colors, searchParams }:
               ].map(([min, max]) => (
                 <button
                   key={`${min}-${max}`}
+                  type="button"
                   onClick={() => {
                     setMinPrice(min)
                     setMaxPrice(max)
@@ -531,40 +375,12 @@ export function ProductFiltersPanel({ categories, sizes, colors, searchParams }:
           </div>
         </FilterSection>
 
-        {/* Size */}
         <FilterSection title="Size">
-          <div className="flex flex-wrap gap-2">
-            {sizes.map((size) => (
-              <button
-                key={size}
-                onClick={() => toggleArrayFilter('sizes', size)}
-                className={cn(
-                  'px-3 py-1.5 text-xs rounded-lg border',
-                  selectedSizes.includes(size) ? 'bg-purple-600 text-white' : ''
-                )}
-              >
-                {size}
-              </button>
-            ))}
-          </div>
+          {renderCheckboxList(sizes, selectedSizes, 'sizes', 'desktop-size')}
         </FilterSection>
 
-        {/* Color */}
         <FilterSection title="Color">
-          <div className="flex flex-wrap gap-2">
-            {colors.map((color) => (
-              <button
-                key={color}
-                onClick={() => toggleArrayFilter('colors', color)}
-                className={cn(
-                  'px-3 py-1.5 text-xs rounded-lg border',
-                  selectedColors.includes(color) ? 'bg-purple-600 text-white' : ''
-                )}
-              >
-                {color}
-              </button>
-            ))}
-          </div>
+          {renderCheckboxList(colors, selectedColors, 'colors', 'desktop-color')}
         </FilterSection>
       </div>
     </>
