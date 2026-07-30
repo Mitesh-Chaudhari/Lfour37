@@ -1,27 +1,35 @@
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
 import { CheckoutForm } from '@/components/checkout/checkout-form'
 import { MetaInitiateCheckoutTracker } from '@/components/meta-pixel/event-trackers'
 import { GaBeginCheckoutTracker } from '@/components/google-analytics/event-trackers'
 
 async function getCheckoutData() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  if (!user) return null
+  const shippingMethodsRes = await supabase
+    .from('shipping_methods')
+    .select('*')
+    .eq('is_active', true)
+    .eq('price', 0)
+    .order('price', { ascending: true })
 
-  const [addressesRes, shippingMethodsRes, profileRes] = await Promise.all([
+  if (!user) {
+    return {
+      user: null,
+      addresses: [],
+      shippingMethods: shippingMethodsRes.data || [],
+    }
+  }
+
+  const [addressesRes, profileRes] = await Promise.all([
     supabase
       .from('addresses')
       .select('*')
       .eq('user_id', user.id)
       .order('is_default', { ascending: false }),
-    supabase
-      .from('shipping_methods')
-      .select('*')
-      .eq('is_active', true)
-      .eq('price', 0)
-      .order('price', { ascending: true }),
     supabase
       .from('users')
       .select('full_name, phone')
@@ -42,13 +50,7 @@ async function getCheckoutData() {
 }
 
 export default async function CheckoutPage() {
-  const data = await getCheckoutData()
-
-  if (!data) {
-    redirect('/login?redirectTo=/checkout')
-  }
-
-  const checkoutData = data!
+  const checkoutData = await getCheckoutData()
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">

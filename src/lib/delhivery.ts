@@ -344,10 +344,48 @@ export function normalizeTrackingResponse(
   }
 }
 
+function normalizeCarrierStatus(status: string): string {
+  return status.toLowerCase().trim()
+}
+
+/** Waiting for courier — not yet collected / not in transit */
+export function isDelhiveryPrePickupStatus(status: string): boolean {
+  const normalized = normalizeCarrierStatus(status)
+
+  return (
+    normalized.includes('not picked') ||
+    normalized.includes('pending pickup') ||
+    normalized.includes('awaiting pickup') ||
+    normalized.includes('ready for pickup') ||
+    normalized.includes('ready to ship') ||
+    normalized.includes('pickup scheduled') ||
+    normalized.includes('scheduled for pickup') ||
+    normalized.includes('manifest') ||
+    normalized.includes('soft data') ||
+    normalized === 'open' ||
+    normalized.startsWith('open ') ||
+    normalized.includes('pending') ||
+    normalized.includes('creating') ||
+    normalized.includes('scheduled')
+  )
+}
+
+/** Courier has actually collected the package */
+export function isDelhiveryPickedUpStatus(status: string): boolean {
+  const normalized = normalizeCarrierStatus(status)
+  if (isDelhiveryPrePickupStatus(normalized)) return false
+
+  return (
+    normalized.includes('picked up') ||
+    normalized === 'picked' ||
+    (normalized.includes('picked') && !normalized.includes('pickup'))
+  )
+}
+
 export function mapDelhiveryStatusToOrderStatus(
   status: string
 ): 'processing' | 'shipped' | 'delivered' | 'cancelled' | null {
-  const normalized = status.toLowerCase()
+  const normalized = normalizeCarrierStatus(status)
 
   // Cancel / RTO from Delhivery portal or network — check before "delivered"
   if (
@@ -364,29 +402,25 @@ export function mapDelhiveryStatusToOrderStatus(
     return 'delivered'
   }
 
+  // Still waiting at warehouse / for pickup — keep as processing (not "shipped")
+  if (isDelhiveryPrePickupStatus(normalized)) {
+    return 'processing'
+  }
+
   if (
     normalized.includes('in transit') ||
     normalized.includes('dispatched') ||
     normalized.includes('out for delivery') ||
-    normalized.includes('picked') ||
-    normalized.includes('pickup')
+    isDelhiveryPickedUpStatus(normalized)
   ) {
     return 'shipped'
-  }
-
-  if (
-    normalized.includes('manifest') ||
-    normalized.includes('pending') ||
-    normalized.includes('scheduled')
-  ) {
-    return 'processing'
   }
 
   return null
 }
 
 export function getTrackingMilestone(status: string): string {
-  const normalized = status.toLowerCase()
+  const normalized = normalizeCarrierStatus(status)
 
   if (
     normalized.includes('cancel') ||
@@ -399,15 +433,6 @@ export function getTrackingMilestone(status: string): string {
   if (normalized.includes('delivered') && !normalized.includes('undelivered')) {
     return 'delivered'
   }
-  if (normalized.includes('picked') || normalized.includes('pickup')) {
-    return 'picked_up'
-  }
-  if (
-    normalized.includes('in transit') ||
-    normalized.includes('dispatched')
-  ) {
-    return 'in_transit'
-  }
   if (
     normalized.includes('undelivered') ||
     normalized.includes('failed') ||
@@ -415,8 +440,18 @@ export function getTrackingMilestone(status: string): string {
   ) {
     return 'delivery_exception'
   }
-  if (normalized.includes('manifest') || normalized.includes('scheduled')) {
+  // Pre-pickup / AWB created — do NOT treat as picked_up
+  if (isDelhiveryPrePickupStatus(normalized)) {
     return 'shipment_created'
+  }
+  if (isDelhiveryPickedUpStatus(normalized)) {
+    return 'picked_up'
+  }
+  if (
+    normalized.includes('in transit') ||
+    normalized.includes('dispatched')
+  ) {
+    return 'in_transit'
   }
 
   return 'shipment_update'

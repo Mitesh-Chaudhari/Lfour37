@@ -1,17 +1,25 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { CreditCard, Tag, MapPin, Truck, Check, Banknote } from 'lucide-react'
+import {
+  CreditCard,
+  Tag,
+  MapPin,
+  Truck,
+  Check,
+  Banknote,
+  User,
+  Mail,
+} from 'lucide-react'
 import { Address, ShippingMethod } from '@/types'
 import { useCartStore } from '@/store/cart-store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { StripePaymentForm } from '@/components/checkout/stripe-payment-form'
-import { CryptoPaymentForm } from '@/components/checkout/crypto-payment-form'
-import { checkoutSchema, CheckoutFormData } from '@/lib/validations/checkout'
+import { checkoutSchema, guestCheckoutFormSchema, CheckoutFormData } from '@/lib/validations/checkout'
 import { formatPrice, applyCoupon } from '@/lib/utils'
 import { Coupon } from '@/types'
 import { cn } from '@/lib/utils'
@@ -19,6 +27,8 @@ import toast from 'react-hot-toast'
 import { RazorpayPaymentForm } from './razorpay-payment-form'
 import { BlockingContainer } from '@/components/ui/blocking-container'
 import { OptimizedImage } from '@/components/ui/optimized-image'
+import { createClient } from '@/lib/supabase/client'
+import { buildAuthHref } from '@/lib/auth-redirect'
 
 interface CheckoutFormProps {
   addresses: Address[]
@@ -28,24 +38,58 @@ interface CheckoutFormProps {
     email?: string
     full_name?: string | null
     phone?: string | null
-  }
+  } | null
 }
 
-export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormProps) {
+export function CheckoutForm({
+  addresses,
+  shippingMethods,
+  user,
+}: CheckoutFormProps) {
   const router = useRouter()
-  const { items, getSubtotal, discountAmount, couponCode, applyCoupon: applyCouponToCart, removeCoupon, setShipping } = useCartStore()
-  // const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'crypto'>('stripe')
-  const [paymentMethod, setPaymentMethod] = useState<'razorpay' | 'cod'>('razorpay')
+  const isGuest = !user
+  const supabase = createClient()
+  const {
+    items,
+    getSubtotal,
+    discountAmount,
+    couponCode,
+    applyCoupon: applyCouponToCart,
+    removeCoupon,
+    setShipping,
+  } = useCartStore()
+  const [paymentMethod, setPaymentMethod] = useState<'razorpay' | 'cod'>(
+    'razorpay'
+  )
   const [couponInput, setCouponInput] = useState('')
   const [couponData, setCouponData] = useState<Coupon | null>(null)
   const [isApplyingCoupon, setIsApplyingCoupon] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [clientSecret, setClientSecret] = useState<{ id: string; amount: number; currency: string } | null>(null)
+  const [clientSecret, setClientSecret] = useState<{
+    id: string
+    amount: number
+    currency: string
+  } | null>(null)
   const [orderId, setOrderId] = useState<string | null>(null)
   const [step, setStep] = useState<'details' | 'payment'>('details')
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
     addresses.find((a) => a.is_default)?.id || addresses[0]?.id || null
   )
+
+  const [phoneVerified, setPhoneVerified] = useState(false)
+  const [verifiedPhone, setVerifiedPhone] = useState('')
+  const [otp, setOtp] = useState('')
+  const [sendingOtp, setSendingOtp] = useState(false)
+  const [verifyingOtp, setVerifyingOtp] = useState(false)
+  const [isSendOtpClicked, setIsSendOtpClicked] = useState(false)
+  const [emailVerified, setEmailVerified] = useState(false)
+  const [verifiedEmail, setVerifiedEmail] = useState('')
+  const [emailOtp, setEmailOtp] = useState('')
+  const [sendingEmailOtp, setSendingEmailOtp] = useState(false)
+  const [verifyingEmailOtp, setVerifyingEmailOtp] = useState(false)
+  const [isSendEmailOtpClicked, setIsSendEmailOtpClicked] = useState(false)
+  const [emailExists, setEmailExists] = useState(false)
+  const [checkingEmail, setCheckingEmail] = useState(false)
 
   const subtotal = getSubtotal()
   const [localDiscount, setLocalDiscount] = useState(discountAmount)
@@ -60,13 +104,16 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
     setValue,
     formState: { errors },
   } = useForm<CheckoutFormData>({
-    resolver: zodResolver(checkoutSchema) as any,
+    resolver: zodResolver(
+      (isGuest ? guestCheckoutFormSchema : checkoutSchema) as any
+    ) as any,
     defaultValues: {
       country: 'India',
       payment_method: 'razorpay',
       shipping_method_id: freeShippingMethod?.id,
-      full_name: user.full_name || '',
-      phone: user.phone || '',
+      full_name: user?.full_name || '',
+      phone: user?.phone || '',
+      email: user?.email || '',
     },
   })
 
@@ -77,11 +124,16 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
     }
   }, [freeShippingMethod?.id, setShipping, setValue])
 
-  const selectedShippingId = watch('shipping_method_id')
   const shippingAmount = 0
+  const guestEmail = watch('email')
+  const guestPhone = watch('phone')
+  const isValidPhone = /^[0-9]{10}$/.test(guestPhone || '')
+  const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail || '')
 
   // Fill form from selected saved address, or profile when entering a new address
   useEffect(() => {
+    if (isGuest) return
+
     const addr = addresses.find((a) => a.id === selectedAddressId)
     if (addr) {
       setValue('full_name', addr.full_name)
@@ -95,13 +147,305 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
       return
     }
 
-    if (user.full_name) setValue('full_name', user.full_name)
-    if (user.phone) setValue('phone', user.phone)
-  }, [selectedAddressId, addresses, user.full_name, user.phone, setValue])
+    if (user?.full_name) setValue('full_name', user.full_name)
+    if (user?.phone) setValue('phone', user.phone)
+  }, [
+    selectedAddressId,
+    addresses,
+    user?.full_name,
+    user?.phone,
+    setValue,
+    isGuest,
+  ])
+
+  // Guest phone change invalidates OTP verification
+  useEffect(() => {
+    if (!isGuest) return
+
+    if (verifiedPhone && verifiedPhone !== guestPhone) {
+      setPhoneVerified(false)
+      setVerifiedPhone('')
+      setIsSendOtpClicked(false)
+      setOtp('')
+    }
+  }, [guestPhone, isGuest, verifiedPhone])
+
+  // Guest email change invalidates email OTP verification
+  useEffect(() => {
+    if (!isGuest) return
+
+    if (verifiedEmail && verifiedEmail !== (guestEmail || '').trim().toLowerCase()) {
+      setEmailVerified(false)
+      setVerifiedEmail('')
+      setIsSendEmailOtpClicked(false)
+      setEmailOtp('')
+    }
+  }, [guestEmail, isGuest, verifiedEmail])
+
+  useEffect(() => {
+    if (!isGuest || !isValidPhone || !guestPhone) return
+
+    const checkPhoneVerification = async (phone: string) => {
+      try {
+        const res = await fetch('/api/auth/check-phone-verified', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone }),
+        })
+        const data = await res.json()
+        if (data.verified) {
+          setPhoneVerified(true)
+          setVerifiedPhone(phone)
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    checkPhoneVerification(guestPhone)
+  }, [guestPhone, isGuest, isValidPhone])
+
+  useEffect(() => {
+    if (!isGuest || !isValidEmail || !guestEmail) return
+
+    const normalized = guestEmail.trim().toLowerCase()
+    const checkEmailVerification = async (email: string) => {
+      try {
+        const res = await fetch('/api/auth/check-email-verified', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        })
+        const data = await res.json()
+        if (data.verified) {
+          setEmailVerified(true)
+          setVerifiedEmail(email)
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    checkEmailVerification(normalized)
+  }, [guestEmail, isGuest, isValidEmail])
+
+  useEffect(() => {
+    if (!isGuest) return
+
+    if (!guestEmail || !isValidEmail) {
+      setEmailExists(false)
+      return
+    }
+
+    const timeout = setTimeout(async () => {
+      try {
+        setCheckingEmail(true)
+        const res = await fetch('/api/auth/check-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: guestEmail }),
+        })
+        const data = await res.json()
+        setEmailExists(Boolean(data.exists))
+      } catch {
+        setEmailExists(false)
+      } finally {
+        setCheckingEmail(false)
+      }
+    }, 500)
+
+    return () => clearTimeout(timeout)
+  }, [guestEmail, isGuest, isValidEmail])
 
   const afterDiscount = Math.max(0, subtotal - localDiscount)
   const taxAmount = 0
   const total = afterDiscount + taxAmount + shippingAmount
+
+  const sendOtp = async () => {
+    if (!isValidPhone) {
+      toast.error('Please enter a valid 10 digit phone number')
+      return
+    }
+
+    setSendingOtp(true)
+    try {
+      const res = await fetch('/api/auth/send-phone-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: guestPhone }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to send OTP')
+        return
+      }
+      setIsSendOtpClicked(true)
+      toast.success('OTP sent to your WhatsApp')
+    } catch {
+      toast.error('Failed to send OTP')
+    } finally {
+      setSendingOtp(false)
+    }
+  }
+
+  const verifyOtp = async () => {
+    if (!otp.trim()) {
+      toast.error('Enter the OTP')
+      return
+    }
+
+    setVerifyingOtp(true)
+    try {
+      const res = await fetch('/api/auth/verify-phone-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: guestPhone, otp: otp.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'Invalid OTP')
+        return
+      }
+      setPhoneVerified(true)
+      setVerifiedPhone(guestPhone || '')
+      toast.success('Phone verified')
+    } catch {
+      toast.error('Failed to verify OTP')
+    } finally {
+      setVerifyingOtp(false)
+    }
+  }
+
+  const sendEmailOtp = async () => {
+    if (!isValidEmail) {
+      toast.error('Please enter a valid email address')
+      return
+    }
+    if (emailExists) {
+      toast.error('This email is already registered. Please sign in.')
+      return
+    }
+
+    setSendingEmailOtp(true)
+    try {
+      const res = await fetch('/api/auth/send-email-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: guestEmail }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        if (data.code === 'EMAIL_EXISTS') setEmailExists(true)
+        toast.error(data.error || 'Failed to send email OTP')
+        return
+      }
+      setIsSendEmailOtpClicked(true)
+      toast.success('OTP sent to your email')
+    } catch {
+      toast.error('Failed to send email OTP')
+    } finally {
+      setSendingEmailOtp(false)
+    }
+  }
+
+  const verifyEmailOtp = async () => {
+    if (!emailOtp.trim()) {
+      toast.error('Enter the email OTP')
+      return
+    }
+
+    setVerifyingEmailOtp(true)
+    try {
+      const res = await fetch('/api/auth/verify-email-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: guestEmail,
+          otp: emailOtp.trim(),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'Invalid OTP')
+        return
+      }
+      setEmailVerified(true)
+      setVerifiedEmail((guestEmail || '').trim().toLowerCase())
+      toast.success('Email verified')
+    } catch {
+      toast.error('Failed to verify email OTP')
+    } finally {
+      setVerifyingEmailOtp(false)
+    }
+  }
+
+  const ensureGuestSession = async (data: CheckoutFormData) => {
+    if (!isGuest) return true
+
+    if (!data.email) {
+      toast.error('Email is required')
+      return false
+    }
+
+    if (emailExists) {
+      toast.error(
+        'An account with this email already exists. Please sign in to continue.'
+      )
+      return false
+    }
+
+    if (
+      !emailVerified ||
+      verifiedEmail !== data.email.trim().toLowerCase()
+    ) {
+      toast.error('Please verify your email')
+      return false
+    }
+
+    if (!phoneVerified || verifiedPhone !== data.phone) {
+      toast.error('Please verify your phone number')
+      return false
+    }
+
+    const res = await fetch('/api/auth/guest-checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        full_name: data.full_name,
+        email: data.email,
+        phone: data.phone,
+      }),
+    })
+
+    const result = await res.json()
+
+    if (!res.ok) {
+      if (result.code === 'EMAIL_EXISTS') {
+        setEmailExists(true)
+        toast.error(
+          result.error ||
+            'An account with this email already exists. Please sign in.'
+        )
+      } else {
+        toast.error(result.error || 'Failed to create account')
+      }
+      return false
+    }
+
+    const { error: sessionError } = await supabase.auth.setSession({
+      access_token: result.access_token,
+      refresh_token: result.refresh_token,
+    })
+
+    if (sessionError) {
+      toast.error(
+        'Account created but sign-in failed. Please use the set-password link from your email.'
+      )
+      return false
+    }
+
+    return true
+  }
 
   const handleApplyCoupon = async () => {
     if (!couponInput.trim()) return
@@ -145,6 +489,9 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
 
     setIsSubmitting(true)
     try {
+      const sessionReady = await ensureGuestSession(data)
+      if (!sessionReady) return
+
       const orderRes = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -169,7 +516,7 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
           coupon_code: couponCode,
           discount_amount: localDiscount,
           payment_method: paymentMethod,
-          save_address: data.save_address,
+          save_address: isGuest ? true : data.save_address,
         }),
       })
 
@@ -219,20 +566,18 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
           body: JSON.stringify({ order_id }),
         })
 
-        const data = await paymentRes.json()
+        const paymentData = await paymentRes.json()
 
-        if (!paymentRes.ok || !data.id) {
-          toast.error(data.error || 'Failed to initialize payment')
+        if (!paymentRes.ok || !paymentData.id) {
+          toast.error(paymentData.error || 'Failed to initialize payment')
           return
         }
 
-        const normalizedOrder = {
-          id: data.id,
-          amount: data.amount,
-          currency: data.currency,
-        }
-
-        setClientSecret(normalizedOrder as { id: string; amount: number; currency: string })
+        setClientSecret({
+          id: paymentData.id,
+          amount: paymentData.amount,
+          currency: paymentData.currency,
+        })
       }
 
       setStep('payment')
@@ -247,7 +592,9 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
     return (
       <div className="text-center py-16">
         <p className="text-gray-500">Your cart is empty.</p>
-        <Button asChild className="mt-4"><a href="/products">Continue Shopping</a></Button>
+        <Button asChild className="mt-4">
+          <a href="/products">Continue Shopping</a>
+        </Button>
       </div>
     )
   }
@@ -262,12 +609,176 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
       }
       className="grid grid-cols-1 lg:grid-cols-3 gap-8"
     >
-      {/* Left: Form */}
       <div className="lg:col-span-2 space-y-6">
         {step === 'details' ? (
           <form onSubmit={handleSubmit(onSubmitDetails)} className="space-y-6">
-            {/* Saved addresses */}
-            {addresses.length > 0 && (
+            {isGuest && (
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <div className="flex items-center gap-2 mb-1">
+                  <User className="h-5 w-5 text-purple-600" />
+                  <h2 className="text-lg font-semibold">Contact details</h2>
+                </div>
+                <p className="text-sm text-gray-500 mb-4">
+                  We&apos;ll create your account so you can track this order.
+                  Already have an account?{' '}
+                  <Link
+                    href={buildAuthHref('/login', '/checkout')}
+                    className="text-purple-600 hover:underline font-medium"
+                  >
+                    Sign in
+                  </Link>
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <Input
+                      label="Full Name"
+                      error={errors.full_name?.message}
+                      {...register('full_name')}
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
+                      <div className="flex-1">
+                        <Input
+                          label="Email"
+                          type="email"
+                          leftIcon={<Mail className="h-4 w-4" />}
+                          error={errors.email?.message}
+                          {...register('email')}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={sendEmailOtp}
+                        loading={sendingEmailOtp}
+                        disabled={
+                          !isValidEmail ||
+                          emailVerified ||
+                          emailExists ||
+                          checkingEmail
+                        }
+                        className="sm:mb-0"
+                      >
+                        {emailVerified
+                          ? 'Verified'
+                          : isSendEmailOtpClicked
+                            ? 'Resend OTP'
+                            : 'Send OTP'}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Use an email you can access — we&apos;ll send a code to verify it,
+                      and order updates go to this address.
+                    </p>
+                    {checkingEmail && (
+                      <p className="text-xs text-gray-400 mt-1">
+                        Checking email...
+                      </p>
+                    )}
+                    {emailExists && (
+                      <p className="text-xs text-red-600 mt-1">
+                        This email is already registered.{' '}
+                        <Link
+                          href={buildAuthHref('/login', '/checkout')}
+                          className="underline font-medium"
+                        >
+                          Sign in
+                        </Link>{' '}
+                        to continue.
+                      </p>
+                    )}
+                    {!emailVerified && isSendEmailOtpClicked && (
+                      <div className="mt-3 flex flex-col sm:flex-row gap-3 sm:items-end">
+                        <div className="flex-1">
+                          <Input
+                            label="Email OTP"
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={emailOtp}
+                            onChange={(e) => setEmailOtp(e.target.value)}
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          onClick={verifyEmailOtp}
+                          loading={verifyingEmailOtp}
+                        >
+                          Verify Email
+                        </Button>
+                      </div>
+                    )}
+                    {emailVerified && (
+                      <p className="text-sm text-green-600 flex items-center gap-1 mt-2">
+                        <Check className="h-4 w-4" /> Email verified
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
+                      <div className="flex-1">
+                        <Input
+                          label="Phone"
+                          type="tel"
+                          inputMode="numeric"
+                          maxLength={10}
+                          error={errors.phone?.message}
+                          {...register('phone')}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={sendOtp}
+                        loading={sendingOtp}
+                        disabled={!isValidPhone || phoneVerified}
+                        className="sm:mb-0"
+                      >
+                        {phoneVerified
+                          ? 'Verified'
+                          : isSendOtpClicked
+                            ? 'Resend OTP'
+                            : 'Send OTP'}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      We&apos;ll send a verification code on WhatsApp.
+                    </p>
+                  </div>
+
+                  {!phoneVerified && isSendOtpClicked && (
+                    <div className="sm:col-span-2 flex flex-col sm:flex-row gap-3 sm:items-end">
+                      <div className="flex-1">
+                        <Input
+                          label="OTP"
+                          inputMode="numeric"
+                          maxLength={6}
+                          value={otp}
+                          onChange={(e) => setOtp(e.target.value)}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        onClick={verifyOtp}
+                        loading={verifyingOtp}
+                      >
+                        Verify OTP
+                      </Button>
+                    </div>
+                  )}
+
+                  {phoneVerified && (
+                    <p className="sm:col-span-2 text-sm text-green-600 flex items-center gap-1">
+                      <Check className="h-4 w-4" /> Phone number verified
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!isGuest && addresses.length > 0 && (
               <div className="bg-white rounded-xl border border-gray-200 p-6">
                 <div className="flex items-center gap-2 mb-4">
                   <MapPin className="h-5 w-5 text-purple-600" />
@@ -286,9 +797,12 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
                           : 'border-gray-200 hover:border-purple-300'
                       )}
                     >
-                      <p className="font-medium text-sm text-gray-900">{addr.full_name}</p>
+                      <p className="font-medium text-sm text-gray-900">
+                        {addr.full_name}
+                      </p>
                       <p className="text-xs text-gray-500 mt-0.5">
-                        {addr.address_line1}, {addr.city}, {addr.state} {addr.postal_code}
+                        {addr.address_line1}, {addr.city}, {addr.state}{' '}
+                        {addr.postal_code}
                       </p>
                     </button>
                   ))}
@@ -303,33 +817,73 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
               </div>
             )}
 
-            {/* Shipping address form */}
             <div className="bg-white rounded-xl border border-gray-200 p-6">
               <h2 className="text-lg font-semibold mb-4">Shipping Address</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input label="Full Name" error={errors.full_name?.message} {...register('full_name')} />
-                <Input label="Phone" type="tel" error={errors.phone?.message} {...register('phone')} />
+                {!isGuest && (
+                  <>
+                    <Input
+                      label="Full Name"
+                      error={errors.full_name?.message}
+                      {...register('full_name')}
+                    />
+                    <Input
+                      label="Phone"
+                      type="tel"
+                      error={errors.phone?.message}
+                      {...register('phone')}
+                    />
+                  </>
+                )}
                 <div className="sm:col-span-2">
-                  <Input label="Address Line 1" error={errors.address_line1?.message} {...register('address_line1')} />
+                  <Input
+                    label="Address Line 1"
+                    error={errors.address_line1?.message}
+                    {...register('address_line1')}
+                  />
                 </div>
                 <div className="sm:col-span-2">
-                  <Input label="Address Line 2 (optional)" {...register('address_line2')} />
+                  <Input
+                    label="Address Line 2 (optional)"
+                    {...register('address_line2')}
+                  />
                 </div>
-                <Input label="City" error={errors.city?.message} {...register('city')} />
-                <Input label="State" error={errors.state?.message} {...register('state')} />
-                <Input label="Postal Code" error={errors.postal_code?.message} {...register('postal_code')} />
-                <Input label="Country" defaultValue="India" {...register('country')} />
+                <Input
+                  label="City"
+                  error={errors.city?.message}
+                  {...register('city')}
+                />
+                <Input
+                  label="State"
+                  error={errors.state?.message}
+                  {...register('state')}
+                />
+                <Input
+                  label="Postal Code"
+                  error={errors.postal_code?.message}
+                  {...register('postal_code')}
+                />
+                <Input
+                  label="Country"
+                  defaultValue="India"
+                  {...register('country')}
+                />
               </div>
 
-              {!selectedAddressId && (
+              {!isGuest && !selectedAddressId && (
                 <label className="flex items-center gap-2 mt-4 cursor-pointer">
-                  <input type="checkbox" className="accent-primary-600" {...register('save_address')} />
-                  <span className="text-sm text-gray-700">Save this address for future orders</span>
+                  <input
+                    type="checkbox"
+                    className="accent-primary-600"
+                    {...register('save_address')}
+                  />
+                  <span className="text-sm text-gray-700">
+                    Save this address for future orders
+                  </span>
                 </label>
               )}
             </div>
 
-            {/* Shipping method */}
             <div className="bg-white rounded-xl border border-gray-200 p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Truck className="h-5 w-5 text-purple-600" />
@@ -346,7 +900,9 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
                         `${freeShippingMethod.estimated_days_min}-${freeShippingMethod.estimated_days_max} business days`}
                     </p>
                   </div>
-                  <span className="font-semibold text-sm text-green-600">Free</span>
+                  <span className="font-semibold text-sm text-green-600">
+                    Free
+                  </span>
                 </div>
               ) : (
                 <p className="text-sm text-red-600">
@@ -359,11 +915,12 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
                 {...register('shipping_method_id')}
               />
               {errors.shipping_method_id && (
-                <p className="text-xs text-red-500 mt-1">{errors.shipping_method_id.message}</p>
+                <p className="text-xs text-red-500 mt-1">
+                  {errors.shipping_method_id.message}
+                </p>
               )}
             </div>
 
-            {/* Payment method selection */}
             <div className="bg-white rounded-xl border border-gray-200 p-6">
               <h2 className="text-lg font-semibold mb-4">Payment Method</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -380,10 +937,21 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
                       : 'border-gray-200 hover:border-purple-300'
                   )}
                 >
-                  <CreditCard className={cn('h-5 w-5', paymentMethod === 'razorpay' ? 'text-purple-600' : 'text-gray-500')} />
+                  <CreditCard
+                    className={cn(
+                      'h-5 w-5',
+                      paymentMethod === 'razorpay'
+                        ? 'text-purple-600'
+                        : 'text-gray-500'
+                    )}
+                  />
                   <div className="text-left">
-                    <p className="font-medium text-sm text-gray-900">Card / Wallet</p>
-                    <p className="text-xs text-gray-500">Visa, PhonePe, Google Pay</p>
+                    <p className="font-medium text-sm text-gray-900">
+                      Card / Wallet
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Visa, PhonePe, Google Pay
+                    </p>
                   </div>
                 </button>
                 <button
@@ -399,14 +967,29 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
                       : 'border-gray-200 hover:border-purple-300'
                   )}
                 >
-                  <Banknote className={cn('h-5 w-5', paymentMethod === 'cod' ? 'text-purple-600' : 'text-gray-500')} />
+                  <Banknote
+                    className={cn(
+                      'h-5 w-5',
+                      paymentMethod === 'cod'
+                        ? 'text-purple-600'
+                        : 'text-gray-500'
+                    )}
+                  />
                   <div className="text-left">
-                    <p className="font-medium text-sm text-gray-900">Cash on Delivery</p>
-                    <p className="text-xs text-gray-500">Pay when your order arrives</p>
+                    <p className="font-medium text-sm text-gray-900">
+                      Cash on Delivery
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Pay when your order arrives
+                    </p>
                   </div>
                 </button>
               </div>
-              <input type="hidden" value={paymentMethod} {...register('payment_method')} />
+              <input
+                type="hidden"
+                value={paymentMethod}
+                {...register('payment_method')}
+              />
             </div>
 
             <Button
@@ -415,6 +998,10 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
               size="lg"
               className="w-full"
               loading={isSubmitting}
+              disabled={
+                isGuest &&
+                (emailExists || !phoneVerified || !emailVerified)
+              }
             >
               {paymentMethod === 'cod' ? 'Place Order' : 'Continue to Payment'}
             </Button>
@@ -422,15 +1009,6 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
         ) : (
           <div className="space-y-6">
             <div className="bg-white rounded-xl border border-gray-200 p-6">
-              {/* {paymentMethod === 'stripe' && clientSecret && orderId ? (
-                <StripePaymentForm
-                  clientSecret={clientSecret}
-                  orderId={orderId}
-                  amount={total}
-                />
-              ) : paymentMethod === 'crypto' && orderId ? (
-                <CryptoPaymentForm orderId={orderId} amount={total} />
-              ) : null} */}
               {paymentMethod === 'razorpay' && clientSecret && orderId && (
                 <RazorpayPaymentForm
                   orderId={orderId}
@@ -449,12 +1027,10 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
         )}
       </div>
 
-      {/* Right: Order summary */}
       <div className="lg:col-span-1">
         <div className="bg-white rounded-xl border border-gray-200 p-6 sticky top-24">
           <h2 className="text-lg font-semibold mb-4">Order Summary</h2>
 
-          {/* Items */}
           <div className="space-y-3 mb-6 max-h-64 overflow-y-auto">
             {items.map((item) => (
               <div key={item.id} className="flex items-center gap-3">
@@ -473,17 +1049,23 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
                   </span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-gray-900 truncate">{item.product.name}</p>
-                  <p className="text-xs text-gray-500">{item.variant.size} / {item.variant.color}</p>
+                  <p className="text-xs font-medium text-gray-900 truncate">
+                    {item.product.name}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {item.variant.size} / {item.variant.color}
+                  </p>
                 </div>
                 <p className="text-xs font-bold text-gray-900">
-                  {formatPrice((item.product.price + item.variant.price_modifier) * item.quantity)}
+                  {formatPrice(
+                    (item.product.price + item.variant.price_modifier) *
+                      item.quantity
+                  )}
                 </p>
               </div>
             ))}
           </div>
 
-          {/* Coupon */}
           {!couponData ? (
             <div className="flex gap-2 mb-4">
               <div className="flex-1 relative">
@@ -496,7 +1078,12 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
                   className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
-              <Button size="sm" variant="outline" onClick={handleApplyCoupon} loading={isApplyingCoupon}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleApplyCoupon}
+                loading={isApplyingCoupon}
+              >
                 Apply
               </Button>
             </div>
@@ -504,13 +1091,19 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
             <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-3 py-2 mb-4">
               <div className="flex items-center gap-2">
                 <Check className="h-4 w-4 text-green-600" />
-                <span className="text-sm font-medium text-green-700">{couponData.code}</span>
+                <span className="text-sm font-medium text-green-700">
+                  {couponData.code}
+                </span>
               </div>
-              <button onClick={handleRemoveCoupon} className="text-xs text-red-500 hover:underline">Remove</button>
+              <button
+                onClick={handleRemoveCoupon}
+                className="text-xs text-red-500 hover:underline"
+              >
+                Remove
+              </button>
             </div>
           )}
 
-          {/* Totals */}
           <div className="space-y-2 text-sm border-t pt-4">
             <div className="flex justify-between">
               <span className="text-gray-600">Subtotal</span>
@@ -522,13 +1115,15 @@ export function CheckoutForm({ addresses, shippingMethods, user }: CheckoutFormP
                 <span>-{formatPrice(localDiscount)}</span>
               </div>
             )}
-            {/* <div className="flex justify-between">
-              <span className="text-gray-600">Tax (5%)</span>
-              <span>{formatPrice(taxAmount)}</span>
-            </div> */}
             <div className="flex justify-between">
               <span className="text-gray-600">Shipping</span>
-              <span>{shippingAmount === 0 ? <span className="text-green-600">Free</span> : formatPrice(shippingAmount)}</span>
+              <span>
+                {shippingAmount === 0 ? (
+                  <span className="text-green-600">Free</span>
+                ) : (
+                  formatPrice(shippingAmount)
+                )}
+              </span>
             </div>
             <div className="flex justify-between font-bold text-base border-t pt-2">
               <span>Total</span>

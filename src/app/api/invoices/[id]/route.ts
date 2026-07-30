@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { generateInvoicePdf } from '@/lib/invoice-pdf'
 import type { InvoiceOrderInput } from '@/lib/invoice'
+import { canDownloadInvoice } from '@/lib/invoice-access'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -38,6 +39,18 @@ export async function GET(_req: NextRequest, { params }: Props) {
     const isAdmin = profile && ['admin', 'super_admin'].includes(profile.role)
     if (order.user_id !== user.id && !isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    if (!isAdmin && !canDownloadInvoice(order)) {
+      return NextResponse.json(
+        {
+          error:
+            order.payment_method === 'cod'
+              ? 'Invoice for Cash on Delivery orders is available after delivery'
+              : 'Invoice is not available for this order yet',
+        },
+        { status: 403 }
+      )
     }
 
     const pdfBytes = generateInvoicePdf(order as InvoiceOrderInput)

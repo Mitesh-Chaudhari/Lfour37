@@ -633,6 +633,48 @@ export async function sendPasswordResetEmail(email: string, resetUrl: string): P
   })
 }
 
+export async function sendSetPasswordEmail(
+  email: string,
+  name: string,
+  setPasswordUrl: string
+): Promise<void> {
+  const content = `
+    <h2>Set your password, ${name}</h2>
+    <p>Thanks for your order! We created an account for you so you can track orders and manage returns.</p>
+    <p>Click the button below, then choose <strong>Continue</strong> on the next page to set your password.</p>
+    <p>This link will expire in 1 hour. For security, the link only activates after you confirm on our site.</p>
+    <a href="${setPasswordUrl}" class="button">Set Your Password</a>
+    <p style="color:#888;font-size:14px;margin-top:24px;">If you didn't place an order, you can safely ignore this email.</p>
+  `
+
+  await deliverMail({
+    to: email,
+    subject: `Set your ${APP_NAME} password`,
+    html: baseTemplate(content),
+    context: 'set_password',
+  })
+}
+
+export async function sendEmailOtpEmail(
+  email: string,
+  otp: string
+): Promise<void> {
+  const content = `
+    <h2>Your verification code</h2>
+    <p>Use this code to verify your email at checkout:</p>
+    <p style="font-size:28px;font-weight:700;letter-spacing:4px;margin:24px 0;">${otp}</p>
+    <p>This code expires in 10 minutes.</p>
+    <p style="color:#888;font-size:14px;margin-top:24px;">If you didn't request this, you can safely ignore this email.</p>
+  `
+
+  await deliverMail({
+    to: email,
+    subject: `${otp} is your ${APP_NAME} email verification code`,
+    html: baseTemplate(content),
+    context: 'email_otp',
+  })
+}
+
 export async function sendWelcomeEmail(email: string, name: string): Promise<void> {
   const content = `
     <h2>Welcome to ${APP_NAME}, ${name}! 👋</h2>

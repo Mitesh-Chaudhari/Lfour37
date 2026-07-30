@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Download, FileText } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { formatDate, formatPrice } from '@/lib/utils'
+import { canDownloadInvoice } from '@/lib/invoice-access'
 
 export const metadata = {
   title: 'Invoices | Lfour37',
@@ -22,6 +23,8 @@ export default async function InvoicesPage() {
     .neq('status', 'pending')
     .order('created_at', { ascending: false })
 
+  const invoiceOrders = (orders || []).filter((order) => canDownloadInvoice(order))
+
   const statusVariant = (status: string) => {
     const map: Record<string, 'success' | 'secondary' | 'warning' | 'destructive'> = {
       delivered: 'success',
@@ -38,11 +41,13 @@ export default async function InvoicesPage() {
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Invoices</h1>
-        <p className="text-sm text-gray-500 mt-1">Download invoices for your completed orders</p>
+        <p className="text-sm text-gray-500 mt-1">
+          Download invoices for paid orders. Cash on Delivery invoices appear after delivery.
+        </p>
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-        {orders && orders.length > 0 ? (
+        {invoiceOrders.length > 0 ? (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
@@ -54,7 +59,7 @@ export default async function InvoicesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {orders.map((order) => (
+              {invoiceOrders.map((order) => (
                 <tr key={order.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
@@ -95,7 +100,9 @@ export default async function InvoicesPage() {
           <div className="py-16 text-center">
             <FileText className="h-10 w-10 text-gray-300 mx-auto mb-3" />
             <p className="text-gray-500 font-medium">No invoices yet</p>
-            <p className="text-sm text-gray-400 mt-1">Invoices appear after your payment is confirmed</p>
+            <p className="text-sm text-gray-400 mt-1">
+              Prepaid invoices appear after payment. COD invoices appear after delivery.
+            </p>
           </div>
         )}
       </div>

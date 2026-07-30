@@ -26,6 +26,28 @@ export const checkoutSchema = z.object({
   coupon_code: z.string().optional(),
   payment_method: z.enum(['razorpay', 'cod']),
   save_address: z.boolean().optional().default(false),
+  /** Guest checkout only — ignored for signed-in users */
+  email: z
+    .string()
+    .email('Invalid email address')
+    .optional()
+    .or(z.literal('')),
+})
+
+/** Client-side schema when the shopper is not signed in */
+export const guestCheckoutFormSchema = checkoutSchema.extend({
+  email: z.string().email('Invalid email address'),
+  phone: z
+    .string()
+    .regex(/^[0-9]{10}$/, 'Phone number must be exactly 10 digits'),
+})
+
+export const guestCheckoutAccountSchema = z.object({
+  full_name: z.string().min(2).max(100),
+  email: z.string().email('Invalid email address'),
+  phone: z
+    .string()
+    .regex(/^[0-9]{10}$/, 'Phone number must be exactly 10 digits'),
 })
 
 export const reviewSchema = z.object({

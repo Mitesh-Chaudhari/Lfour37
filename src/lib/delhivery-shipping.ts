@@ -453,7 +453,8 @@ export async function ensureDelhiveryShipmentForPaidOrder(
 }
 
 export async function syncDelhiveryShipment(
-  shipment: ShipmentRow
+  shipment: ShipmentRow,
+  options?: { skipNotify?: boolean }
 ): Promise<DelhiverySyncSummary> {
   if (!shipment.awb) throw new Error('Shipment has no AWB')
 
@@ -518,34 +519,72 @@ export async function syncDelhiveryShipment(
     .eq('id', shipment.order_id)
     .single()
 
+  const { data: shipmentMeta } = await supabase
+    .from('delhivery_shipments')
+    .select('cancellation_requested_at, last_notified_milestone')
+    .eq('id', shipment.id)
+    .maybeSingle()
+
+  const cancellationRequested = Boolean(
+    shipmentMeta?.cancellation_requested_at
+  )
+  const lastNotified =
+    shipmentMeta?.last_notified_milestone ?? shipment.last_notified_milestone
+
   if (order && mappedOrderStatus) {
-    const orderUpdate: Record<string, string> = {
-      status: mappedOrderStatus,
-      tracking_number: tracking.awb,
-    }
+    // Don't resurrect a cancelled order from a stale carrier status
+    const skipOrderStatusUpdate =
+      order.status === 'cancelled' ||
+      order.status === 'refunded' ||
+      cancellationRequested
 
-    if (mappedOrderStatus === 'shipped' && !order.shipped_at) {
-      orderUpdate.shipped_at = latestEvent?.occurredAt || new Date().toISOString()
-    }
-    if (mappedOrderStatus === 'delivered' && !order.delivered_at) {
-      orderUpdate.delivered_at =
-        tracking.deliveredAt || new Date().toISOString()
-    }
-    if (mappedOrderStatus === 'cancelled' && !order.cancelled_at) {
-      orderUpdate.cancelled_at = new Date().toISOString()
-    }
+    if (!skipOrderStatusUpdate) {
+      const orderUpdate: Record<string, string> = {
+        status: mappedOrderStatus,
+        tracking_number: tracking.awb,
+      }
 
-    await supabase.from('orders').update(orderUpdate).eq('id', order.id)
+      if (mappedOrderStatus === 'shipped' && !order.shipped_at) {
+        orderUpdate.shipped_at =
+          latestEvent?.occurredAt || new Date().toISOString()
+      }
+      if (mappedOrderStatus === 'delivered' && !order.delivered_at) {
+        orderUpdate.delivered_at =
+          tracking.deliveredAt || new Date().toISOString()
+      }
+      if (mappedOrderStatus === 'cancelled' && !order.cancelled_at) {
+        orderUpdate.cancelled_at = new Date().toISOString()
+      }
+
+      await supabase.from('orders').update(orderUpdate).eq('id', order.id)
+    } else if (tracking.awb && !order.tracking_number) {
+      await supabase
+        .from('orders')
+        .update({ tracking_number: tracking.awb })
+        .eq('id', order.id)
+    }
   }
 
-  if (order && milestone !== shipment.last_notified_milestone) {
-    await notifyCustomerOfShipmentMilestone(shipment, {
-      milestone,
-      carrierStatus: tracking.currentStatus,
-      trackingNumber: tracking.awb,
-      expectedDeliveryDate: tracking.expectedDeliveryDate,
-      instructions: tracking.instructions,
-    })
+  if (
+    !options?.skipNotify &&
+    !cancellationRequested &&
+    order &&
+    order.status !== 'cancelled' &&
+    milestone !== lastNotified
+  ) {
+    await notifyCustomerOfShipmentMilestone(
+      {
+        ...shipment,
+        last_notified_milestone: lastNotified,
+      },
+      {
+        milestone,
+        carrierStatus: tracking.currentStatus,
+        trackingNumber: tracking.awb,
+        expectedDeliveryDate: tracking.expectedDeliveryDate,
+        instructions: tracking.instructions,
+      }
+    )
   }
 
   logger.info('Delhivery shipment synced', {
@@ -681,7 +720,7 @@ export async function cancelDelhiveryShipmentForOrder(
   const supabase = createAdminClient()
   const { data: shipment } = await supabase
     .from('delhivery_shipments')
-    .select('id, awb, status, cancellation_requested_at')
+    .select('id, awb, status, cancellation_requested_at, last_notified_milestone')
     .eq('order_id', orderId)
     .maybeSingle()
 
@@ -694,6 +733,13 @@ export async function cancelDelhiveryShipmentForOrder(
   }
 
   const carrierStatus = shipment.status || 'Unknown'
+  const shipmentRow = {
+    id: shipment.id,
+    order_id: orderId,
+    awb: shipment.awb,
+    status: carrierStatus,
+    last_notified_milestone: shipment.last_notified_milestone,
+  } as ShipmentRow
 
   if (isDelhiveryOutForDelivery(carrierStatus)) {
     return {
@@ -706,13 +752,8 @@ export async function cancelDelhiveryShipmentForOrder(
 
   if (!isDelhiveryStatusCancellable(carrierStatus)) {
     try {
-      await syncDelhiveryShipment({
-        id: shipment.id,
-        order_id: orderId,
-        awb: shipment.awb,
-        status: carrierStatus,
-        last_notified_milestone: null,
-      })
+      // Refresh status only — do not send pickup/shipped WhatsApp during cancel checks
+      await syncDelhiveryShipment(shipmentRow, { skipNotify: true })
     } catch {
       // Best effort refresh before re-checking cancellability.
     }
@@ -752,13 +793,15 @@ export async function cancelDelhiveryShipmentForOrder(
     })
 
     try {
-      await syncDelhiveryShipment({
-        id: shipment.id,
-        order_id: orderId,
-        awb: shipment.awb,
-        status: 'Cancellation Requested',
-        last_notified_milestone: null,
-      })
+      // Post-cancel sync must not emit pickup messages from stale carrier status
+      await syncDelhiveryShipment(
+        {
+          ...shipmentRow,
+          status: 'Cancellation Requested',
+          last_notified_milestone: shipment.last_notified_milestone,
+        },
+        { skipNotify: true }
+      )
     } catch (syncError) {
       logger.warn('Post-cancel Delhivery sync failed', { syncError, orderId })
     }
