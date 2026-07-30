@@ -284,6 +284,15 @@ export async function createDelhiveryShipmentForOrder(
   }
   if (!order.items?.length) throw new Error('Order has no shippable items')
 
+  const shippableItems = order.items.filter(
+    (orderItem: { status?: string | null }) =>
+      orderItem.status !== 'cancelled' && orderItem.status !== 'cancel_requested'
+  )
+
+  if (!shippableItems.length) {
+    throw new Error('Order has no shippable items')
+  }
+
   let shipmentId = existing?.id
 
   if (!shipmentId) {
@@ -327,7 +336,7 @@ export async function createDelhiveryShipmentForOrder(
   try {
     const response = await createShipment({
       order: order as DelhiveryOrder,
-      items: order.items as DelhiveryOrderItem[],
+      items: shippableItems as DelhiveryOrderItem[],
     })
     const created = parseShipmentCreationResponse(response)
 

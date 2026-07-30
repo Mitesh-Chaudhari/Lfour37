@@ -21,7 +21,7 @@ export default function OrderItemActions({ item }: any) {
                 className="text-white cancel-order-btn"
                 onClick={() => setOpen(true)}
             >
-                Cancel Order
+                Cancel Item
             </Button>
 
             {open && (

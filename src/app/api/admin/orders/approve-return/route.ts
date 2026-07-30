@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createDelhiveryReversePickupForItem } from '@/lib/delhivery-shipping'
 import logger from '@/lib/logger'
+import { getOrderFulfillmentStatus } from '@/lib/order-status'
 
 export async function POST(req: NextRequest) {
   try {
@@ -84,10 +85,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    await supabase
+    const { data: order } = await supabase
       .from('orders')
-      .update({ status: nextStatus })
+      .select('status, shipped_at, delivered_at, tracking_number, payment_status')
       .eq('id', item.order_id)
+      .single()
+
+    const { data: orderItems } = await supabase
+      .from('order_items')
+      .select('status, return_status')
+      .eq('order_id', item.order_id)
+
+    if (order && orderItems) {
+      await supabase
+        .from('orders')
+        .update({
+          status: getOrderFulfillmentStatus(order, orderItems),
+        })
+        .eq('id', item.order_id)
+    }
 
     return NextResponse.json({
       success: true,

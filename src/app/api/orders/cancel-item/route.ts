@@ -5,6 +5,11 @@ import { processItemRefund } from '@/lib/refunds'
 import { notifyOrderCancelled } from '@/lib/whatsapp/order-notifications'
 import { sendOrderStatusEmail } from '@/lib/email'
 import logger from '@/lib/logger'
+import {
+  areAllOrderItemsCancelled,
+  canCancelOrderItem,
+  isItemCancelled,
+} from '@/lib/order-status'
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -28,12 +33,19 @@ export async function POST(req: NextRequest) {
 
   const { data: item } = await supabase
     .from('order_items')
-    .select('id, order_id')
+    .select('id, order_id, variant_id, quantity, status, return_status')
     .eq('id', order_item_id)
     .single()
 
   if (!item) {
     return NextResponse.json({ error: 'Item not found' }, { status: 404 })
+  }
+
+  if (isItemCancelled(item.status)) {
+    return NextResponse.json(
+      { error: 'This item is already cancelled' },
+      { status: 400 }
+    )
   }
 
   const { data: order } = await supabase
@@ -50,33 +62,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  if (['shipped', 'out_for_delivery', 'delivered', 'cancelled'].includes(order.status)) {
+  if (!canCancelOrderItem(item, order)) {
     return NextResponse.json(
-      { error: 'Cannot cancel this order after shipment' },
+      { error: 'This item cannot be cancelled after shipment' },
       { status: 400 }
     )
-  }
-
-  const newStatus = 'cancelled'
-
-  if (newStatus === 'cancelled') {
-    const delhiveryCancel = await cancelDelhiveryShipmentForOrder(item.order_id)
-    if (!delhiveryCancel.ok && !delhiveryCancel.skipped) {
-      return NextResponse.json(
-        {
-          error:
-            delhiveryCancel.error ||
-            'Could not cancel the Delhivery shipment for this order',
-        },
-        { status: 409 }
-      )
-    }
   }
 
   const { data: updated, error } = await supabase
     .from('order_items')
     .update({
-      status: newStatus,
+      status: 'cancelled',
       cancel_reason_id: reason_id || null,
       cancel_custom_reason: custom_reason || null,
       cancelled_at: new Date().toISOString(),
@@ -96,25 +92,47 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  if (newStatus === 'cancelled') {
-    const { data: siblings } = await supabase
-      .from('order_items')
-      .select('status')
-      .eq('order_id', item.order_id)
+  if (item.variant_id) {
+    const { error: stockError } = await supabase.rpc('restore_variant_stock', {
+      variant_uuid: item.variant_id,
+      qty: item.quantity,
+    })
 
-    const allCancelled = siblings?.every(
-      (sibling) => sibling.status === 'cancelled'
-    )
-
-    if (allCancelled) {
-      await supabase
-        .from('orders')
-        .update({
-          status: 'cancelled',
-          cancelled_at: new Date().toISOString(),
-        })
-        .eq('id', item.order_id)
+    if (stockError) {
+      logger.error('Failed to restore stock after item cancellation', {
+        stockError,
+        orderItemId: order_item_id,
+      })
     }
+  }
+
+  const { data: siblings } = await supabase
+    .from('order_items')
+    .select('status')
+    .eq('order_id', item.order_id)
+
+  const allCancelled = areAllOrderItemsCancelled(siblings || [])
+
+  if (allCancelled) {
+    const delhiveryCancel = await cancelDelhiveryShipmentForOrder(item.order_id)
+    if (!delhiveryCancel.ok && !delhiveryCancel.skipped) {
+      return NextResponse.json(
+        {
+          error:
+            delhiveryCancel.error ||
+            'Could not cancel the Delhivery shipment for this order',
+        },
+        { status: 409 }
+      )
+    }
+
+    await supabase
+      .from('orders')
+      .update({
+        status: 'cancelled',
+        cancelled_at: new Date().toISOString(),
+      })
+      .eq('id', item.order_id)
   }
 
   let refund = null
@@ -136,46 +154,45 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (newStatus === 'cancelled' || newStatus === 'cancel_requested') {
-    const { data: orderDetails } = await supabase
-      .from('orders')
-      .select('*, user:users(email), items:order_items(*)')
-      .eq('id', item.order_id)
-      .single()
+  const { data: orderDetails } = await supabase
+    .from('orders')
+    .select('*, user:users(email), items:order_items(*)')
+    .eq('id', item.order_id)
+    .single()
 
-    const { data: cancelledItem } = await supabase
-      .from('order_items')
-      .select('product_name, quantity, variant_size, variant_color')
-      .eq('id', order_item_id)
-      .single()
+  const { data: cancelledItem } = await supabase
+    .from('order_items')
+    .select('product_name, quantity, variant_size, variant_color')
+    .eq('id', order_item_id)
+    .single()
 
-    const orderUser = Array.isArray(orderDetails?.user)
-      ? orderDetails?.user[0]
-      : orderDetails?.user
+  const orderUser = Array.isArray(orderDetails?.user)
+    ? orderDetails?.user[0]
+    : orderDetails?.user
 
-    if (newStatus === 'cancelled' && orderUser?.email && orderDetails) {
-      sendOrderStatusEmail(orderDetails, orderUser.email, 'cancelled').catch(
-        (err) =>
-          logger.error('Cancel email failed', { err, orderId: item.order_id })
-      )
-    }
-
-    notifyOrderCancelled({
-      order: {
-        id: item.order_id,
-        order_number: orderDetails?.order_number || '',
-        user_id: user.id,
-        shipping_address: orderDetails?.shipping_address,
-      },
-      item: cancelledItem,
-    }).catch((err) =>
-      logger.error('Cancel WhatsApp failed', { err, orderId: item.order_id })
+  if (allCancelled && orderUser?.email && orderDetails) {
+    sendOrderStatusEmail(orderDetails, orderUser.email, 'cancelled').catch(
+      (err) =>
+        logger.error('Cancel email failed', { err, orderId: item.order_id })
     )
   }
+
+  notifyOrderCancelled({
+    order: {
+      id: item.order_id,
+      order_number: orderDetails?.order_number || '',
+      user_id: user.id,
+      shipping_address: orderDetails?.shipping_address,
+    },
+    item: cancelledItem,
+  }).catch((err) =>
+    logger.error('Cancel WhatsApp failed', { err, orderId: item.order_id })
+  )
 
   return NextResponse.json({
     success: true,
     refund,
     refund_error: refundError,
+    all_items_cancelled: allCancelled,
   })
 }

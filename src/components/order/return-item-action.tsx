@@ -3,45 +3,58 @@
 import { useState } from 'react'
 import { Button } from '../ui/button'
 import ReturnModal from './return-modal'
+import { isWithinReturnWindow } from '@/lib/returns'
+import { getItemActionStatus } from '@/lib/order-status'
 
-export default function ReturnItemActions({ item }: any) {
-    const [mode, setMode] = useState<'return' | 'exchange' | null>(null)
+interface ReturnItemActionsProps {
+  item: {
+    id: string
+    status?: string
+    return_status?: string | null
+    order_payment_method?: string
+    [key: string]: unknown
+  }
+  deliveredAt?: string | null
+}
 
-    if (item.status === 'returned' || item.status === 'exchanged') {
-        return (
-            <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded">
-                {item.status === 'exchanged' ? 'Exchanged' : 'Returned'}
-            </span>
-        )
-    }
+export default function ReturnItemActions({
+  item,
+  deliveredAt,
+}: ReturnItemActionsProps) {
+  const [mode, setMode] = useState<'return' | 'exchange' | null>(null)
 
-    return (
-        <>
-            <div className="flex gap-2">
-                <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setMode('return')}
-                >
-                    Return
-                </Button>
+  if (
+    getItemActionStatus({
+      status: item.status,
+      return_status: item.return_status,
+    })
+  ) {
+    return null
+  }
 
-                <Button
-                    size="sm"
-                    className="text-white cancel-order-btn"
-                    onClick={() => setMode('exchange')}
-                >
-                    Exchange
-                </Button>
-            </div>
+  if (!isWithinReturnWindow(deliveredAt)) {
+    return null
+  }
 
-            {mode && (
-                <ReturnModal
-                    item={item}
-                    mode={mode}
-                    onClose={() => setMode(null)}
-                />
-            )}
-        </>
-    )
+  return (
+    <>
+      <div className="flex gap-2">
+        <Button size="sm" variant="outline" onClick={() => setMode('return')}>
+          Return
+        </Button>
+
+        <Button
+          size="sm"
+          className="text-white cancel-order-btn"
+          onClick={() => setMode('exchange')}
+        >
+          Exchange
+        </Button>
+      </div>
+
+      {mode && (
+        <ReturnModal item={item} mode={mode} onClose={() => setMode(null)} />
+      )}
+    </>
+  )
 }

@@ -5,6 +5,7 @@ import { processItemRefund } from '@/lib/refunds'
 import { sendOrderStatusEmail } from '@/lib/email'
 import { notifyOrderCancelled } from '@/lib/whatsapp/order-notifications'
 import logger from '@/lib/logger'
+import { areAllOrderItemsCancelled } from '@/lib/order-status'
 
 export async function POST(req: NextRequest) {
   try {
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
 
     const { data: item, error: itemError } = await supabase
       .from('order_items')
-      .select('id, order_id, status')
+      .select('id, order_id, variant_id, quantity, status')
       .eq('id', item_id)
       .single()
 
@@ -49,27 +50,60 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const delhiveryCancel = await cancelDelhiveryShipmentForOrder(item.order_id)
-    if (!delhiveryCancel.ok && !delhiveryCancel.skipped) {
-      return NextResponse.json(
-        {
-          error:
-            delhiveryCancel.error ||
-            'Could not cancel the Delhivery shipment for this order',
-        },
-        { status: 409 }
-      )
-    }
-
     const { error: updateError } = await supabase
       .from('order_items')
       .update({
         status: 'cancelled',
+        cancelled_at: new Date().toISOString(),
       })
       .eq('id', item_id)
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 })
+    }
+
+    if (item.variant_id) {
+      const { error: stockError } = await supabase.rpc('restore_variant_stock', {
+        variant_uuid: item.variant_id,
+        qty: item.quantity,
+      })
+
+      if (stockError) {
+        logger.error('Failed to restore stock after cancel approval', {
+          stockError,
+          item_id,
+        })
+      }
+    }
+
+    const { data: siblings } = await supabase
+      .from('order_items')
+      .select('status')
+      .eq('order_id', item.order_id)
+
+    const allCancelled = areAllOrderItemsCancelled(siblings || [])
+    let delhiveryCancel = { ok: true, skipped: true as const }
+
+    if (allCancelled) {
+      delhiveryCancel = await cancelDelhiveryShipmentForOrder(item.order_id)
+      if (!delhiveryCancel.ok && !delhiveryCancel.skipped) {
+        return NextResponse.json(
+          {
+            error:
+              delhiveryCancel.error ||
+              'Could not cancel the Delhivery shipment for this order',
+          },
+          { status: 409 }
+        )
+      }
+
+      await supabase
+        .from('orders')
+        .update({
+          status: 'cancelled',
+          cancelled_at: new Date().toISOString(),
+        })
+        .eq('id', item.order_id)
     }
 
     const { data: order } = await supabase
@@ -99,24 +133,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const { data: siblings } = await supabase
-      .from('order_items')
-      .select('status')
-      .eq('order_id', item.order_id)
-
-    const allCancelled = siblings?.every(
-      (sibling) => sibling.status === 'cancelled'
-    )
-
     if (allCancelled) {
-      await supabase
-        .from('orders')
-        .update({
-          status: 'cancelled',
-          cancelled_at: new Date().toISOString(),
-        })
-        .eq('id', item.order_id)
-
       const { data: fullOrder } = await supabase
         .from('orders')
         .select('*, user:users(email), items:order_items(*)')
@@ -163,6 +180,7 @@ export async function POST(req: NextRequest) {
       cancelled: true,
       delhivery: delhiveryCancel,
       refund,
+      all_items_cancelled: allCancelled,
     })
   } catch (error) {
     logger.error('Cancel approve failed', { error })

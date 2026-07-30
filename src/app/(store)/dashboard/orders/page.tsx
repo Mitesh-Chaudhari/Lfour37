@@ -9,6 +9,13 @@ import { OptimizedImage } from '@/components/ui/optimized-image'
 import OrderItemActions from '@/components/order/order-item-actions'
 import ReturnItemActions from '@/components/order/return-item-action'
 import { OrderItemStatusBadge } from '@/components/order/order-item-status-badge'
+import { isWithinReturnWindow } from '@/lib/returns'
+import {
+  canCancelOrderItem,
+  canReturnOrExchangeOrderItem,
+  getOrderFulfillmentStatus,
+  isItemCancelled,
+} from '@/lib/order-status'
 
 const STATUS_CONFIG: Record<
   OrderStatus,
@@ -159,7 +166,13 @@ export default async function OrdersPage() {
         ) : (
           <div className="space-y-4">
             {orders.map((order) => {
-              const statusConfig = STATUS_CONFIG[order.status as OrderStatus] || STATUS_CONFIG.pending
+              const fulfillmentStatus = getOrderFulfillmentStatus(
+                order,
+                order.items || []
+              )
+              const statusConfig =
+                STATUS_CONFIG[fulfillmentStatus as OrderStatus] ||
+                STATUS_CONFIG.pending
               const shipment = Array.isArray(order.delhivery_shipment)
                 ? order.delhivery_shipment[0]
                 : order.delhivery_shipment
@@ -170,6 +183,7 @@ export default async function OrdersPage() {
                     new Date(a.occurred_at || 0).getTime()
                 )
                 .slice(0, 4)
+              const withinReturnWindow = isWithinReturnWindow(order.delivered_at)
               return (
                 <div key={order.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                   {/* Header */}
@@ -215,11 +229,15 @@ export default async function OrdersPage() {
                       cancel_custom_reason?: string | null
                       cancel_reason?: { label?: string } | null
                     }) => {
-                      const isItemCancelled =
-                        item.status === 'cancelled' ||
-                        item.status === 'cancel_requested'
+                      const isItemCancelledState = isItemCancelled(item.status)
                       const cancelReasonLabel =
                         item.cancel_reason?.label || item.cancel_custom_reason
+                      const showCancelAction = canCancelOrderItem(item, order)
+                      const showReturnAction = canReturnOrExchangeOrderItem(
+                        item,
+                        order,
+                        withinReturnWindow
+                      )
 
                       return (
                         <div 
@@ -258,7 +276,7 @@ export default async function OrdersPage() {
                                 {' ×'}{item.quantity}
                               </p>
 
-                              {isItemCancelled && cancelReasonLabel && (
+                              {isItemCancelledState && cancelReasonLabel && (
                                 <p className="text-xs text-gray-500 mt-1 line-clamp-1">
                                   Reason: {cancelReasonLabel}
                                 </p>
@@ -281,28 +299,19 @@ export default async function OrdersPage() {
                               />
 
                               {/* CANCEL */}
-                              {['pending', 'paid', 'processing'].includes(order.status) &&
-                                !isItemCancelled &&
-                                !item.return_status && (
-                                  <OrderItemActions item={item} />
-                                )}
+                              {showCancelAction && (
+                                <OrderItemActions item={item} />
+                              )}
 
                               {/* RETURN / EXCHANGE */}
-                              {[
-                                'delivered',
-                                'return_requested',
-                                'return_initiated',
-                                'exchange_initiated',
-                                'returned',
-                              ].includes(order.status) &&
-                                !isItemCancelled &&
-                                !item.return_status && (
+                              {showReturnAction && (
                                   <ReturnItemActions
                                     item={{
                                       ...item,
                                       order_payment_method:
                                         order.payment_method,
                                     }}
+                                    deliveredAt={order.delivered_at}
                                   />
                                 )}
                             </div>
@@ -322,7 +331,7 @@ export default async function OrdersPage() {
                             Delhivery tracking
                           </p>
                           <p className="mt-1 font-medium text-gray-900">
-                            {shipment?.status || order.status}
+                            {shipment?.status || statusConfig.label}
                           </p>
                           <p className="text-xs text-gray-500">
                             AWB <span className="font-mono">{order.tracking_number}</span>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { notifyReturnOrExchangeRequested } from '@/lib/whatsapp/order-notifications'
 import logger from '@/lib/logger'
+import { isWithinReturnWindow } from '@/lib/returns'
 
 export async function POST(req: NextRequest) {
     try {
@@ -77,7 +78,8 @@ export async function POST(req: NextRequest) {
                 orders!inner(
                     user_id,
                     status,
-                    payment_method
+                    payment_method,
+                    delivered_at
                 )
             `)
             .eq('id', order_item_id)
@@ -99,6 +101,7 @@ export async function POST(req: NextRequest) {
                 user_id?: string
                 status?: string
                 payment_method?: string
+                delivered_at?: string | null
               } | null)
 
         if (orderOwnerId !== user.id) {
@@ -108,6 +111,13 @@ export async function POST(req: NextRequest) {
         if (orderData?.status !== 'delivered') {
             return NextResponse.json(
                 { error: 'Return or exchange is available only after delivery' },
+                { status: 400 }
+            )
+        }
+
+        if (!isWithinReturnWindow(orderData?.delivered_at)) {
+            return NextResponse.json(
+                { error: 'Return or exchange window has expired (7 days after delivery)' },
                 { status: 400 }
             )
         }
