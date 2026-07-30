@@ -1,10 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { CategoriesClient } from '@/components/admin/categories-client'
-import { getCategoryDescendantIds } from '@/lib/categories'
+import { getCategoryDescendantIds, type CategoryRef } from '@/lib/categories'
 
-async function getCategoryProductCounts(
-  categories: Array<{ id: string; parent_id: string | null }>
-) {
+async function getCategoryProductCounts(categories: CategoryRef[]) {
   const supabase = await createClient()
 
   const { data: productCategories } = await supabase
