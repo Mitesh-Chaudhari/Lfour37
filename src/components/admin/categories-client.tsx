@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -25,7 +26,13 @@ const categorySchema = z.object({
 
 type CategoryFormData = z.infer<typeof categorySchema>
 
-export function CategoriesClient({ categories: initialCategories }: { categories: Category[] }) {
+export function CategoriesClient({
+  categories: initialCategories,
+  productCounts,
+}: {
+  categories: Category[]
+  productCounts: Record<string, number>
+}) {
   const [categories, setCategories] = useState(initialCategories)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -226,6 +233,19 @@ export function CategoriesClient({ categories: initialCategories }: { categories
           <td className="px-4 py-3 text-sm text-gray-500 font-mono">{cat.slug}</td>
           <td className="px-4 py-3 text-sm text-gray-500">{cat.sort_order}</td>
           <td className="px-4 py-3">
+            {productCounts[cat.id] > 0 ? (
+              <Link
+                href={`/admin/products?category=${cat.id}`}
+                className="inline-flex items-center rounded-full bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-700 hover:bg-purple-100 transition-colors"
+                title={`View ${productCounts[cat.id]} product${productCounts[cat.id] === 1 ? '' : 's'} in ${cat.name}`}
+              >
+                {productCounts[cat.id]}
+              </Link>
+            ) : (
+              <span className="text-sm text-gray-400">0</span>
+            )}
+          </td>
+          <td className="px-4 py-3">
             <Badge variant={cat.is_active ? 'success' : 'secondary'}>
               {cat.is_active ? 'Active' : 'Inactive'}
             </Badge>
@@ -356,6 +376,7 @@ export function CategoriesClient({ categories: initialCategories }: { categories
               <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Name</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Slug</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Order</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Products</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
               <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Actions</th>
             </tr>

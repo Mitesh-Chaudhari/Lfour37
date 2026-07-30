@@ -109,15 +109,17 @@ function compareProducts(a: AdminProduct, b: AdminProduct, sortBy: SortOption): 
 interface AdminProductsClientProps {
   products: AdminProduct[]
   categories: AdminCategory[]
+  initialCategoryId?: string
 }
 
 export function AdminProductsClient({
   products,
   categories,
+  initialCategoryId = 'all',
 }: AdminProductsClientProps) {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | ProductStatus>('all')
-  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [categoryFilter, setCategoryFilter] = useState(initialCategoryId)
   const [flagFilter, setFlagFilter] = useState<FlagFilter>('all')
   const [sortBy, setSortBy] = useState<SortOption>('list_sort_order')
 
@@ -203,6 +205,9 @@ export function AdminProductsClient({
     setCategoryFilter('all')
     setFlagFilter('all')
     setSortBy('list_sort_order')
+    if (typeof window !== 'undefined' && window.location.search) {
+      window.history.replaceState(null, '', '/admin/products')
+    }
   }
 
   return (
