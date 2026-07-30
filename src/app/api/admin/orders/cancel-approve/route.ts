@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { cancelDelhiveryShipmentForOrder } from '@/lib/delhivery-shipping'
+import { cancelDelhiveryShipmentForOrder, type DelhiveryCancelResult } from '@/lib/delhivery-shipping'
 import { processItemRefund } from '@/lib/refunds'
 import { sendOrderStatusEmail } from '@/lib/email'
 import { notifyOrderCancelled } from '@/lib/whatsapp/order-notifications'
@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
       .eq('order_id', item.order_id)
 
     const allCancelled = areAllOrderItemsCancelled(siblings || [])
-    let delhiveryCancel = { ok: true, skipped: true as const }
+    let delhiveryCancel: DelhiveryCancelResult = { ok: true, skipped: true }
 
     if (allCancelled) {
       delhiveryCancel = await cancelDelhiveryShipmentForOrder(item.order_id)
