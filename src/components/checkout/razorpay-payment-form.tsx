@@ -98,7 +98,8 @@ export function RazorpayPaymentForm({ razorpayOrder, orderId, amount }: any) {
           if (res.ok) {
             toast.success('Payment successful!')
             useCartStore.getState().clearCart()
-            window.location.href = '/dashboard/orders'
+            // Success page fires the GA4 + Meta Pixel purchase events
+            window.location.href = `/checkout/success?order_id=${orderId}`
           } else {
             toast.error(data?.error || 'Verification failed')
             setIsVerifying(false)

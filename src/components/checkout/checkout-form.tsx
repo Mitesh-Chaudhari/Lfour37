@@ -31,6 +31,10 @@ import { OptimizedImage } from '@/components/ui/optimized-image'
 import { createClient } from '@/lib/supabase/client'
 import { buildAuthHref } from '@/lib/auth-redirect'
 import { usePincodeLookup } from '@/hooks/use-pincode-lookup'
+import {
+  calculatePrepaidDiscount,
+  PREPAID_DISCOUNT_LABEL,
+} from '@/lib/prepaid-discount'
 
 interface CheckoutFormProps {
   addresses: Address[]
@@ -59,6 +63,7 @@ export function CheckoutForm({
     applyCoupon: applyCouponToCart,
     removeCoupon,
     setShipping,
+    clearCart,
   } = useCartStore()
   const [paymentMethod, setPaymentMethod] = useState<'razorpay' | 'cod'>(
     'razorpay'
@@ -73,6 +78,7 @@ export function CheckoutForm({
     currency: string
   } | null>(null)
   const [orderId, setOrderId] = useState<string | null>(null)
+  const [orderPlaced, setOrderPlaced] = useState(false)
   const [step, setStep] = useState<'details' | 'payment'>('details')
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
     addresses.find((a) => a.is_default)?.id || addresses[0]?.id || null
@@ -297,9 +303,12 @@ export function CheckoutForm({
     return () => clearTimeout(timeout)
   }, [guestEmail, isGuest, isValidEmail])
 
-  const afterDiscount = Math.max(0, subtotal - localDiscount)
+  const afterCoupon = Math.max(0, subtotal - localDiscount)
+  const prepaidDiscount = calculatePrepaidDiscount(afterCoupon, paymentMethod)
+  // What the shopper would save by switching from COD to prepaid
+  const potentialPrepaidSavings = calculatePrepaidDiscount(afterCoupon, 'razorpay')
   const taxAmount = 0
-  const total = afterDiscount + taxAmount + shippingAmount
+  const total = Math.max(0, afterCoupon - prepaidDiscount) + taxAmount + shippingAmount
 
   const sendOtp = async () => {
     if (!isValidPhone) {
@@ -602,7 +611,10 @@ export function CheckoutForm({
           toast.success('Order placed! Pay when your package arrives.')
         }
 
-        router.push('/dashboard/orders')
+        // Success page fires the GA4 + Meta Pixel purchase events
+        setOrderPlaced(true)
+        clearCart()
+        router.push(`/checkout/success?order_id=${order_id}`)
         return
       }
 
@@ -635,7 +647,9 @@ export function CheckoutForm({
     }
   }
 
-  if (items.length === 0) {
+  // Skip the empty-cart screen right after placing an order (cart is cleared
+  // while we navigate to the success page) and during the payment step
+  if (items.length === 0 && !orderPlaced && step === 'details') {
     return (
       <div className="text-center py-16">
         <p className="text-gray-500">Your cart is empty.</p>
@@ -1008,12 +1022,15 @@ export function CheckoutForm({
                     setValue('payment_method', 'razorpay')
                   }}
                   className={cn(
-                    'flex items-center justify-center gap-2 p-4 rounded-xl border-2 transition-all',
+                    'relative flex items-center justify-center gap-2 p-4 rounded-xl border-2 transition-all',
                     paymentMethod === 'razorpay'
                       ? 'border-purple-600 bg-purple-50'
                       : 'border-gray-200 hover:border-purple-300'
                   )}
                 >
+                  <span className="absolute -top-2.5 right-3 bg-black text-[#c39c41] text-[10px] font-bold tracking-wide px-2 py-0.5 rounded-full">
+                    EXTRA 5% OFF
+                  </span>
                   <CreditCard
                     className={cn(
                       'h-5 w-5',
@@ -1067,6 +1084,15 @@ export function CheckoutForm({
                   </div>
                 </button>
               </div>
+              {paymentMethod === 'cod' && potentialPrepaidSavings > 0 && (
+                <p className="mt-3 text-xs text-gray-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Pay online instead and save
+                  {/* <span className="font-semibold text-gray-900">
+                    {formatPrice(potentialPrepaidSavings)}
+                  </span>{' '} */}
+                  {' '} extra 5% prepaid discount.
+                </p>
+              )}
               <input
                 type="hidden"
                 value={paymentMethod}
@@ -1195,6 +1221,12 @@ export function CheckoutForm({
               <div className="flex justify-between text-green-600">
                 <span>Discount</span>
                 <span>-{formatPrice(localDiscount)}</span>
+              </div>
+            )}
+            {prepaidDiscount > 0 && (
+              <div className="flex justify-between text-green-600">
+                <span>{PREPAID_DISCOUNT_LABEL}</span>
+                <span>-{formatPrice(prepaidDiscount)}</span>
               </div>
             )}
             <div className="flex justify-between">

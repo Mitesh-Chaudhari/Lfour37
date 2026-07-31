@@ -4,6 +4,7 @@ import { apiRateLimit } from '@/lib/rate-limit'
 import logger from '@/lib/logger'
 import { z } from 'zod'
 import { resolveHsnFromCategories, mappingsArrayToRecord } from '@/lib/hsn'
+import { calculatePrepaidDiscount } from '@/lib/prepaid-discount'
 
 const createOrderSchema = z.object({
   items: z.array(z.object({
@@ -135,7 +136,14 @@ export async function POST(request: NextRequest) {
 
     // Calculate totals
     const subtotal = data.items.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
-    const discountAmount = Math.min(validatedDiscount, subtotal)
+    const couponDiscount = Math.min(validatedDiscount, subtotal)
+    // Extra prepaid discount computed server-side from the payment method —
+    // never trusted from the client
+    const prepaidDiscount = calculatePrepaidDiscount(
+      subtotal - couponDiscount,
+      data.payment_method
+    )
+    const discountAmount = Number((couponDiscount + prepaidDiscount).toFixed(2))
     const afterDiscount = subtotal - discountAmount
     const taxAmount = 0
     const total = Number((afterDiscount + taxAmount + shippingMethod.price).toFixed(2))

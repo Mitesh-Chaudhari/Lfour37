@@ -18,6 +18,7 @@ import { buildAuthHref } from '@/lib/auth-redirect'
 import { OptimizedImage } from '@/components/ui/optimized-image'
 import { CategoryDrawer } from './category-drawer'
 import { GlobalSearch } from './global-search'
+import { AnnouncementBar } from './announcement-bar'
 
 const STATIC_LINKS = [
   {
@@ -147,6 +148,7 @@ export function Navbar() {
   return (
     <>
       <header className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm">
+        <AnnouncementBar />
         <div className="container mx-auto px-4">
           <div className="flex h-16 sm:h-20 items-center justify-between">
             <button
@@ -157,6 +159,7 @@ export function Navbar() {
                 absolute
                 inset-y-0
                 left-[10px]
+                top-[25%]
                 p-2
                 text-gray-600
                 hover:text-purple-600

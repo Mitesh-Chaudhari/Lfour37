@@ -80,6 +80,35 @@ function getCustomerPhone(order: AdminOrder): string | null {
   return null
 }
 
+function getShippingAddressLines(order: AdminOrder): string[] {
+  const addr = order.shipping_address as
+    | {
+        address_line1?: string
+        address_line2?: string
+        city?: string
+        state?: string
+        postal_code?: string
+      }
+    | null
+    | undefined
+
+  if (!addr) return []
+
+  const street = [addr.address_line1, addr.address_line2]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(', ')
+
+  const region = [
+    [addr.city, addr.state].map((part) => part?.trim()).filter(Boolean).join(', '),
+    addr.postal_code?.trim(),
+  ]
+    .filter(Boolean)
+    .join(' - ')
+
+  return [street, region].filter(Boolean) as string[]
+}
+
 type DelhiveryShipmentInfo = {
   id?: string
   awb?: string | null
@@ -849,6 +878,14 @@ const markDelivered =
                     <p className="text-xs text-blue-500 mt-0.5">
                       {getCustomerPhone(order) || 'no phone detail found'}
                     </p>
+                    {getShippingAddressLines(order).map((line, index) => (
+                      <p
+                        key={index}
+                        className="text-xs text-gray-500 mt-0.5 max-w-[220px]"
+                      >
+                        {line}
+                      </p>
+                    ))}
                   </td>
                   <td className="px-4 py-3">
                     <span className="font-bold text-gray-900">{formatPrice(order.total)}</span>
