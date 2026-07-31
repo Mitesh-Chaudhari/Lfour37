@@ -27,8 +27,8 @@ export function RevenueChart({ data }: RevenueChartProps) {
         <AreaChart data={formatted} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
           <defs>
             <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#9333ea" stopOpacity={0.3} />
-              <stop offset="95%" stopColor="#9333ea" stopOpacity={0} />
+              <stop offset="5%" stopColor="#c39c41" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="#c39c41" stopOpacity={0} />
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -37,7 +37,9 @@ export function RevenueChart({ data }: RevenueChartProps) {
             tick={{ fontSize: 12 }}
             tickLine={false}
             axisLine={false}
-            tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+            tickFormatter={(v) =>
+              v >= 1000 ? `₹${(v / 1000).toFixed(0)}k` : `₹${v}`
+            }
           />
           <Tooltip
             formatter={((value: number) => [formatPrice(value), 'Revenue']) as any}
@@ -51,7 +53,7 @@ export function RevenueChart({ data }: RevenueChartProps) {
           <Area
             type="monotone"
             dataKey="revenue"
-            stroke="#9333ea"
+            stroke="#c39c41"
             strokeWidth={2}
             fill="url(#colorRevenue)"
           />

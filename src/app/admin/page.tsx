@@ -16,6 +16,7 @@ async function getDashboardStats() {
     recentUsersRes,
     revenueRes,
     prevRevenueRes,
+    totalRevenueRes,
     lowStockRes,
     revenueChartRes,
     topProductsRes,
@@ -24,8 +25,12 @@ async function getDashboardStats() {
     supabase.from('users').select('id', { count: 'exact', head: true }),
     supabase.from('orders').select('id', { count: 'exact', head: true }).gte('created_at', thirtyDaysAgo),
     supabase.from('users').select('id', { count: 'exact', head: true }).gte('created_at', thirtyDaysAgo),
-    supabase.from('orders').select('total').gte('created_at', thirtyDaysAgo).eq('payment_status', 'completed'),
-    supabase.from('orders').select('total').gte('created_at', sixtyDaysAgo).lt('created_at', thirtyDaysAgo).eq('payment_status', 'completed'),
+    // Revenue: COD counts at placement, prepaid once payment completes;
+    // cancelled/refunded/returned orders are excluded
+    supabase.from('orders').select('total').gte('created_at', thirtyDaysAgo).or('payment_method.eq.cod,payment_status.eq.completed').not('status', 'in', '(cancelled,refunded,returned)'),
+    supabase.from('orders').select('total').gte('created_at', sixtyDaysAgo).lt('created_at', thirtyDaysAgo).or('payment_method.eq.cod,payment_status.eq.completed').not('status', 'in', '(cancelled,refunded,returned)'),
+    // All-time revenue excluding cancelled/refunded/returned orders
+    supabase.from('orders').select('total').or('payment_method.eq.cod,payment_status.eq.completed').not('status', 'in', '(cancelled,refunded,returned)'),
     supabase.from('product_variants').select('id, product_id, stock, size, color, product:products(name)').lt('stock', 5).eq('is_active', true).order('stock').limit(10),
     supabase.rpc('get_revenue_by_day', { days: 30 }).select('*').limit(30),
     supabase.from('products').select('id, name, total_sold, price').eq('status', 'active').order('total_sold', { ascending: false }).limit(5),
@@ -33,6 +38,7 @@ async function getDashboardStats() {
 
   const revenue = revenueRes.data?.reduce((sum, o) => sum + Number(o.total), 0) || 0
   const prevRevenue = prevRevenueRes.data?.reduce((sum, o) => sum + Number(o.total), 0) || 0
+  const totalRevenue = totalRevenueRes.data?.reduce((sum, o) => sum + Number(o.total), 0) || 0
 
   const orders = ordersRes.count || 0
   const users = usersRes.count || 0
@@ -43,6 +49,7 @@ async function getDashboardStats() {
 
   return {
     revenue,
+    totalRevenue,
     orders,
     users,
     recentOrders,
@@ -104,7 +111,13 @@ export default async function AdminDashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard
+          title="Total Revenue"
+          value={formatPrice(stats.totalRevenue)}
+          footer="All time, excl. cancelled & returned"
+          icon={DollarSign}
+        />
         <StatCard title="Revenue (30 days)" value={formatPrice(stats.revenue)} change={stats.revenueChange} icon={DollarSign} />
         <StatCard
           title="Total Orders"
