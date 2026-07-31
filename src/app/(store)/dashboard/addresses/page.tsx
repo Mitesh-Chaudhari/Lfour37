@@ -3,13 +3,14 @@
 import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Plus, MapPin, Trash2, Star } from 'lucide-react'
+import { Plus, MapPin, Trash2, Star, Loader2, Check } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Address } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { BlockingContainer } from '@/components/ui/blocking-container'
 import { addressSchema, AddressFormData } from '@/lib/validations/checkout'
+import { usePincodeLookup } from '@/hooks/use-pincode-lookup'
 import toast from 'react-hot-toast'
 
 export default function AddressesPage() {
@@ -20,11 +21,25 @@ export default function AddressesPage() {
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const supabase = createClient()
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<AddressFormData>({
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm<AddressFormData>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(addressSchema) as any,
     defaultValues: { country: 'India' },
   })
+
+  const postalCode = watch('postal_code')
+  const cityValue = watch('city')
+  const stateValue = watch('state')
+
+  const { status: pinStatus } = usePincodeLookup(postalCode, (data) => {
+    if (data.city) setValue('city', data.city, { shouldValidate: true })
+    if (data.state) setValue('state', data.state, { shouldValidate: true })
+    setValue('country', 'India')
+  })
+
+  // City/State stay locked until the PIN lookup fills them (or fails, allowing manual entry)
+  const cityStateLocked =
+    !cityValue && !stateValue && (pinStatus === 'idle' || pinStatus === 'loading')
 
   const loadAddresses = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -131,10 +146,49 @@ export default function AddressesPage() {
             </div>
             <Input label="Address Line 1" error={errors.address_line1?.message} {...register('address_line1')} />
             <Input label="Address Line 2 (optional)" {...register('address_line2')} />
+            <Input
+              label="PIN Code"
+              inputMode="numeric"
+              maxLength={6}
+              error={
+                errors.postal_code?.message ||
+                (pinStatus === 'unserviceable'
+                  ? 'Sorry, delivery is not available to this PIN code'
+                  : undefined)
+              }
+              helperText={
+                pinStatus === 'loading'
+                  ? 'Finding your city & state...'
+                  : pinStatus === 'success'
+                    ? 'City & state auto-filled — you can edit them if needed'
+                    : pinStatus === 'error'
+                      ? "Couldn't auto-fill from this PIN code — please enter city & state manually"
+                      : 'Enter your 6-digit PIN code to auto-fill city & state'
+              }
+              rightIcon={
+                pinStatus === 'loading' ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-purple-600" />
+                ) : pinStatus === 'success' ? (
+                  <Check className="h-4 w-4 text-green-600" />
+                ) : undefined
+              }
+              {...register('postal_code')}
+            />
             <div className="grid grid-cols-2 gap-4">
-              <Input label="City" error={errors.city?.message} {...register('city')} />
-              <Input label="State" error={errors.state?.message} {...register('state')} />
-              <Input label=" ZIP/PIN Code" error={errors.postal_code?.message} {...register('postal_code')} />
+              <Input
+                label="City"
+                disabled={cityStateLocked}
+                placeholder={cityStateLocked ? 'Auto-filled from PIN code' : undefined}
+                error={errors.city?.message}
+                {...register('city')}
+              />
+              <Input
+                label="State"
+                disabled={cityStateLocked}
+                placeholder={cityStateLocked ? 'Auto-filled from PIN code' : undefined}
+                error={errors.state?.message}
+                {...register('state')}
+              />
               <Input label="Country" defaultValue="India" {...register('country')} />
             </div>
             <label className="flex items-center gap-2 cursor-pointer">

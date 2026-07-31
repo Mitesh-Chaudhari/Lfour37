@@ -14,6 +14,7 @@ import {
   Banknote,
   User,
   Mail,
+  Loader2,
 } from 'lucide-react'
 import { Address, ShippingMethod } from '@/types'
 import { useCartStore } from '@/store/cart-store'
@@ -29,6 +30,7 @@ import { BlockingContainer } from '@/components/ui/blocking-container'
 import { OptimizedImage } from '@/components/ui/optimized-image'
 import { createClient } from '@/lib/supabase/client'
 import { buildAuthHref } from '@/lib/auth-redirect'
+import { usePincodeLookup } from '@/hooks/use-pincode-lookup'
 
 interface CheckoutFormProps {
   addresses: Address[]
@@ -130,6 +132,35 @@ export function CheckoutForm({
   const isValidPhone = /^[0-9]{10}$/.test(guestPhone || '')
   const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail || '')
 
+  const postalCode = watch('postal_code')
+  const cityValue = watch('city')
+  const stateValue = watch('state')
+
+  const { status: pinStatus, data: pinData } = usePincodeLookup(
+    postalCode,
+    (data) => {
+      // Don't overwrite city/state that came from a saved address
+      const savedAddr = !isGuest
+        ? addresses.find((a) => a.id === selectedAddressId)
+        : undefined
+      if (savedAddr && savedAddr.postal_code.trim() === (postalCode || '').trim()) {
+        return
+      }
+
+      if (data.city) setValue('city', data.city, { shouldValidate: true })
+      if (data.state) setValue('state', data.state, { shouldValidate: true })
+      setValue('country', 'India')
+    }
+  )
+
+  // City/State stay locked until the PIN lookup fills them (or fails, allowing manual entry)
+  const cityStateLocked =
+    !cityValue &&
+    !stateValue &&
+    (pinStatus === 'idle' || pinStatus === 'loading')
+
+  const codUnavailable = pinData?.codAvailable === false
+
   // Fill form from selected saved address, or profile when entering a new address
   useEffect(() => {
     if (isGuest) return
@@ -157,6 +188,15 @@ export function CheckoutForm({
     setValue,
     isGuest,
   ])
+
+  // COD isn't offered by Delhivery on every PIN code
+  useEffect(() => {
+    if (codUnavailable && paymentMethod === 'cod') {
+      setPaymentMethod('razorpay')
+      setValue('payment_method', 'razorpay')
+      toast.error('Cash on Delivery is not available for this PIN code')
+    }
+  }, [codUnavailable, paymentMethod, setValue])
 
   // Guest phone change invalidates OTP verification
   useEffect(() => {
@@ -484,6 +524,13 @@ export function CheckoutForm({
   const onSubmitDetails = async (data: CheckoutFormData) => {
     if (items.length === 0) {
       toast.error('Your cart is empty')
+      return
+    }
+
+    if (pinStatus === 'unserviceable') {
+      toast.error(
+        'Sorry, we cannot deliver to this PIN code yet. Please use a different address.'
+      )
       return
     }
 
@@ -849,21 +896,49 @@ export function CheckoutForm({
                     {...register('address_line2')}
                   />
                 </div>
+                <div className="sm:col-span-2">
+                  <Input
+                    label="PIN Code"
+                    inputMode="numeric"
+                    maxLength={6}
+                    error={
+                      errors.postal_code?.message ||
+                      (pinStatus === 'unserviceable'
+                        ? 'Sorry, delivery is not available to this PIN code'
+                        : undefined)
+                    }
+                    helperText={
+                      pinStatus === 'loading'
+                        ? 'Finding your city & state...'
+                        : pinStatus === 'success'
+                          ? 'City & state auto-filled — you can edit them if needed'
+                          : pinStatus === 'error'
+                            ? "Couldn't auto-fill from this PIN code — please enter city & state manually"
+                            : 'Enter your 6-digit PIN code to auto-fill city & state'
+                    }
+                    rightIcon={
+                      pinStatus === 'loading' ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-purple-600" />
+                      ) : pinStatus === 'success' ? (
+                        <Check className="h-4 w-4 text-green-600" />
+                      ) : undefined
+                    }
+                    {...register('postal_code')}
+                  />
+                </div>
                 <Input
                   label="City"
+                  disabled={cityStateLocked}
+                  placeholder={cityStateLocked ? 'Auto-filled from PIN code' : undefined}
                   error={errors.city?.message}
                   {...register('city')}
                 />
                 <Input
                   label="State"
+                  disabled={cityStateLocked}
+                  placeholder={cityStateLocked ? 'Auto-filled from PIN code' : undefined}
                   error={errors.state?.message}
                   {...register('state')}
-                />
-                <Input
-                  label=" ZIP/PIN Code"
-                  type='number'
-                  error={errors.postal_code?.message}
-                  {...register('postal_code')}
                 />
                 <Input
                   label="Country"
@@ -958,6 +1033,7 @@ export function CheckoutForm({
                 </button>
                 <button
                   type="button"
+                  disabled={codUnavailable}
                   onClick={() => {
                     setPaymentMethod('cod')
                     setValue('payment_method', 'cod')
@@ -966,7 +1042,9 @@ export function CheckoutForm({
                     'flex items-center justify-center gap-2 p-4 rounded-xl border-2 transition-all',
                     paymentMethod === 'cod'
                       ? 'border-purple-600 bg-purple-50'
-                      : 'border-gray-200 hover:border-purple-300'
+                      : 'border-gray-200 hover:border-purple-300',
+                    codUnavailable &&
+                      'opacity-50 cursor-not-allowed hover:border-gray-200'
                   )}
                 >
                   <Banknote
@@ -982,7 +1060,9 @@ export function CheckoutForm({
                       Cash on Delivery
                     </p>
                     <p className="text-xs text-gray-500">
-                      Pay when your order arrives
+                      {codUnavailable
+                        ? 'Not available for this PIN code'
+                        : 'Pay when your order arrives'}
                     </p>
                   </div>
                 </button>
