@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { cancelDelhiveryShipmentForOrder, type DelhiveryCancelResult } from '@/lib/delhivery-shipping'
 import { processItemRefund } from '@/lib/refunds'
-import { sendOrderStatusEmail } from '@/lib/email'
+import {
+  sendOrderStatusEmail,
+  sendOrderCancelledOwnerNotificationEmail,
+} from '@/lib/email'
 import { notifyOrderCancelled } from '@/lib/whatsapp/order-notifications'
 import logger from '@/lib/logger'
 import { areAllOrderItemsCancelled } from '@/lib/order-status'
@@ -133,21 +136,34 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (allCancelled) {
-      const { data: fullOrder } = await supabase
-        .from('orders')
-        .select('*, user:users(email), items:order_items(*)')
-        .eq('id', item.order_id)
-        .single()
+    const { data: fullOrder } = await supabase
+      .from('orders')
+      .select('*, user:users(email), items:order_items(*)')
+      .eq('id', item.order_id)
+      .single()
 
-      if (fullOrder) {
-        const orderUser = Array.isArray(fullOrder.user)
-          ? fullOrder.user[0]
-          : fullOrder.user
-        const cancelledItem =
-          fullOrder.items?.find((orderItem: { id: string }) => orderItem.id === item_id) ||
-          fullOrder.items?.[0]
+    if (fullOrder) {
+      const orderUser = Array.isArray(fullOrder.user)
+        ? fullOrder.user[0]
+        : fullOrder.user
+      const cancelledItem =
+        fullOrder.items?.find((orderItem: { id: string }) => orderItem.id === item_id) ||
+        fullOrder.items?.[0]
 
+      // Owner gets notified on every approved cancellation (full or partial)
+      sendOrderCancelledOwnerNotificationEmail(fullOrder, {
+        customerEmail: orderUser?.email || null,
+        cancelledItem,
+        entireOrderCancelled: allCancelled,
+        cancelledBy: 'admin',
+      }).catch((error) =>
+        logger.error('Owner cancel notification failed', {
+          error,
+          orderId: item.order_id,
+        })
+      )
+
+      if (allCancelled) {
         if (orderUser?.email) {
           sendOrderStatusEmail(fullOrder, orderUser.email, 'cancelled').catch(
             (error) =>

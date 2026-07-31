@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { sendOrderStatusEmail } from '@/lib/email'
+import {
+  sendOrderStatusEmail,
+  sendOrderCancelledOwnerNotificationEmail,
+} from '@/lib/email'
 import {
   notifyOrderCancelled,
 } from '@/lib/whatsapp/order-notifications'
@@ -53,6 +56,16 @@ export async function PATCH(req: NextRequest) {
           updatedOrder as any,
           orderUser.email,
           status
+        )
+      }
+
+      if (status === 'cancelled') {
+        sendOrderCancelledOwnerNotificationEmail(updatedOrder as any, {
+          customerEmail: orderUser?.email || null,
+          entireOrderCancelled: true,
+          cancelledBy: 'admin',
+        }).catch((error) =>
+          logger.error('Owner cancel notification failed', { error, order_id })
         )
       }
     } catch (emailError) {

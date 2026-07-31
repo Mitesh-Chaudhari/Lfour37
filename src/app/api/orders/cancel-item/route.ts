@@ -3,7 +3,10 @@ import { createClient } from '@/lib/supabase/server'
 import { cancelDelhiveryShipmentForOrder } from '@/lib/delhivery-shipping'
 import { processItemRefund } from '@/lib/refunds'
 import { notifyOrderCancelled } from '@/lib/whatsapp/order-notifications'
-import { sendOrderStatusEmail } from '@/lib/email'
+import {
+  sendOrderStatusEmail,
+  sendOrderCancelledOwnerNotificationEmail,
+} from '@/lib/email'
 import logger from '@/lib/logger'
 import {
   areAllOrderItemsCancelled,
@@ -174,6 +177,32 @@ export async function POST(req: NextRequest) {
     sendOrderStatusEmail(orderDetails, orderUser.email, 'cancelled').catch(
       (err) =>
         logger.error('Cancel email failed', { err, orderId: item.order_id })
+    )
+  }
+
+  // Notify the store owner about every cancellation (full order or single item)
+  if (orderDetails) {
+    let cancelReason: string | null = custom_reason || null
+    if (!cancelReason && reason_id) {
+      const { data: reasonRow } = await supabase
+        .from('cancel_reasons')
+        .select('label')
+        .eq('id', reason_id)
+        .single()
+      cancelReason = reasonRow?.label || null
+    }
+
+    sendOrderCancelledOwnerNotificationEmail(orderDetails, {
+      customerEmail: orderUser?.email || null,
+      cancelledItem,
+      entireOrderCancelled: allCancelled,
+      reason: cancelReason,
+      cancelledBy: 'customer',
+    }).catch((err) =>
+      logger.error('Owner cancel notification failed', {
+        err,
+        orderId: item.order_id,
+      })
     )
   }
 

@@ -405,6 +405,91 @@ export async function sendNewOrderOwnerNotificationEmail(
   })
 }
 
+/** Notify store owner when an order (or one of its items) is cancelled. */
+export async function sendOrderCancelledOwnerNotificationEmail(
+  order: Order,
+  options: {
+    customerEmail?: string | null
+    cancelledItem?: {
+      product_name?: string | null
+      variant_size?: string | null
+      variant_color?: string | null
+      quantity?: number | null
+    } | null
+    entireOrderCancelled?: boolean
+    reason?: string | null
+    cancelledBy?: 'customer' | 'admin'
+  } = {}
+): Promise<void> {
+  const {
+    customerEmail,
+    cancelledItem,
+    entireOrderCancelled = true,
+    reason,
+    cancelledBy = 'customer',
+  } = options
+
+  const addr = order.shipping_address as Order['shipping_address'] & {
+    phone?: string
+  }
+
+  const itemLine = cancelledItem
+    ? `${cancelledItem.product_name || 'Item'}${
+        cancelledItem.variant_size
+          ? ` (${cancelledItem.variant_size}${
+              cancelledItem.variant_color ? ` / ${cancelledItem.variant_color}` : ''
+            })`
+          : ''
+      }${cancelledItem.quantity ? ` × ${cancelledItem.quantity}` : ''}`
+    : null
+
+  const content = `
+    <h2>${entireOrderCancelled ? 'Order Cancelled' : 'Order Item Cancelled'}</h2>
+    <p>${
+      cancelledBy === 'admin'
+        ? 'A cancellation was processed from the admin panel'
+        : 'A customer cancelled'
+    } on ${APP_NAME}.</p>
+
+    <p><strong>Order Number:</strong> ${order.order_number}</p>
+    <p><strong>Order ID:</strong> ${order.id}</p>
+    <p><strong>Cancelled at:</strong> ${new Date().toLocaleString('en-IN')}</p>
+    <p><strong>Scope:</strong> ${
+      entireOrderCancelled
+        ? 'Entire order cancelled'
+        : 'One item cancelled (other items still active)'
+    }</p>
+    ${itemLine ? `<p><strong>Cancelled item:</strong> ${itemLine}</p>` : ''}
+    ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+    <p><strong>Payment:</strong> ${order.payment_method?.toUpperCase() || 'N/A'} · ${order.payment_status}</p>
+    <p><strong>Order total:</strong> ${formatEmailInr(order.total)}</p>
+
+    <h3>Customer</h3>
+    <p>
+      ${addr?.full_name || 'Customer'}<br>
+      ${addr?.phone ? `Phone: ${addr.phone}<br>` : ''}
+      ${customerEmail ? `Email: ${customerEmail}` : ''}
+    </p>
+
+    <a href="${APP_URL}/admin/orders" class="button">View in Admin</a>
+  `
+
+  logger.info('Preparing owner cancellation notification', {
+    orderId: order.id,
+    orderNumber: order.order_number,
+    recipient: ORDER_NOTIFICATION_EMAIL,
+    entireOrderCancelled,
+    cancelledBy,
+  })
+
+  await deliverMail({
+    to: ORDER_NOTIFICATION_EMAIL,
+    subject: `${entireOrderCancelled ? 'Order Cancelled' : 'Order Item Cancelled'} - ${order.order_number} (${formatEmailInr(order.total)})`,
+    html: baseTemplate(content),
+    context: 'order_cancelled_owner',
+  })
+}
+
 export async function sendOrderStatusEmail(
   order: Order,
   email: string,
