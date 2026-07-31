@@ -3,6 +3,7 @@ import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { ensureDelhiveryShipmentForPaidOrder } from '@/lib/delhivery-shipping'
 import { sendOrderConfirmationEmail, sendNewOrderOwnerNotificationEmail } from '@/lib/email'
 import { notifyOrderConfirmation } from '@/lib/whatsapp/order-notifications'
+import { markAbandonedCartRecovered } from '@/lib/abandoned-cart'
 import logger from '@/lib/logger'
 import { z } from 'zod'
 
@@ -126,6 +127,7 @@ export async function POST(request: NextRequest) {
           orderId: order_id,
         })
       ),
+      markAbandonedCartRecovered(admin, user.id),
     ])
 
     // 2) Then create/sync Delhivery shipment (pickup/shipped messages happen later via sync).

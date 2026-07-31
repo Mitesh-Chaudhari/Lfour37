@@ -9,6 +9,7 @@ import { useState } from 'react'
 import '@rainbow-me/rainbowkit/styles.css'
 import { Suspense } from 'react'
 import { NavigationLoader } from '@/components/layout/navigation-loader'
+import { AbandonedCartSync } from '@/components/cart/abandoned-cart-sync'
 
 function NavigationLoaderFallback() {
   return null
@@ -37,6 +38,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           <Suspense fallback={<NavigationLoaderFallback />}>
             <NavigationLoader />
           </Suspense>
+          <AbandonedCartSync />
           {children}
         </RainbowKitProvider>
       </QueryClientProvider>

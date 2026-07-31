@@ -833,6 +833,7 @@ export function CheckoutForm({
                       error={errors.phone?.message}
                       {...register('phone')}
                     />
+                    
                   </>
                 )}
                 <div className="sm:col-span-2">
@@ -859,7 +860,8 @@ export function CheckoutForm({
                   {...register('state')}
                 />
                 <Input
-                  label="Postal Code"
+                  label=" ZIP/PIN Code"
+                  type='number'
                   error={errors.postal_code?.message}
                   {...register('postal_code')}
                 />

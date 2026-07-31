@@ -46,6 +46,8 @@ interface SendTemplateProps {
   orderId?: string
   language?: string
   urlButtonParam?: string
+  /** Public HTTPS image for Meta IMAGE header templates (Veblika headerParams). */
+  headerImageUrl?: string
 }
 
 async function logWhatsAppMessage(entry: {
@@ -163,6 +165,7 @@ export async function sendWhatsAppTemplate({
   orderId,
   language,
   urlButtonParam,
+  headerImageUrl,
 }: SendTemplateProps) {
   if (!isWhatsAppConfigured()) {
     logger.warn('WhatsApp template skipped because env is not configured', {
@@ -186,6 +189,19 @@ export async function sendWhatsAppTemplate({
     name: templateName,
     language: resolvedLanguage,
     bodyParams,
+  }
+
+  const resolvedHeaderImage = headerImageUrl?.trim()
+  if (resolvedHeaderImage) {
+    // Veblika accepts Meta-style header media for IMAGE header templates.
+    // If the approved template uses a fixed sample image, omit this and Meta
+    // will fall back to the sample media.
+    payload.headerParams = [
+      {
+        type: 'image',
+        image: { link: resolvedHeaderImage },
+      },
+    ]
   }
 
   if (templateName === 'phone_otp_verify' && bodyParams[0]) {

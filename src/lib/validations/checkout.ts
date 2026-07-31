@@ -7,7 +7,7 @@ export const addressSchema = z.object({
   address_line2: z.string().max(200).optional(),
   city: z.string().min(2, 'City is required').max(100),
   state: z.string().min(2, 'State is required').max(100),
-  postal_code: z.string().min(4, 'Postal code is required').max(20),
+  postal_code: z.string().min(4, ' ZIP/PIN code is required').max(20),
   country: z.string().length(2, 'Country code required').optional().default('US'),
   is_default: z.boolean().optional().default(false),
 })

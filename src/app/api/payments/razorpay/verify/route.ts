@@ -4,6 +4,7 @@ import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { ensureDelhiveryShipmentForPaidOrder } from '@/lib/delhivery-shipping'
 import { sendOrderConfirmationEmail, sendNewOrderOwnerNotificationEmail } from '@/lib/email'
 import { notifyOrderConfirmation } from '@/lib/whatsapp/order-notifications'
+import { markAbandonedCartRecovered } from '@/lib/abandoned-cart'
 import logger from '@/lib/logger'
 import { fetchRazorpayPayment } from '@/lib/razorpay'
 import { z } from 'zod'
@@ -240,6 +241,7 @@ export async function POST(request: NextRequest) {
           orderId: order_id,
         })
       ),
+      markAbandonedCartRecovered(admin, user.id),
     ])
 
     const shipment = await ensureDelhiveryShipmentForPaidOrder(order_id)

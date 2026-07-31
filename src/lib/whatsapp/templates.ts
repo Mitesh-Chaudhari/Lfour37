@@ -14,6 +14,11 @@ export const VEBLIKA_TEMPLATE_CONFIG = {
   exchange_pickup_picked_up: { language: 'en', includeUrlButton: true },
   exchange_pickup_received: { language: 'en' },
   welcome_lfour37: { language: 'en' },
+  abandoned_cart_reminder: {
+    language: 'en',
+    includeUrlButton: true,
+    includeImageHeader: true,
+  },
 } as const
 
 export type VeblikaTemplateName = keyof typeof VEBLIKA_TEMPLATE_CONFIG
@@ -358,4 +363,12 @@ export function buildExchangePickupReceivedParams(
     sanitizeWhatsAppParam(exchangeVariant, 'New size / color'),
     sanitizeWhatsAppParam(ordersUrl),
   ]
+}
+
+/**
+ * URL button param for abandoned_cart_reminder Shop Now CTA.
+ * Template URL is typically `https://yourdomain.com/{{1}}` → pass `cart`.
+ */
+export function getAbandonedCartUrlButtonParam(path = 'cart'): string {
+  return sanitizeWhatsAppParam(path.replace(/^\//, ''), 'cart')
 }

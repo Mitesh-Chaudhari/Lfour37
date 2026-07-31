@@ -134,7 +134,7 @@ export default function AddressesPage() {
             <div className="grid grid-cols-2 gap-4">
               <Input label="City" error={errors.city?.message} {...register('city')} />
               <Input label="State" error={errors.state?.message} {...register('state')} />
-              <Input label="Postal Code" error={errors.postal_code?.message} {...register('postal_code')} />
+              <Input label=" ZIP/PIN Code" error={errors.postal_code?.message} {...register('postal_code')} />
               <Input label="Country" defaultValue="India" {...register('country')} />
             </div>
             <label className="flex items-center gap-2 cursor-pointer">
