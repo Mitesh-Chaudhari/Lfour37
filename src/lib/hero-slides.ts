@@ -14,6 +14,8 @@ export interface HeroSlide {
   highlight_index: number
   image_url: string | null
   mobile_image_url: string | null
+  video_url: string | null
+  mobile_video_url: string | null
   accent: string
   is_active: boolean
   sort_order: number
@@ -25,7 +27,7 @@ async function fetchActiveHeroSlides(): Promise<HeroSlide[]> {
   const { data, error } = await supabase
     .from('hero_slides')
     .select(
-      'id, badge, title, subtitle, cta_text, cta_link, secondary_text, secondary_link, highlight_index, image_url, mobile_image_url, accent, is_active, sort_order'
+      'id, badge, title, subtitle, cta_text, cta_link, secondary_text, secondary_link, highlight_index, image_url, mobile_image_url, video_url, mobile_video_url, accent, is_active, sort_order'
     )
     .eq('is_active', true)
     .order('sort_order')

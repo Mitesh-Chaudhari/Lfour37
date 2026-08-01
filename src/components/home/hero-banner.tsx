@@ -63,18 +63,25 @@ export function HeroBanner({ initialSlides = [] }: HeroBannerProps) {
   }, [initialSlides])
 
   useEffect(() => {
-    if (slides.length === 0) return
+    if (slides.length <= 1) return
 
-    const id = setInterval(() => {
+    // Give video slides more time on screen before rotating
+    const activeSlide = slides[current]
+    const hasVideo = Boolean(
+      activeSlide?.video_url?.trim() || activeSlide?.mobile_video_url?.trim()
+    )
+    const delay = hasVideo ? 12000 : 5500
+
+    const id = setTimeout(() => {
       setFading(true)
       setTimeout(() => {
         setCurrent((c) => (c + 1) % slides.length)
         setFading(false)
       }, 350)
-    }, 5500)
+    }, delay)
 
-    return () => clearInterval(id)
-  }, [slides])
+    return () => clearTimeout(id)
+  }, [slides, current])
 
   const goTo = (index: number) => {
     if (index === current) return
@@ -103,11 +110,32 @@ export function HeroBanner({ initialSlides = [] }: HeroBannerProps) {
 
   const words = slide.title.split(' ')
   const desktopImage = slide.image_url?.trim() || null
+  const desktopVideo = slide.video_url?.trim() || null
   const mobileImage = slide.mobile_image_url?.trim() || desktopImage
+  // Explicit mobile media wins; otherwise fall back to the desktop media
+  const mobileVideo =
+    slide.mobile_video_url?.trim() ||
+    (slide.mobile_image_url?.trim() ? null : desktopVideo)
 
   return (
     <section className="relative overflow-hidden text-white min-h-[90vh] flex flex-col justify-center bg-gray-950">
-      {desktopImage ? (
+      {/* Desktop media: video takes precedence, image is used as poster/fallback */}
+      {desktopVideo ? (
+        <video
+          key={`${slide.id}-desktop-video`}
+          src={desktopVideo}
+          poster={desktopImage || undefined}
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="auto"
+          className={cn(
+            'hidden md:block absolute inset-0 h-full w-full object-cover transition-opacity duration-500',
+            fading ? 'opacity-0' : 'opacity-100'
+          )}
+        />
+      ) : desktopImage ? (
         <OptimizedImage
           key={`${slide.id}-desktop`}
           src={desktopImage}
@@ -122,7 +150,23 @@ export function HeroBanner({ initialSlides = [] }: HeroBannerProps) {
         />
       ) : null}
 
-      {mobileImage ? (
+      {/* Mobile media */}
+      {mobileVideo ? (
+        <video
+          key={`${slide.id}-mobile-video`}
+          src={mobileVideo}
+          poster={mobileImage || undefined}
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="auto"
+          className={cn(
+            'md:hidden absolute inset-0 h-full w-full object-cover transition-opacity duration-500',
+            fading ? 'opacity-0' : 'opacity-100'
+          )}
+        />
+      ) : mobileImage ? (
         <OptimizedImage
           key={`${slide.id}-mobile`}
           src={mobileImage}

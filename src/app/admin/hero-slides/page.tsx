@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { OptimizedImage } from '@/components/ui/optimized-image'
+import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
 
 interface Slide {
@@ -16,6 +17,8 @@ interface Slide {
   highlight_index: number
   image_url?: string
   mobile_image_url?: string
+  video_url?: string | null
+  mobile_video_url?: string | null
   accent: string
   is_active: boolean
   sort_order: number
@@ -24,6 +27,7 @@ interface Slide {
 export default function HeroSlidesAdmin() {
   const [slides, setSlides] = useState<Slide[]>([])
   const [loading, setLoading] = useState(false)
+  const [uploadingVideo, setUploadingVideo] = useState<string | null>(null)
 
   useEffect(() => {
     fetchSlides()
@@ -77,6 +81,8 @@ export default function HeroSlidesAdmin() {
         highlight_index: 0,
         image_url: '',
         mobile_image_url: '',
+        video_url: '',
+        mobile_video_url: '',
         accent: 'text-purple-600',
         is_active: true,
         sort_order: slides.length + 1,
@@ -135,6 +141,52 @@ export default function HeroSlidesAdmin() {
         ? 'Mobile banner uploaded!'
         : 'Desktop banner uploaded!'
     )
+  }
+
+  const handleVideoUpload = async (
+    file: File,
+    index: number,
+    field: 'video_url' | 'mobile_video_url'
+  ) => {
+    const uploadKey = `${index}-${field}`
+    setUploadingVideo(uploadKey)
+
+    try {
+      // Videos are too large for the serverless upload route, so we ask the
+      // server for a signed URL and upload directly to Supabase storage
+      const signRes = await fetch('/api/upload/hero-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileType: file.type, fileSize: file.size }),
+      })
+
+      const signData = await signRes.json()
+      if (!signRes.ok) {
+        toast.error(signData.error || 'Video upload failed')
+        return
+      }
+
+      const supabase = createClient()
+      const { error: uploadError } = await supabase.storage
+        .from('product-images')
+        .uploadToSignedUrl(signData.path, signData.token, file)
+
+      if (uploadError) {
+        toast.error('Video upload failed')
+        return
+      }
+
+      handleChange(index, field, signData.publicUrl)
+      toast.success(
+        field === 'mobile_video_url'
+          ? 'Mobile video uploaded!'
+          : 'Desktop video uploaded!'
+      )
+    } catch {
+      toast.error('Video upload failed')
+    } finally {
+      setUploadingVideo(null)
+    }
   }
 
   const handleRemove = (index: number) => {
@@ -231,65 +283,149 @@ export default function HeroSlidesAdmin() {
             </div>
 
             {/* Desktop banner */}
-            <div className="rounded-lg border border-gray-200 p-4 space-y-2">
+            <div className="rounded-lg border border-gray-200 p-4 space-y-3">
               <div>
-                <p className="text-sm font-medium text-gray-900">Desktop banner</p>
+                <p className="text-sm font-medium text-gray-900">Desktop banner (image or video)</p>
                 <p className="text-xs text-gray-500">
-                  Landscape · recommended 1920×1080 px (16:9) or 1920×800 px · WebP/JPG · under 800 KB
+                  Image: landscape 1920×1080 px (16:9) · WebP/JPG · under 800 KB.
+                  Video: MP4/WebM · 1920×1080 · under 20 MB recommended.
+                  If both are set, the video is shown and the image is its poster.
                 </p>
               </div>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) handleImageUpload(file, i, 'image_url')
-                }}
-              />
-              {slide.image_url && (
-                <div className="relative mt-2 h-32 overflow-hidden rounded">
-                  <OptimizedImage
-                    src={slide.image_url}
-                    alt={slide.title || 'Desktop banner preview'}
-                    fill
-                    variant="categoryFeatured"
-                    className="object-cover"
-                  />
-                </div>
-              )}
+
+              <div>
+                <p className="text-xs font-semibold text-gray-700 mb-1">Image</p>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) handleImageUpload(file, i, 'image_url')
+                  }}
+                />
+                {slide.image_url && (
+                  <div className="relative mt-2 h-32 overflow-hidden rounded">
+                    <OptimizedImage
+                      src={slide.image_url}
+                      alt={slide.title || 'Desktop banner preview'}
+                      fill
+                      variant="categoryFeatured"
+                      className="object-cover"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-gray-700 mb-1">Video</p>
+                <input
+                  type="file"
+                  accept="video/mp4,video/webm,video/quicktime"
+                  disabled={uploadingVideo !== null}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) handleVideoUpload(file, i, 'video_url')
+                    e.target.value = ''
+                  }}
+                />
+                {uploadingVideo === `${i}-video_url` && (
+                  <p className="text-xs text-purple-600 mt-1">Uploading video...</p>
+                )}
+                {slide.video_url && (
+                  <div className="mt-2 space-y-1">
+                    <video
+                      src={slide.video_url}
+                      className="h-32 rounded object-cover"
+                      muted
+                      loop
+                      autoPlay
+                      playsInline
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleChange(i, 'video_url', '')}
+                      className="text-xs text-red-500 hover:underline"
+                    >
+                      Remove video (use image instead)
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Mobile banner */}
-            <div className="rounded-lg border border-gray-200 p-4 space-y-2">
+            <div className="rounded-lg border border-gray-200 p-4 space-y-3">
               <div>
-                <p className="text-sm font-medium text-gray-900">Mobile banner</p>
+                <p className="text-sm font-medium text-gray-900">Mobile banner (image or video)</p>
                 <p className="text-xs text-gray-500">
-                  Portrait · recommended 1080×1920 px (9:16) · WebP/JPG · under 500 KB · shown on screens under 768px
+                  Image: portrait 1080×1920 px (9:16) · WebP/JPG · under 500 KB.
+                  Video: MP4/WebM · 1080×1920 (9:16) · under 15 MB recommended.
+                  Shown on screens under 768px. If both are set, the video is shown.
                 </p>
               </div>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) handleImageUpload(file, i, 'mobile_image_url')
-                }}
-              />
-              {slide.mobile_image_url ? (
-                <div className="relative mt-2 h-48 w-28 overflow-hidden rounded">
-                  <OptimizedImage
-                    src={slide.mobile_image_url}
-                    alt={slide.title || 'Mobile banner preview'}
-                    fill
-                    variant="heroMobile"
-                    className="object-cover"
-                  />
-                </div>
-              ) : (
-                <p className="text-xs text-gray-400">
-                  Optional. If empty, the desktop banner is used on mobile.
-                </p>
-              )}
+
+              <div>
+                <p className="text-xs font-semibold text-gray-700 mb-1">Image</p>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) handleImageUpload(file, i, 'mobile_image_url')
+                  }}
+                />
+                {slide.mobile_image_url ? (
+                  <div className="relative mt-2 h-48 w-28 overflow-hidden rounded">
+                    <OptimizedImage
+                      src={slide.mobile_image_url}
+                      alt={slide.title || 'Mobile banner preview'}
+                      fill
+                      variant="heroMobile"
+                      className="object-cover"
+                    />
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400">
+                    Optional. If empty, the desktop banner is used on mobile.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-gray-700 mb-1">Video</p>
+                <input
+                  type="file"
+                  accept="video/mp4,video/webm,video/quicktime"
+                  disabled={uploadingVideo !== null}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) handleVideoUpload(file, i, 'mobile_video_url')
+                    e.target.value = ''
+                  }}
+                />
+                {uploadingVideo === `${i}-mobile_video_url` && (
+                  <p className="text-xs text-purple-600 mt-1">Uploading video...</p>
+                )}
+                {slide.mobile_video_url && (
+                  <div className="mt-2 space-y-1">
+                    <video
+                      src={slide.mobile_video_url}
+                      className="h-48 w-28 rounded object-cover"
+                      muted
+                      loop
+                      autoPlay
+                      playsInline
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleChange(i, 'mobile_video_url', '')}
+                      className="text-xs text-red-500 hover:underline"
+                    >
+                      Remove video (use image instead)
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex gap-4 items-center">
