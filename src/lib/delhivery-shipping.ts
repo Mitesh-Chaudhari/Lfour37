@@ -261,8 +261,33 @@ export async function createDelhiveryShipmentForOrder(
     .maybeSingle()
 
   if (existing?.awb) return existing as ShipmentRow
+
+  // A crashed request can leave status stuck on "creating", which would
+  // permanently block the admin Create Shipment button. Allow a retry after 2 min.
   if (existing?.status === 'creating') {
-    throw new Error('Delhivery shipment creation is already in progress')
+    const { data: creatingRow } = await supabase
+      .from('delhivery_shipments')
+      .select('updated_at, created_at')
+      .eq('id', existing.id)
+      .single()
+
+    const startedAt = new Date(
+      creatingRow?.updated_at || creatingRow?.created_at || 0
+    ).getTime()
+    const ageMs = Date.now() - startedAt
+
+    if (Number.isFinite(ageMs) && ageMs < 2 * 60 * 1000) {
+      throw new Error('Delhivery shipment creation is already in progress')
+    }
+
+    await supabase
+      .from('delhivery_shipments')
+      .update({
+        status: 'creation_failed',
+        error_message:
+          'Previous shipment creation timed out. Retrying Create Shipment.',
+      })
+      .eq('id', existing.id)
   }
 
   const { data: order, error: orderError } = await supabase

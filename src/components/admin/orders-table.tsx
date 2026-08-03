@@ -681,6 +681,26 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
 
     try {
       setUpdatingId(order.id)
+
+      // Clear stale error text immediately so a previous Embargo message
+      // doesn't keep showing while the new attempt runs.
+      if (action === 'create') {
+        setOrders((current) =>
+          current.map((item) =>
+            item.id === order.id
+              ? {
+                  ...item,
+                  delhivery_shipment: {
+                    ...(shipment || {}),
+                    status: 'creating',
+                    error_message: null,
+                  },
+                }
+              : item
+          )
+        )
+      }
+
       const res = await fetch('/api/admin/orders/shipment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -689,7 +709,22 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
       const data = await res.json()
 
       if (!res.ok) {
-        toast.error(data.error || 'Delhivery action failed')
+        const errorMessage = data.error || 'Delhivery action failed'
+        setOrders((current) =>
+          current.map((item) =>
+            item.id === order.id
+              ? {
+                  ...item,
+                  delhivery_shipment: {
+                    ...(getDelhiveryShipment(item) || shipment || {}),
+                    status: 'creation_failed',
+                    error_message: errorMessage,
+                  },
+                }
+              : item
+          )
+        )
+        toast.error(errorMessage)
         return
       }
 
@@ -901,14 +936,26 @@ const markDelivered =
                     </Badge>
                     {(() => {
                       const shipment = getDelhiveryShipment(order)
-                      if (!shipment?.awb && !order.tracking_number) return null
+                      const hasAwb = Boolean(
+                        shipment?.awb || order.tracking_number
+                      )
+                      const hasError = Boolean(shipment?.error_message)
+                      const failedWithoutAwb =
+                        !hasAwb &&
+                        (shipment?.status === 'creation_failed' ||
+                          shipment?.status === 'creating' ||
+                          hasError)
+
+                      if (!hasAwb && !failedWithoutAwb) return null
 
                       return (
                         <div className="mt-2 space-y-1 text-xs text-gray-500">
                           <p className="font-medium text-gray-700">
-                            Delhivery: {shipment?.status || 'Awaiting sync'}
+                            Delhivery:{' '}
+                            {shipment?.status ||
+                              (hasAwb ? 'Awaiting sync' : 'Not created')}
                           </p>
-                          {(shipment?.awb || order.tracking_number) && (
+                          {hasAwb && (
                             <p className="font-mono">
                               AWB: {shipment?.awb || order.tracking_number}
                             </p>
@@ -925,7 +972,15 @@ const markDelivered =
                             </p>
                           )}
                           {shipment?.error_message && (
-                            <p className="text-red-600">{shipment.error_message}</p>
+                            <p className="text-red-600 max-w-[220px]">
+                              {shipment.error_message}
+                            </p>
+                          )}
+                          {failedWithoutAwb && !shipment?.error_message && (
+                            <p className="text-amber-600 max-w-[220px]">
+                              Shipment not created yet — use Create Shipment to
+                              retry.
+                            </p>
                           )}
                         </div>
                       )

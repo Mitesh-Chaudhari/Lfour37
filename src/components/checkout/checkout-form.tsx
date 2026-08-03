@@ -538,7 +538,9 @@ export function CheckoutForm({
 
     if (pinStatus === 'unserviceable') {
       toast.error(
-        'Sorry, we cannot deliver to this PIN code yet. Please use a different address.'
+        pinData?.remarks?.toLowerCase().includes('embargo')
+          ? 'This PIN is temporarily under Delhivery Embargo. Please try again after 24 hours or use another address.'
+          : 'Sorry, we cannot deliver to this PIN code yet. Please use a different address.'
       )
       return
     }
@@ -918,7 +920,9 @@ export function CheckoutForm({
                     error={
                       errors.postal_code?.message ||
                       (pinStatus === 'unserviceable'
-                        ? 'Sorry, delivery is not available to this PIN code'
+                        ? pinData?.remarks?.toLowerCase().includes('embargo')
+                          ? 'This PIN is temporarily under Delhivery Embargo. Please try again after 24 hours or use another address.'
+                          : 'Sorry, delivery is not available to this PIN code'
                         : undefined)
                     }
                     helperText={

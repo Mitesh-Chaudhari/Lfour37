@@ -204,13 +204,6 @@ export default function HeroSlidesAdmin() {
     <div className="p-6 max-w-5xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Hero Banner Manager</h1>
 
-      <button
-        onClick={handleAdd}
-        className="mb-6 px-4 py-2 bg-black text-white rounded"
-      >
-        + Add Slide
-      </button>
-
       <div className="space-y-6">
         {slides.map((slide, i) => (
           <div key={i} className="border p-4 rounded-xl space-y-3 bg-white">
@@ -449,7 +442,12 @@ export default function HeroSlidesAdmin() {
           </div>
         ))}
       </div>
-
+      <button
+        onClick={handleAdd}
+        className="mr-2 px-4 py-3 bg-black text-white rounded"
+      >
+        + Add Slide
+      </button>
       <button
         onClick={handleSave}
         disabled={loading}

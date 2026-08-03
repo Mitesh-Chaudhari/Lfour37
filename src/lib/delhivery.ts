@@ -128,6 +128,182 @@ function requiredEnv(name: string): string {
   return value
 }
 
+/** Keep only digits — Delhivery rejects spaced / formatted PIN codes. */
+export function normalizeIndianPin(pin: string | null | undefined): string {
+  return String(pin || '').replace(/\D/g, '').slice(0, 6)
+}
+
+/** Delhivery expects a 10-digit mobile number. */
+export function normalizeIndianPhone(phone: string | null | undefined): string {
+  const digits = String(phone || '').replace(/\D/g, '')
+  return digits.length > 10 ? digits.slice(-10) : digits
+}
+
+function assertShipAddress(address: DelhiveryOrder['shipping_address']) {
+  const pin = normalizeIndianPin(address.postal_code)
+  const phone = normalizeIndianPhone(address.phone)
+
+  if (!/^\d{6}$/.test(pin)) {
+    throw new Error(
+      `Invalid PIN code "${address.postal_code || ''}". Delhivery needs a 6-digit Indian PIN.`
+    )
+  }
+
+  if (!/^\d{10}$/.test(phone)) {
+    throw new Error(
+      `Invalid phone "${address.phone || ''}". Delhivery needs a 10-digit mobile number.`
+    )
+  }
+
+  return { pin, phone }
+}
+
+const STATE_CODE_NAMES: Record<string, string> = {
+  AN: 'Andaman and Nicobar Islands',
+  AP: 'Andhra Pradesh',
+  AR: 'Arunachal Pradesh',
+  AS: 'Assam',
+  BR: 'Bihar',
+  CG: 'Chhattisgarh',
+  CH: 'Chandigarh',
+  DD: 'Dadra and Nagar Haveli and Daman and Diu',
+  DN: 'Dadra and Nagar Haveli and Daman and Diu',
+  DL: 'Delhi',
+  GA: 'Goa',
+  GJ: 'Gujarat',
+  HP: 'Himachal Pradesh',
+  HR: 'Haryana',
+  JH: 'Jharkhand',
+  JK: 'Jammu and Kashmir',
+  KA: 'Karnataka',
+  KL: 'Kerala',
+  LA: 'Ladakh',
+  LD: 'Lakshadweep',
+  MH: 'Maharashtra',
+  ML: 'Meghalaya',
+  MN: 'Manipur',
+  MP: 'Madhya Pradesh',
+  MZ: 'Mizoram',
+  NL: 'Nagaland',
+  OD: 'Odisha',
+  OR: 'Odisha',
+  PB: 'Punjab',
+  PY: 'Puducherry',
+  RJ: 'Rajasthan',
+  SK: 'Sikkim',
+  TG: 'Telangana',
+  TS: 'Telangana',
+  TN: 'Tamil Nadu',
+  TR: 'Tripura',
+  UA: 'Uttarakhand',
+  UK: 'Uttarakhand',
+  UP: 'Uttar Pradesh',
+  WB: 'West Bengal',
+}
+
+function cleanLocationName(value: string): string {
+  // India Post sometimes returns "Raigarh(MH)" — Delhivery wants plain names
+  return value.replace(/\([A-Z]{2}\)\s*$/i, '').trim()
+}
+
+/**
+ * Look up Delhivery's own city/state for a PIN before create.json.
+ * Using India Post / autofill city names (e.g. Poladpur) can cause create
+ * failures even when the PIN is serviceable.
+ *
+ * Embargo remarks are treated as temporarily unserviceable — Delhivery One
+ * also blocks these ("try again after 24 hrs").
+ */
+export async function resolveDelhiveryPinLocation(
+  pin: string,
+  options: { requireCod?: boolean } = {}
+): Promise<{
+  pin: string
+  city: string
+  state: string
+  stateCode: string
+  codAvailable: boolean
+  remarks: string | null
+}> {
+  const normalizedPin = normalizeIndianPin(pin)
+  if (!/^\d{6}$/.test(normalizedPin)) {
+    throw new Error(`Invalid PIN code "${pin}"`)
+  }
+
+  const body = await delhiveryRequest<{
+    delivery_codes?: Array<{
+      postal_code?: {
+        pin?: number | string
+        city?: string
+        district?: string
+        state_code?: string
+        cod?: string
+        pre_paid?: string
+        remarks?: string
+      }
+    }>
+  }>(`/c/api/pin-codes/json/?filter_codes=${normalizedPin}`)
+
+  const postal = body?.delivery_codes?.[0]?.postal_code
+  if (!postal) {
+    throw new Error(
+      `PIN ${normalizedPin} is not serviceable on Delhivery for this account`
+    )
+  }
+
+  const remarks = String(postal.remarks || '').trim() || null
+  if (isDelhiveryPinEmbargoed(remarks)) {
+    throw new Error(
+      `PIN ${normalizedPin} is temporarily under Delhivery Embargo. ` +
+        `Please try again after 24 hours, or ask the customer for a different address.`
+    )
+  }
+
+  const codAvailable = String(postal.cod || '').toUpperCase() === 'Y'
+  const prepaidAvailable = String(postal.pre_paid || '').toUpperCase() === 'Y'
+
+  if (!prepaidAvailable && !codAvailable) {
+    throw new Error(`PIN ${normalizedPin} is not serviceable on Delhivery`)
+  }
+
+  if (options.requireCod && !codAvailable) {
+    throw new Error(
+      `PIN ${normalizedPin} does not support Cash on Delivery on Delhivery. Ask the customer to pay online, or ship as Prepaid.`
+    )
+  }
+
+  const rawCity = String(postal.city || postal.district || '').trim()
+  const stateCode = postal.state_code?.toUpperCase() || ''
+  const city = rawCity ? cleanLocationName(rawCity) : ''
+  const state = stateCode ? STATE_CODE_NAMES[stateCode] || stateCode : ''
+
+  if (!city || !state) {
+    throw new Error(
+      `Delhivery returned incomplete location data for PIN ${normalizedPin}`
+    )
+  }
+
+  return {
+    pin: normalizedPin,
+    city,
+    state,
+    stateCode,
+    codAvailable,
+    remarks,
+  }
+}
+
+function isDelhiveryPinEmbargoed(remarks: string | null | undefined): boolean {
+  if (!remarks) return false
+  const normalized = remarks.toLowerCase()
+  return (
+    normalized.includes('embargo') ||
+    normalized.includes('non serviceable') ||
+    normalized.includes('non-serviceable') ||
+    normalized === 'nsz'
+  )
+}
+
 export async function createShipment({
   order,
   items,
@@ -137,56 +313,67 @@ export async function createShipment({
 }): Promise<unknown> {
   const { pickupName } = getConfig()
   const address = order.shipping_address
+  const { pin, phone } = assertShipAddress(address)
+  const isCod = order.payment_method === 'cod'
+
+  // Use Delhivery pin-master city/state (not India Post autofill names)
+  const location = await resolveDelhiveryPinLocation(pin, {
+    requireCod: isCod,
+  })
+
   const addressText = [address.address_line1, address.address_line2]
     .filter(Boolean)
     .join(', ')
 
+  const shippingMode = process.env.DELHIVERY_SHIPPING_MODE?.trim()
+
+  const shipment: Record<string, unknown> = {
+    name: address.full_name,
+    add: addressText,
+    // Keep pin as string — this is what worked for existing deliverable orders
+    pin: location.pin,
+    city: location.city,
+    state: location.state,
+    country: 'India',
+    phone,
+    order: order.order_number,
+    payment_mode: isCod ? 'COD' : 'Prepaid',
+    order_date: today(),
+    total_amount: String(order.total),
+    cod_amount: isCod ? String(order.total) : '0',
+    quantity: String(totalQuantity(items)),
+    products_desc: shipmentDescription(items),
+    weight: (
+      Number(process.env.DELHIVERY_DEFAULT_WEIGHT_GRAMS || 500) / 1000
+    ).toFixed(2),
+    shipment_length: process.env.DELHIVERY_DEFAULT_LENGTH_CM || '25',
+    shipment_width: process.env.DELHIVERY_DEFAULT_WIDTH_CM || '20',
+    shipment_height: process.env.DELHIVERY_DEFAULT_HEIGHT_CM || '5',
+    seller_name: requiredEnv('DELHIVERY_SELLER_NAME'),
+    seller_add: requiredEnv('DELHIVERY_SELLER_ADDRESS'),
+    seller_inv: order.order_number,
+    seller_gst_tin: process.env.DELHIVERY_SELLER_GSTIN || '',
+    return_name:
+      process.env.DELHIVERY_RETURN_NAME ||
+      requiredEnv('DELHIVERY_SELLER_NAME'),
+    return_add:
+      process.env.DELHIVERY_RETURN_ADDRESS ||
+      requiredEnv('DELHIVERY_SELLER_ADDRESS'),
+    return_city: requiredEnv('DELHIVERY_RETURN_CITY'),
+    return_state: requiredEnv('DELHIVERY_RETURN_STATE'),
+    return_country: 'India',
+    return_phone: normalizeIndianPhone(requiredEnv('DELHIVERY_RETURN_PHONE')),
+    return_pin: normalizeIndianPin(requiredEnv('DELHIVERY_RETURN_PIN')),
+    invoice_number: order.order_number,
+    invoice_date: today(),
+  }
+
+  if (shippingMode) {
+    shipment.shipping_mode = shippingMode
+  }
+
   const shipmentData = {
-    shipments: [
-      {
-        name: address.full_name,
-        add: addressText,
-        pin: address.postal_code,
-        city: address.city,
-        state: address.state,
-        country: address.country || 'India',
-        phone: address.phone,
-        order: order.order_number,
-        payment_mode: order.payment_method === 'cod' ? 'COD' : 'Prepaid',
-        order_date: today(),
-        total_amount: String(order.total),
-        cod_amount:
-          order.payment_method === 'cod' ? String(order.total) : '0',
-        quantity: String(totalQuantity(items)),
-        products_desc: shipmentDescription(items),
-        weight: (
-          Number(
-            process.env
-              .DELHIVERY_DEFAULT_WEIGHT_GRAMS ||
-              500
-          ) / 1000
-        ).toFixed(2),        shipment_length: process.env.DELHIVERY_DEFAULT_LENGTH_CM || '25',
-        shipment_width: process.env.DELHIVERY_DEFAULT_WIDTH_CM || '20',
-        shipment_height: process.env.DELHIVERY_DEFAULT_HEIGHT_CM || '5',
-        seller_name: requiredEnv('DELHIVERY_SELLER_NAME'),
-        seller_add: requiredEnv('DELHIVERY_SELLER_ADDRESS'),
-        seller_inv: order.order_number,
-        seller_gst_tin: process.env.DELHIVERY_SELLER_GSTIN || '',
-        return_name:
-          process.env.DELHIVERY_RETURN_NAME ||
-          requiredEnv('DELHIVERY_SELLER_NAME'),
-        return_add:
-          process.env.DELHIVERY_RETURN_ADDRESS ||
-          requiredEnv('DELHIVERY_SELLER_ADDRESS'),
-        return_city: requiredEnv('DELHIVERY_RETURN_CITY'),
-        return_state: requiredEnv('DELHIVERY_RETURN_STATE'),
-        return_country: 'India',
-        return_phone: requiredEnv('DELHIVERY_RETURN_PHONE'),
-        return_pin: requiredEnv('DELHIVERY_RETURN_PIN'),
-        invoice_number: order.order_number,
-        invoice_date: today(),
-      },
-    ],
+    shipments: [shipment],
     pickup_location: {
       name: pickupName,
     },
@@ -232,6 +419,18 @@ export function formatDelhiveryError(message: string): string {
   if (normalized.includes('pickup location') || normalized.includes('pickup name')) {
     return (
       `${message} Check that DELHIVERY_PICKUP_NAME exactly matches your Delhivery pickup location.`
+    )
+  }
+
+  if (
+    normalized.includes('embargo') ||
+    normalized.includes('not serviceable') ||
+    normalized.includes('non serviceable') ||
+    normalized.includes('pincode')
+  ) {
+    return (
+      `${message} ` +
+      'If this PIN is under Delhivery Embargo, try again after 24 hours.'
     )
   }
 
@@ -595,6 +794,8 @@ export async function createReversePickup({
 }): Promise<unknown> {
   const { pickupName } = getConfig()
   const address = order.shipping_address
+  const { pin, phone } = assertShipAddress(address)
+  const location = await resolveDelhiveryPinLocation(pin)
   const addressText = [address.address_line1, address.address_line2]
     .filter(Boolean)
     .join(', ')
@@ -604,11 +805,11 @@ export async function createReversePickup({
   const shipment: Record<string, unknown> = {
     name: address.full_name,
     add: addressText,
-    pin: address.postal_code,
-    city: address.city,
-    state: address.state,
-    country: address.country || 'India',
-    phone: address.phone,
+    pin: location.pin,
+    city: location.city,
+    state: location.state,
+    country: 'India',
+    phone,
     order: reference,
     payment_mode: 'Pickup',
     order_date: today(),
@@ -672,6 +873,8 @@ export async function createExchangeForwardShipment({
 }): Promise<unknown> {
   const { pickupName } = getConfig()
   const address = order.shipping_address
+  const { pin, phone } = assertShipAddress(address)
+  const location = await resolveDelhiveryPinLocation(pin)
   const addressText = [address.address_line1, address.address_line2]
     .filter(Boolean)
     .join(', ')
@@ -681,11 +884,11 @@ export async function createExchangeForwardShipment({
       {
         name: address.full_name,
         add: addressText,
-        pin: address.postal_code,
-        city: address.city,
-        state: address.state,
-        country: address.country || 'India',
-        phone: address.phone,
+        pin: location.pin,
+        city: location.city,
+        state: location.state,
+        country: 'India',
+        phone,
         order: reference,
         payment_mode: 'Prepaid',
         order_date: today(),
@@ -712,8 +915,8 @@ export async function createExchangeForwardShipment({
         return_city: requiredEnv('DELHIVERY_RETURN_CITY'),
         return_state: requiredEnv('DELHIVERY_RETURN_STATE'),
         return_country: 'India',
-        return_phone: requiredEnv('DELHIVERY_RETURN_PHONE'),
-        return_pin: requiredEnv('DELHIVERY_RETURN_PIN'),
+        return_phone: normalizeIndianPhone(requiredEnv('DELHIVERY_RETURN_PHONE')),
+        return_pin: normalizeIndianPin(requiredEnv('DELHIVERY_RETURN_PIN')),
         invoice_number: reference,
         invoice_date: today(),
       },

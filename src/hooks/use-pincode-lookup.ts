@@ -16,6 +16,8 @@ export interface PincodeData {
   /** null = serviceability could not be determined */
   serviceable: boolean | null
   codAvailable: boolean | null
+  /** Delhivery remarks e.g. "Embargo" — warning, not always a hard block */
+  remarks?: string | null
 }
 
 /**

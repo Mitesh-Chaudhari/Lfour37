@@ -52,6 +52,7 @@ interface DelhiveryLookup {
   state: string | null
   serviceable: boolean
   codAvailable: boolean | null
+  remarks: string | null
 }
 
 interface IndiaPostLookup {
@@ -64,6 +65,10 @@ function toTitleCase(value: string): string {
     .toLowerCase()
     .replace(/\b\w/g, (char) => char.toUpperCase())
     .trim()
+}
+
+function cleanLocationName(value: string): string {
+  return value.replace(/\([A-Z]{2}\)\s*$/i, '').trim()
 }
 
 /** Delhivery pincode serviceability — authoritative since Delhivery ships our orders */
@@ -96,23 +101,44 @@ async function lookupDelhivery(pin: string): Promise<DelhiveryLookup | null> {
     const postalCode = body?.delivery_codes?.[0]?.postal_code
 
     if (!postalCode) {
-      return { city: null, state: null, serviceable: false, codAvailable: null }
+      return {
+        city: null,
+        state: null,
+        serviceable: false,
+        codAvailable: null,
+        remarks: null,
+      }
     }
 
     const rawCity: string | undefined =
       postalCode.city || postalCode.district || undefined
     const stateCode: string | undefined = postalCode.state_code || undefined
+    const remarks: string | null = postalCode.remarks?.trim() || null
+    const embargoed = Boolean(
+      remarks && /embargo|non[- ]?serviceable|^nsz$/i.test(remarks)
+    )
+    const codAvailable =
+      typeof postalCode.cod === 'string'
+        ? postalCode.cod.toUpperCase() === 'Y'
+        : null
+    const prepaidAvailable =
+      typeof postalCode.pre_paid === 'string'
+        ? postalCode.pre_paid.toUpperCase() === 'Y'
+        : null
+
+    // Embargo = temporarily unserviceable (same as Delhivery One portal).
+    // Normal pins have empty remarks and are unaffected.
+    const serviceable =
+      !embargoed && Boolean(codAvailable || prepaidAvailable)
 
     return {
-      city: rawCity ? toTitleCase(rawCity) : null,
+      city: rawCity ? cleanLocationName(toTitleCase(rawCity)) : null,
       state: stateCode
         ? (STATE_CODE_NAMES[stateCode.toUpperCase()] ?? null)
         : null,
-      serviceable: true,
-      codAvailable:
-        typeof postalCode.cod === 'string'
-          ? postalCode.cod.toUpperCase() === 'Y'
-          : null,
+      serviceable,
+      codAvailable,
+      remarks,
     }
   } catch {
     return null
@@ -137,7 +163,9 @@ async function lookupIndiaPost(pin: string): Promise<IndiaPostLookup | null> {
     if (!postOffice) return null
 
     return {
-      city: postOffice.District || null,
+      city: postOffice.District
+        ? cleanLocationName(postOffice.District)
+        : null,
       state: postOffice.State || null,
     }
   } catch {
@@ -161,11 +189,13 @@ export async function GET(request: NextRequest) {
   ])
 
   return NextResponse.json({
-    city: indiaPost?.city ?? delhivery?.city ?? null,
+    // Prefer Delhivery's city/state so checkout autofill matches what create.json expects
+    city: delhivery?.city ?? indiaPost?.city ?? null,
     state: indiaPost?.state ?? delhivery?.state ?? null,
     country: 'India',
     // null = serviceability unknown (Delhivery unreachable/not configured)
     serviceable: delhivery ? delhivery.serviceable : null,
     codAvailable: delhivery?.codAvailable ?? null,
+    remarks: delhivery?.remarks ?? null,
   })
 }
