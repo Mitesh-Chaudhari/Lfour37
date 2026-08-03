@@ -21,16 +21,39 @@ async function getDashboardStats() {
     revenueChartRes,
     topProductsRes,
   ] = await Promise.all([
-    supabase.from('orders').select('id', { count: 'exact', head: true }),
+    // Exclude cancelled / refunded / returned from order counts
+    supabase
+      .from('orders')
+      .select('id', { count: 'exact', head: true })
+      .not('status', 'in', '(cancelled,refunded,returned)'),
     supabase.from('users').select('id', { count: 'exact', head: true }),
-    supabase.from('orders').select('id', { count: 'exact', head: true }).gte('created_at', thirtyDaysAgo),
+    supabase
+      .from('orders')
+      .select('id', { count: 'exact', head: true })
+      .gte('created_at', thirtyDaysAgo)
+      .not('status', 'in', '(cancelled,refunded,returned)'),
     supabase.from('users').select('id', { count: 'exact', head: true }).gte('created_at', thirtyDaysAgo),
     // Revenue: COD counts at placement, prepaid once payment completes;
     // cancelled/refunded/returned orders are excluded
-    supabase.from('orders').select('total').gte('created_at', thirtyDaysAgo).or('payment_method.eq.cod,payment_status.eq.completed').not('status', 'in', '(cancelled,refunded,returned)'),
-    supabase.from('orders').select('total').gte('created_at', sixtyDaysAgo).lt('created_at', thirtyDaysAgo).or('payment_method.eq.cod,payment_status.eq.completed').not('status', 'in', '(cancelled,refunded,returned)'),
+    supabase
+      .from('orders')
+      .select('total')
+      .gte('created_at', thirtyDaysAgo)
+      .or('payment_method.eq.cod,payment_status.eq.completed')
+      .not('status', 'in', '(cancelled,refunded,returned)'),
+    supabase
+      .from('orders')
+      .select('total')
+      .gte('created_at', sixtyDaysAgo)
+      .lt('created_at', thirtyDaysAgo)
+      .or('payment_method.eq.cod,payment_status.eq.completed')
+      .not('status', 'in', '(cancelled,refunded,returned)'),
     // All-time revenue excluding cancelled/refunded/returned orders
-    supabase.from('orders').select('total').or('payment_method.eq.cod,payment_status.eq.completed').not('status', 'in', '(cancelled,refunded,returned)'),
+    supabase
+      .from('orders')
+      .select('total')
+      .or('payment_method.eq.cod,payment_status.eq.completed')
+      .not('status', 'in', '(cancelled,refunded,returned)'),
     supabase.from('product_variants').select('id, product_id, stock, size, color, product:products(name)').lt('stock', 5).eq('is_active', true).order('stock').limit(10),
     supabase.rpc('get_revenue_by_day', { days: 30 }).select('*').limit(30),
     supabase.from('products').select('id, name, total_sold, price').eq('status', 'active').order('total_sold', { ascending: false }).limit(5),
@@ -122,7 +145,7 @@ export default async function AdminDashboard() {
         <StatCard
           title="Total Orders"
           value={stats.orders}
-          footer={`${stats.recentOrders} in last 30 days`}
+          footer={`${stats.recentOrders} in last 30 days (excl. cancelled)`}
           icon={ShoppingBag}
         />
         <StatCard

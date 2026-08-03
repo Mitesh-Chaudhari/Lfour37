@@ -1145,8 +1145,8 @@ export function CheckoutForm({
 
           <div className="space-y-3 mb-6 max-h-64 overflow-y-auto">
             {items.map((item) => (
-              <div key={item.id} className="flex items-center gap-3">
-                <div className="relative h-14 w-11 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100">
+              <div key={item.id} className="flex items-center gap-3 py-1">
+                <div className="relative h-14 w-11 flex-shrink-0 rounded-lg bg-gray-100">
                   {item.variant.image_url && (
                     <OptimizedImage
                       src={item.variant.image_url}
