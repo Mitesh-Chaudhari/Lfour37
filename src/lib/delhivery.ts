@@ -581,8 +581,34 @@ export function isDelhiveryPickedUpStatus(status: string): boolean {
   )
 }
 
+/** Delhivery's official OFD status is "Dispatched" (StatusType UD), not "Out for Delivery". */
+export function isDelhiveryOutForDelivery(
+  status: string,
+  statusType?: string | null,
+  instructions?: string | null
+): boolean {
+  const normalized = normalizeCarrierStatus(status)
+  const type = (statusType || '').toUpperCase()
+  const notes = (instructions || '').toLowerCase()
+
+  if (normalized.includes('out for delivery') || notes.includes('out for delivery')) {
+    return true
+  }
+
+  // Forward flow: UD + Dispatched = out for delivery to customer
+  // (RT + Dispatched is return-to-origin dispatch — not OFD)
+  if (normalized === 'dispatched' || normalized.includes('dispatched')) {
+    if (type === 'RT' || type === 'PP' || type === 'PU') return false
+    return true
+  }
+
+  return false
+}
+
 export function mapDelhiveryStatusToOrderStatus(
-  status: string
+  status: string,
+  statusType?: string | null,
+  instructions?: string | null
 ): 'processing' | 'shipped' | 'delivered' | 'cancelled' | null {
   const normalized = normalizeCarrierStatus(status)
 
@@ -608,8 +634,7 @@ export function mapDelhiveryStatusToOrderStatus(
 
   if (
     normalized.includes('in transit') ||
-    normalized.includes('dispatched') ||
-    normalized.includes('out for delivery') ||
+    isDelhiveryOutForDelivery(status, statusType, instructions) ||
     isDelhiveryPickedUpStatus(normalized)
   ) {
     return 'shipped'
@@ -618,7 +643,11 @@ export function mapDelhiveryStatusToOrderStatus(
   return null
 }
 
-export function getTrackingMilestone(status: string): string {
+export function getTrackingMilestone(
+  status: string,
+  statusType?: string | null,
+  instructions?: string | null
+): string {
   const normalized = normalizeCarrierStatus(status)
 
   if (
@@ -628,7 +657,12 @@ export function getTrackingMilestone(status: string): string {
   ) {
     return 'cancelled'
   }
-  if (normalized.includes('out for delivery')) return 'out_for_delivery'
+
+  // Must check OFD before generic "dispatched" / in-transit handling
+  if (isDelhiveryOutForDelivery(status, statusType, instructions)) {
+    return 'out_for_delivery'
+  }
+
   if (normalized.includes('delivered') && !normalized.includes('undelivered')) {
     return 'delivered'
   }
@@ -646,20 +680,21 @@ export function getTrackingMilestone(status: string): string {
   if (isDelhiveryPickedUpStatus(normalized)) {
     return 'picked_up'
   }
-  if (
-    normalized.includes('in transit') ||
-    normalized.includes('dispatched')
-  ) {
+  if (normalized.includes('in transit')) {
     return 'in_transit'
   }
 
   return 'shipment_update'
 }
 
-export function isDelhiveryStatusCancellable(status: string): boolean {
+export function isDelhiveryStatusCancellable(
+  status: string,
+  statusType?: string | null,
+  instructions?: string | null
+): boolean {
   const normalized = status.toLowerCase()
 
-  if (normalized.includes('out for delivery')) return false
+  if (isDelhiveryOutForDelivery(status, statusType, instructions)) return false
   if (normalized.includes('delivered') && !normalized.includes('undelivered')) {
     return false
   }
@@ -677,17 +712,12 @@ export function isDelhiveryStatusCancellable(status: string): boolean {
     'open',
     'scheduled',
     'in transit',
-    'dispatch',
     'pickup',
     'ready to ship',
     'ready for pickup',
   ]
 
   return cancellableMarkers.some((marker) => normalized.includes(marker))
-}
-
-export function isDelhiveryOutForDelivery(status: string): boolean {
-  return status.toLowerCase().includes('out for delivery')
 }
 
 export function mapDelhiveryReverseStatus(

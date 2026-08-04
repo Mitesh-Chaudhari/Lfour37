@@ -493,7 +493,11 @@ export async function syncDelhiveryShipment(
         new Date(a.occurredAt || 0).getTime()
       )
     })[0]
-  const milestone = getTrackingMilestone(tracking.currentStatus)
+  const milestone = getTrackingMilestone(
+    tracking.currentStatus,
+    tracking.statusType,
+    tracking.instructions
+  )
 
   if (tracking.events.length) {
     const rows = tracking.events.map((event) => ({
@@ -535,7 +539,9 @@ export async function syncDelhiveryShipment(
   if (shipmentError) throw shipmentError
 
   const mappedOrderStatus = mapDelhiveryStatusToOrderStatus(
-    tracking.currentStatus
+    tracking.currentStatus,
+    tracking.statusType,
+    tracking.instructions
   )
 
   const { data: order } = await supabase
@@ -616,6 +622,8 @@ export async function syncDelhiveryShipment(
     orderId: shipment.order_id,
     awb: shipment.awb,
     status: tracking.currentStatus,
+    statusType: tracking.statusType,
+    milestone,
   })
 
   const { data: updatedOrder } = await supabase
