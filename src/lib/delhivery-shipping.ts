@@ -946,9 +946,16 @@ export async function createDelhiveryReversePickupForItem(
 
   const returnReason =
     item.return_custom_reason ||
-    (item.return_reason_id ? 'Return approved' : 'Customer return')
+    (item.return_reason_id
+      ? pickupType === 'exchange'
+        ? 'Exchange approved'
+        : 'Return approved'
+      : pickupType === 'exchange'
+        ? 'Customer exchange'
+        : 'Customer return')
 
   try {
+    // Same reverse + QC path for return and exchange; exchange then adds a forward AWB.
     const reverseResponse = await createReversePickup({
       order: order as DelhiveryOrder,
       item: {

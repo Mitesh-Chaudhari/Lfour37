@@ -4,9 +4,10 @@ import { AdminOrdersTable } from '@/components/admin/orders-table'
 async function getOrders() {
   const supabase = await createClient()
 
-  const { data } = await supabase
-    .from('orders')
-    .select(`
+  const [{ data }, { data: returnReasons }] = await Promise.all([
+    supabase
+      .from('orders')
+      .select(`
       *,
       
       user:users(
@@ -27,7 +28,10 @@ async function getOrders() {
         exchange_size,
         exchange_color,
         return_custom_reason,
+        return_reason_id,
         return_requested_at,
+        seal_tag_image_url,
+        bank_account,
 
         product_name,
         quantity,
@@ -70,11 +74,25 @@ async function getOrders() {
         error_message
       )
     `)
-    .order('created_at', {
-      ascending: false,
-    })
+      .order('created_at', {
+        ascending: false,
+      }),
+    supabase.from('return_reasons').select('id, label'),
+  ])
 
-  return data || []
+  const reasonById = new Map(
+    (returnReasons || []).map((reason) => [reason.id, reason.label])
+  )
+
+  return (data || []).map((order) => ({
+    ...order,
+    items: (order.items || []).map((item: { return_reason_id?: string | null }) => ({
+      ...item,
+      return_reason: item.return_reason_id
+        ? { id: item.return_reason_id, label: reasonById.get(item.return_reason_id) }
+        : null,
+    })),
+  }))
 }
 
 export default async function AdminOrdersPage() {

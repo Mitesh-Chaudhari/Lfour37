@@ -490,6 +490,127 @@ export async function sendOrderCancelledOwnerNotificationEmail(
   })
 }
 
+/** Notify store owner when a customer requests a return or exchange. */
+export async function sendReturnOrExchangeRequestedOwnerNotificationEmail(
+  order: Pick<
+    Order,
+    'id' | 'order_number' | 'total' | 'payment_method' | 'payment_status' | 'shipping_address'
+  >,
+  options: {
+    customerEmail?: string | null
+    requestType: 'return' | 'exchange'
+    item: {
+      product_name?: string | null
+      variant_size?: string | null
+      variant_color?: string | null
+      quantity?: number | null
+      exchange_size?: string | null
+      exchange_color?: string | null
+      refund_method?: string | null
+      seal_tag_image_url?: string | null
+      bank_account?: {
+        account_holder_name?: string | null
+        bank_name?: string | null
+        account_number?: string | null
+        ifsc?: string | null
+      } | null
+    }
+    reason?: string | null
+  }
+): Promise<void> {
+  const { customerEmail, requestType, item, reason } = options
+  const isExchange = requestType === 'exchange'
+  const label = isExchange ? 'Exchange' : 'Return'
+
+  const addr = order.shipping_address as Order['shipping_address'] & {
+    phone?: string
+  }
+
+  const itemLine = `${item.product_name || 'Item'}${
+    item.variant_size
+      ? ` (${item.variant_size}${
+          item.variant_color ? ` / ${item.variant_color}` : ''
+        })`
+      : ''
+  }${item.quantity ? ` × ${item.quantity}` : ''}`
+
+  const exchangeLine =
+    isExchange && (item.exchange_size || item.exchange_color)
+      ? `${item.exchange_size || ''}${
+          item.exchange_size && item.exchange_color ? ' / ' : ''
+        }${item.exchange_color || ''}`
+      : null
+
+  const bank = item.bank_account
+  const bankHtml =
+    !isExchange && item.refund_method === 'bank' && bank
+      ? `
+        <h3>Refund bank account</h3>
+        <p>
+          ${bank.account_holder_name ? `${bank.account_holder_name}<br>` : ''}
+          ${bank.bank_name || ''}<br>
+          A/C: ${bank.account_number || ''}<br>
+          IFSC: ${bank.ifsc || ''}
+        </p>
+      `
+      : ''
+
+  const content = `
+    <h2>${label} Requested</h2>
+    <p>A customer has requested a ${label.toLowerCase()} on ${APP_NAME}.</p>
+
+    <p><strong>Order Number:</strong> ${order.order_number}</p>
+    <p><strong>Order ID:</strong> ${order.id}</p>
+    <p><strong>Requested at:</strong> ${new Date().toLocaleString('en-IN')}</p>
+    <p><strong>Type:</strong> ${label}</p>
+    <p><strong>Item:</strong> ${itemLine}</p>
+    ${
+      exchangeLine
+        ? `<p><strong>Exchange for:</strong> ${exchangeLine}</p>`
+        : ''
+    }
+    ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+    ${
+      !isExchange && item.refund_method
+        ? `<p><strong>Refund method:</strong> ${item.refund_method}</p>`
+        : ''
+    }
+    ${
+      item.seal_tag_image_url
+        ? `<p><strong>Seal tag photo:</strong> <a href="${item.seal_tag_image_url}">View image</a></p>
+           <p><img src="${item.seal_tag_image_url}" alt="Seal tag" style="max-width:280px;border-radius:8px;border:1px solid #eee;" /></p>`
+        : '<p><strong>Seal tag photo:</strong> Not provided</p>'
+    }
+    <p><strong>Payment:</strong> ${order.payment_method?.toUpperCase() || 'N/A'} · ${order.payment_status}</p>
+    <p><strong>Order total:</strong> ${formatEmailInr(order.total)}</p>
+
+    ${bankHtml}
+
+    <h3>Customer</h3>
+    <p>
+      ${addr?.full_name || 'Customer'}<br>
+      ${addr?.phone ? `Phone: ${addr.phone}<br>` : ''}
+      ${customerEmail ? `Email: ${customerEmail}` : ''}
+    </p>
+
+    <a href="${APP_URL}/admin/orders" class="button">Review in Admin</a>
+  `
+
+  logger.info('Preparing owner return/exchange notification', {
+    orderId: order.id,
+    orderNumber: order.order_number,
+    recipient: ORDER_NOTIFICATION_EMAIL,
+    requestType,
+  })
+
+  await deliverMail({
+    to: ORDER_NOTIFICATION_EMAIL,
+    subject: `${label} Requested - ${order.order_number}`,
+    html: baseTemplate(content),
+    context: 'return_exchange_requested_owner',
+  })
+}
+
 export async function sendOrderStatusEmail(
   order: Order,
   email: string,

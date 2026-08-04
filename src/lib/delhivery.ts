@@ -797,22 +797,64 @@ export async function cancelShipment(awb: string): Promise<unknown> {
   })
 }
 
+/**
+ * Used for both return and exchange reverse pickups.
+ * Delhivery expects `qc` as a single object (not an array). Passing a list
+ * triggers their internal crash: "'list' object has no attribute 'get'".
+ * `images` must be a comma-separated URL string when present.
+ */
 function buildReverseQcPayload(item: DelhiveryReversePickupItem) {
   const variant = [item.variant_size, item.variant_color]
     .filter(Boolean)
     .join(', ')
+  const description = variant || item.product_name
+  const imageUrl =
+    typeof item.product_image === 'string' ? item.product_image.trim() : ''
 
-  return {
+  const qc: Record<string, string> = {
     item: item.product_name,
-    description: variant || item.product_name,
-    images: item.product_image || '',
+    descr: description,
+    description,
     brand: process.env.DELHIVERY_SELLER_NAME || 'LFour37',
     product_category: 'Apparel',
     quantity: String(item.quantity),
     return_reason: item.return_reason || 'Customer return',
   }
+
+  if (item.variant_size) qc.size = item.variant_size
+  if (item.variant_color) qc.color = item.variant_color
+  if (imageUrl) qc.images = imageUrl
+
+  return qc
 }
 
+function isDelhiveryQcShapeError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '')
+  return (
+    message.includes("has no attribute 'get'") ||
+    message.includes('has no attribute "get"')
+  )
+}
+
+async function postCmuCreate(shipmentData: {
+  shipments: Record<string, unknown>[]
+  pickup_location: { name: string }
+}): Promise<unknown> {
+  const body = new URLSearchParams({
+    format: 'json',
+    data: JSON.stringify(shipmentData),
+  })
+
+  return delhiveryRequest('/api/cmu/create.json', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body,
+  })
+}
+
+/** Reverse pickup for returns and exchanges (payment_mode Pickup + optional QC). */
 export async function createReversePickup({
   order,
   item,
@@ -830,6 +872,7 @@ export async function createReversePickup({
     .filter(Boolean)
     .join(', ')
 
+  // Applies to return + exchange reverse legs (not the exchange forward shipment).
   const qcEnabled = process.env.DELHIVERY_RETURN_QC_ENABLED !== 'false'
 
   const shipment: Record<string, unknown> = {
@@ -855,6 +898,7 @@ export async function createReversePickup({
     seller_name: requiredEnv('DELHIVERY_SELLER_NAME'),
     seller_add: requiredEnv('DELHIVERY_SELLER_ADDRESS'),
     seller_inv: reference,
+    seller_gst_tin: process.env.DELHIVERY_SELLER_GSTIN || '',
     return_name:
       process.env.DELHIVERY_RETURN_NAME || requiredEnv('DELHIVERY_SELLER_NAME'),
     return_add:
@@ -863,32 +907,48 @@ export async function createReversePickup({
     return_city: requiredEnv('DELHIVERY_RETURN_CITY'),
     return_state: requiredEnv('DELHIVERY_RETURN_STATE'),
     return_country: 'India',
-    return_phone: requiredEnv('DELHIVERY_RETURN_PHONE'),
-    return_pin: requiredEnv('DELHIVERY_RETURN_PIN'),
+    return_phone: normalizeIndianPhone(requiredEnv('DELHIVERY_RETURN_PHONE')),
+    return_pin: normalizeIndianPin(requiredEnv('DELHIVERY_RETURN_PIN')),
   }
+
+  const pickupLocation = { name: pickupName }
 
   if (qcEnabled) {
-    shipment.qc = [buildReverseQcPayload(item)]
+    const withQcResponse = await postCmuCreate({
+      shipments: [
+        {
+          ...shipment,
+          // Must be an object — Delhivery crashes on qc as a list
+          qc: buildReverseQcPayload(item),
+        },
+      ],
+      pickup_location: pickupLocation,
+    })
+
+    const withQcData = withQcResponse as DelhiveryCreateResponse
+    const withQcError =
+      withQcData?.packages?.[0]?.remarks?.join(', ') ||
+      withQcData?.rmk ||
+      withQcData?.remark ||
+      (typeof withQcData?.error === 'string' ? withQcData.error : '') ||
+      ''
+
+    if (
+      withQcData?.success !== false ||
+      !isDelhiveryQcShapeError(withQcError)
+    ) {
+      return withQcResponse
+    }
+
+    logger.warn(
+      'Delhivery reverse QC payload rejected; retrying without QC',
+      { reference, error: withQcError }
+    )
   }
 
-  const shipmentData = {
+  return postCmuCreate({
     shipments: [shipment],
-    pickup_location: {
-      name: pickupName,
-    },
-  }
-
-  const body = new URLSearchParams({
-    format: 'json',
-    data: JSON.stringify(shipmentData),
-  })
-
-  return delhiveryRequest('/api/cmu/create.json', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body,
+    pickup_location: pickupLocation,
   })
 }
 

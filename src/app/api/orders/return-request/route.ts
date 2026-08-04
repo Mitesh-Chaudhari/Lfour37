@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { notifyReturnOrExchangeRequested } from '@/lib/whatsapp/order-notifications'
+import { sendReturnOrExchangeRequestedOwnerNotificationEmail } from '@/lib/email'
 import logger from '@/lib/logger'
 import { isWithinReturnWindow } from '@/lib/returns'
 
@@ -30,6 +31,7 @@ export async function POST(req: NextRequest) {
             bank_account,
             exchange_size,
             exchange_color,
+            seal_tag_image_url,
         } = body
 
         // VALIDATE
@@ -43,6 +45,21 @@ export async function POST(req: NextRequest) {
         if (!['return', 'exchange'].includes(return_type)) {
             return NextResponse.json(
                 { error: 'Invalid request type' },
+                { status: 400 }
+            )
+        }
+
+        const sealTagUrl =
+            typeof seal_tag_image_url === 'string'
+                ? seal_tag_image_url.trim()
+                : ''
+
+        if (!sealTagUrl || !/^https?:\/\//i.test(sealTagUrl)) {
+            return NextResponse.json(
+                {
+                    error:
+                        'Upload a clear photo of the product with the seal tag intact',
+                },
                 { status: 400 }
             )
         }
@@ -193,7 +210,15 @@ export async function POST(req: NextRequest) {
                     )
                 }
 
-                finalBankAccount = bank_account
+                finalBankAccount = {
+                    account_holder_name:
+                        bank_account.account_holder_name?.trim() || null,
+                    bank_name: String(bank_account.bank_name).trim(),
+                    account_number: String(bank_account.account_number).trim(),
+                    ifsc: String(bank_account.ifsc).trim().toUpperCase(),
+                    user_bank_account_id:
+                        bank_account.user_bank_account_id || null,
+                }
             }
 
             finalRefundMethod = refund_method
@@ -226,6 +251,8 @@ export async function POST(req: NextRequest) {
                 exchange_color:
                     finalExchangeColor,
 
+                seal_tag_image_url: sealTagUrl,
+
                 return_requested_at:
                     new Date().toISOString(),
             })
@@ -240,7 +267,7 @@ export async function POST(req: NextRequest) {
             )
         }
 
-        // SEND RETURN MESSAGE
+        // SEND RETURN MESSAGE + OWNER EMAIL
         try {
             const { data: itemDetails } =
                 await supabase
@@ -248,7 +275,11 @@ export async function POST(req: NextRequest) {
                     .select(`
             *,
             orders (
+            id,
             order_number,
+            total,
+            payment_method,
+            payment_status,
             shipping_address,
             user_id
             )
@@ -258,8 +289,12 @@ export async function POST(req: NextRequest) {
 
             const orderData = (itemDetails as {
               orders?: {
+                id?: string
                 order_number?: string
-                shipping_address?: { phone?: string }
+                total?: number
+                payment_method?: string
+                payment_status?: string
+                shipping_address?: { phone?: string; full_name?: string }
                 user_id?: string
               }
               product_name?: string
@@ -267,9 +302,74 @@ export async function POST(req: NextRequest) {
               variant_color?: string | null
               quantity?: number
               order_id?: string
+              exchange_size?: string | null
+              exchange_color?: string | null
+              refund_method?: string | null
+              return_reason_id?: string | null
+              return_custom_reason?: string | null
+              seal_tag_image_url?: string | null
+              bank_account?: {
+                account_holder_name?: string | null
+                bank_name?: string | null
+                account_number?: string | null
+                ifsc?: string | null
+              } | null
             })?.orders
 
             if (itemDetails && orderData) {
+              let reasonLabel: string | null =
+                itemDetails.return_custom_reason || null
+              if (!reasonLabel && itemDetails.return_reason_id) {
+                const { data: reasonRow } = await supabase
+                  .from('return_reasons')
+                  .select('label')
+                  .eq('id', itemDetails.return_reason_id)
+                  .maybeSingle()
+                reasonLabel = reasonRow?.label || null
+              }
+
+              const { data: orderUser } = orderData.user_id
+                ? await supabase
+                    .from('users')
+                    .select('email')
+                    .eq('id', orderData.user_id)
+                    .maybeSingle()
+                : { data: null }
+
+              sendReturnOrExchangeRequestedOwnerNotificationEmail(
+                {
+                  id: orderData.id || itemDetails.order_id || '',
+                  order_number: orderData.order_number || '',
+                  total: Number(orderData.total || 0),
+                  payment_method: orderData.payment_method || '',
+                  payment_status: orderData.payment_status || '',
+                  shipping_address: (orderData.shipping_address ||
+                    {}) as never,
+                },
+                {
+                  customerEmail: orderUser?.email || user.email || null,
+                  requestType:
+                    return_type === 'exchange' ? 'exchange' : 'return',
+                  item: {
+                    product_name: itemDetails.product_name,
+                    variant_size: itemDetails.variant_size,
+                    variant_color: itemDetails.variant_color,
+                    quantity: itemDetails.quantity,
+                    exchange_size: itemDetails.exchange_size,
+                    exchange_color: itemDetails.exchange_color,
+                    refund_method: itemDetails.refund_method,
+                    seal_tag_image_url: itemDetails.seal_tag_image_url,
+                    bank_account: itemDetails.bank_account,
+                  },
+                  reason: reasonLabel,
+                }
+              ).catch((err) =>
+                logger.error('Owner return/exchange notification failed', {
+                  err,
+                  orderItemId: order_item_id,
+                })
+              )
+
               await notifyReturnOrExchangeRequested({
                 order: {
                   id: itemDetails.order_id,
@@ -290,7 +390,7 @@ export async function POST(req: NextRequest) {
 
         } catch (err) {
             logger.error(
-                'Return WhatsApp Failed',
+                'Return notification failed',
                 err
             )
         }

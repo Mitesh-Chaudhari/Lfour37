@@ -47,6 +47,14 @@ type AdminOrderItem = OrderItem & {
   exchange_size?: string | null
   exchange_color?: string | null
   return_custom_reason?: string | null
+  seal_tag_image_url?: string | null
+  bank_account?: {
+    account_holder_name?: string | null
+    bank_name?: string | null
+    account_number?: string | null
+    ifsc?: string | null
+  } | null
+  return_reason?: { id?: string; label?: string } | null
   cancel_custom_reason?: string | null
   cancel_reason?: { label?: string } | null
   variant?: { sku?: string | null } | null
@@ -1040,7 +1048,9 @@ const markDelivered =
                               Refund to:{' '}
                               {item.refund_method === 'bank'
                                 ? 'Bank account'
-                                : 'Original payment source'}
+                                : item.refund_method === 'store_credit'
+                                  ? 'Store credit'
+                                  : 'Original payment source'}
                             </p>
                           )}
 
@@ -1109,8 +1119,17 @@ const markDelivered =
 
                                 <p>
                                   Type:{' '}
-                                  <span className="font-medium">
+                                  <span className="font-medium capitalize">
                                     {item.return_type}
+                                  </span>
+                                </p>
+
+                                <p>
+                                  Reason:{' '}
+                                  <span className="font-medium">
+                                    {item.return_reason?.label ||
+                                      item.return_custom_reason ||
+                                      '—'}
                                   </span>
                                 </p>
 
@@ -1128,11 +1147,57 @@ const markDelivered =
                                   </p>
                                 )}
 
-                                {item.return_custom_reason && (
-                                  <p>
-                                    Reason:{' '}
-                                    {item.return_custom_reason}
-                                  </p>
+                                {item.refund_method === 'bank' &&
+                                  item.bank_account && (
+                                    <div className="mt-2 rounded-lg border bg-gray-50 p-2 space-y-0.5">
+                                      <p className="font-medium text-gray-800">
+                                        Refund bank account
+                                      </p>
+                                      {item.bank_account.account_holder_name && (
+                                        <p>
+                                          Holder:{' '}
+                                          {item.bank_account.account_holder_name}
+                                        </p>
+                                      )}
+                                      {item.bank_account.bank_name && (
+                                        <p>
+                                          Bank: {item.bank_account.bank_name}
+                                        </p>
+                                      )}
+                                      {item.bank_account.account_number && (
+                                        <p>
+                                          A/C:{' '}
+                                          {item.bank_account.account_number}
+                                        </p>
+                                      )}
+                                      {item.bank_account.ifsc && (
+                                        <p>IFSC: {item.bank_account.ifsc}</p>
+                                      )}
+                                    </div>
+                                  )}
+
+                                {item.seal_tag_image_url && (
+                                  <div className="mt-2 space-y-1">
+                                    <p className="font-medium text-gray-800">
+                                      Seal tag photo
+                                    </p>
+                                    <a
+                                      href={item.seal_tag_image_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="block"
+                                    >
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img
+                                        src={item.seal_tag_image_url}
+                                        alt="Seal tag with product"
+                                        className="h-28 w-auto max-w-full rounded-lg border object-cover"
+                                      />
+                                    </a>
+                                    <p className="text-[10px] text-gray-400">
+                                      Click to open full size
+                                    </p>
+                                  </div>
                                 )}
 
                                 {(() => {
