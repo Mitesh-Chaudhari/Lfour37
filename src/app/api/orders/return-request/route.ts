@@ -341,10 +341,9 @@ export async function POST(req: NextRequest) {
                   id: orderData.id || itemDetails.order_id || '',
                   order_number: orderData.order_number || '',
                   total: Number(orderData.total || 0),
-                  payment_method: orderData.payment_method || '',
-                  payment_status: orderData.payment_status || '',
-                  shipping_address: (orderData.shipping_address ||
-                    {}) as never,
+                  payment_method: orderData.payment_method || null,
+                  payment_status: orderData.payment_status || null,
+                  shipping_address: orderData.shipping_address || null,
                 },
                 {
                   customerEmail: orderUser?.email || user.email || null,

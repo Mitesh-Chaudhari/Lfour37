@@ -492,10 +492,14 @@ export async function sendOrderCancelledOwnerNotificationEmail(
 
 /** Notify store owner when a customer requests a return or exchange. */
 export async function sendReturnOrExchangeRequestedOwnerNotificationEmail(
-  order: Pick<
-    Order,
-    'id' | 'order_number' | 'total' | 'payment_method' | 'payment_status' | 'shipping_address'
-  >,
+  order: {
+    id: string
+    order_number: string
+    total: number
+    payment_method?: string | null
+    payment_status?: string | null
+    shipping_address?: Order['shipping_address'] | null
+  },
   options: {
     customerEmail?: string | null
     requestType: 'return' | 'exchange'
@@ -522,7 +526,7 @@ export async function sendReturnOrExchangeRequestedOwnerNotificationEmail(
   const isExchange = requestType === 'exchange'
   const label = isExchange ? 'Exchange' : 'Return'
 
-  const addr = order.shipping_address as Order['shipping_address'] & {
+  const addr = (order.shipping_address || {}) as Order['shipping_address'] & {
     phone?: string
   }
 
@@ -581,7 +585,7 @@ export async function sendReturnOrExchangeRequestedOwnerNotificationEmail(
            <p><img src="${item.seal_tag_image_url}" alt="Seal tag" style="max-width:280px;border-radius:8px;border:1px solid #eee;" /></p>`
         : '<p><strong>Seal tag photo:</strong> Not provided</p>'
     }
-    <p><strong>Payment:</strong> ${order.payment_method?.toUpperCase() || 'N/A'} · ${order.payment_status}</p>
+    <p><strong>Payment:</strong> ${order.payment_method?.toUpperCase() || 'N/A'} · ${order.payment_status || 'N/A'}</p>
     <p><strong>Order total:</strong> ${formatEmailInr(order.total)}</p>
 
     ${bankHtml}
