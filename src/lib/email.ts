@@ -498,7 +498,16 @@ export async function sendReturnOrExchangeRequestedOwnerNotificationEmail(
     total: number
     payment_method?: string | null
     payment_status?: string | null
-    shipping_address?: Order['shipping_address'] | null
+    shipping_address?: {
+      full_name?: string | null
+      phone?: string | null
+      address_line1?: string | null
+      address_line2?: string | null
+      city?: string | null
+      state?: string | null
+      postal_code?: string | null
+      country?: string | null
+    } | null
   },
   options: {
     customerEmail?: string | null
@@ -526,9 +535,7 @@ export async function sendReturnOrExchangeRequestedOwnerNotificationEmail(
   const isExchange = requestType === 'exchange'
   const label = isExchange ? 'Exchange' : 'Return'
 
-  const addr = (order.shipping_address || {}) as Order['shipping_address'] & {
-    phone?: string
-  }
+  const addr = order.shipping_address || {}
 
   const itemLine = `${item.product_name || 'Item'}${
     item.variant_size
