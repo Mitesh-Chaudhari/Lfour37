@@ -1,100 +1,86 @@
-import {
-  NextRequest,
-  NextResponse,
-} from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
+import logger from '@/lib/logger'
 
-import { createClient }
-from '@/lib/supabase/server'
-
-export async function POST(
-  req: NextRequest
-) {
+export async function POST(req: NextRequest) {
   try {
-    const supabase =
-      await createClient()
+    const supabase = await createClient()
+    const admin = createAdminClient()
 
-    const { item_id } =
-      await req.json()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { data: profile } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (!profile || !['admin', 'super_admin'].includes(profile.role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const { item_id } = await req.json()
 
     if (!item_id) {
       return NextResponse.json(
-        {
-          error:
-            'Item ID is required',
-        },
+        { error: 'Item ID is required' },
         { status: 400 }
       )
     }
 
-    // GET ITEM
-
-    const {
-      data: item,
-      error: itemError,
-    } = await supabase
+    const { data: item, error: itemError } = await admin
       .from('order_items')
       .select(`
         id,
-        order_id
+        order_id,
+        return_status
       `)
       .eq('id', item_id)
       .single()
 
     if (itemError || !item) {
-      return NextResponse.json(
-        {
-          error:
-            'Item not found',
-        },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: 'Item not found' }, { status: 404 })
     }
 
-    // UPDATE ORDER ITEM
-
-    const {
-      error: updateError,
-    } = await supabase
+    const { data: updatedItem, error: updateError } = await admin
       .from('order_items')
       .update({
-        return_status:
-          'return_rejected',
-
-        // revert back
+        return_status: 'return_rejected',
         status: 'delivered',
       })
       .eq('id', item_id)
+      .select('id, return_status')
+      .single()
 
-    if (updateError) {
+    if (updateError || !updatedItem) {
+      logger.error('Reject return item update failed', {
+        error: updateError,
+        itemId: item_id,
+      })
       return NextResponse.json(
-        {
-          error:
-            updateError.message,
-        },
+        { error: updateError?.message || 'Failed to reject return' },
         { status: 500 }
       )
     }
 
-    // UPDATE PARENT ORDER
-
-    await supabase
+    await admin
       .from('orders')
       .update({
         status: 'delivered',
       })
       .eq('id', item.order_id)
 
-    return NextResponse.json({
-      success: true,
-    })
+    return NextResponse.json({ success: true })
   } catch (err) {
-    console.error(err)
-
+    logger.error('Reject return failed', { err })
     return NextResponse.json(
-      {
-        error:
-          'Something went wrong',
-      },
+      { error: 'Something went wrong' },
       { status: 500 }
     )
   }

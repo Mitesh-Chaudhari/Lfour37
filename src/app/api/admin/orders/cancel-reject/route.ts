@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
+    const admin = createAdminClient()
     const {
       data: { user },
     } = await supabase.auth.getUser()
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Item ID is required' }, { status: 400 })
     }
 
-    const { data: item, error: itemError } = await supabase
+    const { data: item, error: itemError } = await admin
       .from('order_items')
       .select('id, order_id, status')
       .eq('id', item_id)
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Item not found' }, { status: 404 })
     }
 
-    const { error: updateError } = await supabase
+    const { data: updatedItem, error: updateError } = await admin
       .from('order_items')
       .update({
         status: 'active',
@@ -46,9 +47,14 @@ export async function POST(req: NextRequest) {
         cancelled_at: null,
       })
       .eq('id', item_id)
+      .select('id, status')
+      .single()
 
-    if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 })
+    if (updateError || !updatedItem) {
+      return NextResponse.json(
+        { error: updateError?.message || 'Failed to reject cancellation' },
+        { status: 500 }
+      )
     }
 
     return NextResponse.json({ success: true })

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { createDelhiveryReversePickupForItem } from '@/lib/delhivery-shipping'
 import logger from '@/lib/logger'
 import { getOrderFulfillmentStatus } from '@/lib/order-status'
@@ -7,6 +7,7 @@ import { getOrderFulfillmentStatus } from '@/lib/order-status'
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
+    const admin = createAdminClient()
 
     const {
       data: { user },
@@ -35,7 +36,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { data: item, error: itemError } = await supabase
+    // Use service role so updates are not blocked by customer-only RLS.
+    const { data: item, error: itemError } = await admin
       .from('order_items')
       .select(`
         id,
@@ -50,9 +52,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Item not found' }, { status: 404 })
     }
 
-    if (item.return_status !== 'return_requested') {
+    if (
+      item.return_status !== 'return_requested' &&
+      item.return_status !== 'return_approved'
+    ) {
       return NextResponse.json(
-        { error: 'Only pending return or exchange requests can be approved' },
+        { error: 'Only pending or already-approved return/exchange requests can be processed' },
         { status: 400 }
       )
     }
@@ -72,7 +77,9 @@ export async function POST(req: NextRequest) {
     const isExchange = item.return_type === 'exchange'
     const nextStatus = isExchange ? 'exchange_initiated' : 'return_initiated'
 
-    const { error } = await supabase
+    // Always persist approval even when reverse AWB already existed from a
+    // previous attempt (Delhivery succeeded, item status update had failed).
+    const { data: updatedItem, error } = await admin
       .from('order_items')
       .update({
         return_status: 'return_approved',
@@ -80,24 +87,37 @@ export async function POST(req: NextRequest) {
         return_approved_at: new Date().toISOString(),
       })
       .eq('id', item_id)
+      .select('id, return_status, status')
+      .single()
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error || !updatedItem) {
+      logger.error('Approve return item update failed', {
+        error,
+        itemId: item_id,
+      })
+      return NextResponse.json(
+        {
+          error:
+            error?.message ||
+            'Failed to update return status. Reverse pickup may already exist — retry approve.',
+        },
+        { status: 500 }
+      )
     }
 
-    const { data: order } = await supabase
+    const { data: order } = await admin
       .from('orders')
       .select('status, shipped_at, delivered_at, tracking_number, payment_status')
       .eq('id', item.order_id)
       .single()
 
-    const { data: orderItems } = await supabase
+    const { data: orderItems } = await admin
       .from('order_items')
       .select('status, return_status')
       .eq('order_id', item.order_id)
 
     if (order && orderItems) {
-      await supabase
+      await admin
         .from('orders')
         .update({
           status: getOrderFulfillmentStatus(order, orderItems),

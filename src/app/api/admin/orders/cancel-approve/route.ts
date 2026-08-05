@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { cancelDelhiveryShipmentForOrder, type DelhiveryCancelResult } from '@/lib/delhivery-shipping'
 import { processItemRefund } from '@/lib/refunds'
 import {
@@ -13,6 +13,7 @@ import { areAllOrderItemsCancelled } from '@/lib/order-status'
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
+    const admin = createAdminClient()
     const {
       data: { user },
     } = await supabase.auth.getUser()
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Item ID is required' }, { status: 400 })
     }
 
-    const { data: item, error: itemError } = await supabase
+    const { data: item, error: itemError } = await admin
       .from('order_items')
       .select('id, order_id, variant_id, quantity, status')
       .eq('id', item_id)
@@ -53,20 +54,25 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { error: updateError } = await supabase
+    const { data: updatedItem, error: updateError } = await admin
       .from('order_items')
       .update({
         status: 'cancelled',
         cancelled_at: new Date().toISOString(),
       })
       .eq('id', item_id)
+      .select('id, status')
+      .single()
 
-    if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 })
+    if (updateError || !updatedItem) {
+      return NextResponse.json(
+        { error: updateError?.message || 'Failed to cancel item' },
+        { status: 500 }
+      )
     }
 
     if (item.variant_id) {
-      const { error: stockError } = await supabase.rpc('restore_variant_stock', {
+      const { error: stockError } = await admin.rpc('restore_variant_stock', {
         variant_uuid: item.variant_id,
         qty: item.quantity,
       })
@@ -79,7 +85,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const { data: siblings } = await supabase
+    const { data: siblings } = await admin
       .from('order_items')
       .select('status')
       .eq('order_id', item.order_id)
@@ -100,7 +106,7 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      await supabase
+      await admin
         .from('orders')
         .update({
           status: 'cancelled',
@@ -109,7 +115,7 @@ export async function POST(req: NextRequest) {
         .eq('id', item.order_id)
     }
 
-    const { data: order } = await supabase
+    const { data: order } = await admin
       .from('orders')
       .select('payment_method, payment_status')
       .eq('id', item.order_id)
@@ -136,7 +142,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const { data: fullOrder } = await supabase
+    const { data: fullOrder } = await admin
       .from('orders')
       .select('*, user:users(email), items:order_items(*)')
       .eq('id', item.order_id)
@@ -150,7 +156,6 @@ export async function POST(req: NextRequest) {
         fullOrder.items?.find((orderItem: { id: string }) => orderItem.id === item_id) ||
         fullOrder.items?.[0]
 
-      // Owner gets notified on every approved cancellation (full or partial)
       sendOrderCancelledOwnerNotificationEmail(fullOrder, {
         customerEmail: orderUser?.email || null,
         cancelledItem,
