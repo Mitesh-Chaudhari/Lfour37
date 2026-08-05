@@ -495,45 +495,46 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
         return
       }
 
-      setOrders(
-        orders.map((order) => ({
-          ...order,
-          status:
-            order.items?.find((item) => item.id === itemId)?.return_type ===
-            'exchange'
-              ? 'exchange_initiated'
-              : 'return_initiated',
-          items: order.items?.map(
-            (item: AdminOrderItem) =>
+      setOrders((current) =>
+        current.map((order) => {
+          const hasItem = order.items?.some((item) => item.id === itemId)
+          if (!hasItem) return order
+
+          const targetItem = order.items?.find((item) => item.id === itemId)
+          const isExchange = targetItem?.return_type === 'exchange'
+
+          return {
+            ...order,
+            // Keep order-level fulfillment status (e.g. delivered).
+            // Return/exchange state lives on the item + reverse pickup.
+            items: order.items?.map((item: AdminOrderItem) =>
               item.id === itemId
                 ? {
-                  ...item,
-                  return_status: 'return_approved',
-                  status:
-                    item.return_type === 'exchange'
+                    ...item,
+                    return_status: 'return_approved',
+                    status: isExchange
                       ? 'exchange_initiated'
                       : 'return_initiated',
-                }
+                  }
                 : item
-          ),
-          delhivery_reverse_pickups: [
-            ...(Array.isArray(order.delhivery_reverse_pickups)
-              ? order.delhivery_reverse_pickups
-              : order.delhivery_reverse_pickups
-                ? [order.delhivery_reverse_pickups]
-                : []),
-            {
-              order_item_id: itemId,
-              pickup_type:
-                order.items?.find((entry) => entry.id === itemId)?.return_type ||
-                'return',
-              awb: data.delhivery?.reverseAwb || null,
-              exchange_forward_awb:
-                data.delhivery?.exchangeForwardAwb || null,
-              status: 'Scheduled',
-            },
-          ],
-        }))
+            ),
+            delhivery_reverse_pickups: [
+              ...(Array.isArray(order.delhivery_reverse_pickups)
+                ? order.delhivery_reverse_pickups
+                : order.delhivery_reverse_pickups
+                  ? [order.delhivery_reverse_pickups]
+                  : []),
+              {
+                order_item_id: itemId,
+                pickup_type: isExchange ? 'exchange' : 'return',
+                awb: data.delhivery?.reverseAwb || null,
+                exchange_forward_awb:
+                  data.delhivery?.exchangeForwardAwb || null,
+                status: 'Scheduled',
+              },
+            ],
+          }
+        })
       )
 
       const reverseAwb = data.delhivery?.reverseAwb
@@ -580,20 +581,23 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
         return
       }
 
-      setOrders(
-        orders.map((order) => ({
-          ...order,
-          items: order.items?.map(
-            (item: AdminOrderItem) =>
+      setOrders((current) =>
+        current.map((order) => {
+          const hasItem = order.items?.some((item) => item.id === itemId)
+          if (!hasItem) return order
+
+          return {
+            ...order,
+            items: order.items?.map((item: AdminOrderItem) =>
               item.id === itemId
                 ? {
-                  ...item,
-                  return_status:
-                    'return_rejected',
-                }
+                    ...item,
+                    return_status: 'return_rejected',
+                  }
                 : item
-          ),
-        }))
+            ),
+          }
+        })
       )
 
       toast.success(
