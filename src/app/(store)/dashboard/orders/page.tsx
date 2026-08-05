@@ -107,6 +107,10 @@ export default async function OrdersPage() {
         variant_id,
         status,
         return_status,
+        return_type,
+        exchange_size,
+        exchange_color,
+        return_custom_reason,
         cancel_custom_reason,
         cancel_reason:cancel_reasons(label),
         cancelled_at,
@@ -121,8 +125,11 @@ export default async function OrdersPage() {
             id,
             size,
             color,
+            color_hex,
+            image_url,
             stock,
-            is_active
+            is_active,
+            sku
           )
         )
       ),
@@ -236,6 +243,9 @@ export default async function OrdersPage() {
                       total_price: number
                       status?: string
                       return_status?: string
+                      return_type?: string | null
+                      exchange_size?: string | null
+                      exchange_color?: string | null
                       cancel_custom_reason?: string | null
                       cancel_reason?: { label?: string } | null
                     }) => {
@@ -285,6 +295,17 @@ export default async function OrdersPage() {
                                 {item.variant_color && ` / ${item.variant_color}`}
                                 {' ×'}{item.quantity}
                               </p>
+
+                              {item.return_status === 'return_requested' &&
+                                item.return_type === 'exchange' &&
+                                (item.exchange_size || item.exchange_color) && (
+                                  <p className="text-xs text-[#8a6a1a] mt-1 font-medium">
+                                    Exchange for:{' '}
+                                    {[item.exchange_size, item.exchange_color]
+                                      .filter(Boolean)
+                                      .join(' / ')}
+                                  </p>
+                                )}
 
                               {isItemCancelledState && cancelReasonLabel && (
                                 <p className="text-xs text-gray-500 mt-1 line-clamp-1">

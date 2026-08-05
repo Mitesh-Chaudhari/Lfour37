@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { BlockingContainer } from '@/components/ui/blocking-container'
 import { createClient } from '@/lib/supabase/client'
+import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
 
 type ReturnModalMode = 'return' | 'exchange'
@@ -14,8 +15,11 @@ type ProductVariantOption = {
   id: string
   size: string | null
   color: string | null
+  color_hex?: string | null
+  image_url?: string | null
   stock: number | null
   is_active: boolean | null
+  sku?: string | null
 }
 
 type SavedBankAccount = {
@@ -64,34 +68,100 @@ export default function ReturnModal({
   const needsBankDetails =
     !isExchange && isCodOrder && refundMethod === 'bank'
 
-  const exchangeVariants = useMemo(() => {
-    const variants = (item.product?.variants || []) as ProductVariantOption[]
+  const allVariants = useMemo(() => {
+    return ((item.product?.variants || []) as ProductVariantOption[]).filter(
+      (variant) => variant.is_active !== false
+    )
+  }, [item.product?.variants])
 
-    return variants.filter((variant) => {
-      if (variant.is_active === false) return false
-      if (Number(variant.stock || 0) <= 0) return false
-      if (variant.id === item.variant_id) return false
-
-      return true
-    })
-  }, [item.product?.variants, item.variant_id])
-
-  const exchangeSizes = useMemo(() => {
-    return Array.from(
-      new Set(exchangeVariants.map((variant) => variant.size).filter(Boolean))
-    ) as string[]
-  }, [exchangeVariants])
+  const inStockVariants = useMemo(() => {
+    return allVariants.filter((variant) => Number(variant.stock || 0) > 0)
+  }, [allVariants])
 
   const exchangeColors = useMemo(() => {
     return Array.from(
       new Set(
-        exchangeVariants
-          .filter((variant) => !exchangeSize || variant.size === exchangeSize)
+        inStockVariants
           .map((variant) => variant.color)
-          .filter(Boolean)
+          .filter((color): color is string => Boolean(color))
       )
-    ) as string[]
-  }, [exchangeSize, exchangeVariants])
+    )
+  }, [inStockVariants])
+
+  const exchangeSizes = useMemo(() => {
+    return Array.from(
+      new Set(
+        inStockVariants
+          .map((variant) => variant.size)
+          .filter((size): size is string => Boolean(size))
+      )
+    )
+  }, [inStockVariants])
+
+  const colorHexByName = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const variant of allVariants) {
+      if (variant.color && variant.color_hex && !map.has(variant.color)) {
+        map.set(variant.color, variant.color_hex)
+      }
+    }
+    return map
+  }, [allVariants])
+
+  const getVariantStock = (size: string, color: string) => {
+    const match = allVariants.find(
+      (variant) => variant.size === size && variant.color === color
+    )
+    return Number(match?.stock || 0)
+  }
+
+  const isColorAvailable = (color: string) => {
+    return inStockVariants.some((variant) => {
+      if (variant.color !== color) return false
+      // Allow same color if another size is in stock
+      return !(
+        variant.size === item.variant_size &&
+        variant.color === item.variant_color
+      )
+    })
+  }
+
+  const isSizeAvailable = (size: string) => {
+    if (!exchangeColor) {
+      return inStockVariants.some((variant) => {
+        if (variant.size !== size) return false
+        return !(
+          variant.size === item.variant_size &&
+          variant.color === item.variant_color
+        )
+      })
+    }
+
+    const stock = getVariantStock(size, exchangeColor)
+    if (stock <= 0) return false
+    return !(size === item.variant_size && exchangeColor === item.variant_color)
+  }
+
+  const selectedExchangeVariant = useMemo(() => {
+    if (!exchangeSize || !exchangeColor) return null
+    return (
+      inStockVariants.find(
+        (variant) =>
+          variant.size === exchangeSize && variant.color === exchangeColor
+      ) || null
+    )
+  }, [exchangeColor, exchangeSize, inStockVariants])
+
+  const exchangePreviewImage =
+    selectedExchangeVariant?.image_url || item.product_image || null
+
+  const hasExchangeOptions = inStockVariants.some(
+    (variant) =>
+      !(
+        variant.size === item.variant_size &&
+        variant.color === item.variant_color
+      )
+  )
 
   useEffect(() => {
     loadReasons()
@@ -109,15 +179,47 @@ export default function ReturnModal({
   useEffect(() => {
     if (!isExchange) return
 
-    if (!exchangeSize && exchangeSizes[0]) {
-      setExchangeSize(exchangeSizes[0])
-      return
+    // Prefer keeping the delivered color when exchanging size only
+    if (
+      !exchangeColor &&
+      item.variant_color &&
+      inStockVariants.some(
+        (variant) =>
+          variant.color === item.variant_color &&
+          !(
+            variant.size === item.variant_size &&
+            variant.color === item.variant_color
+          )
+      )
+    ) {
+      setExchangeColor(item.variant_color)
     }
+  }, [
+    exchangeColor,
+    inStockVariants,
+    isExchange,
+    item.variant_color,
+    item.variant_size,
+  ])
 
-    if (exchangeSize && !exchangeColors.includes(exchangeColor)) {
-      setExchangeColor(exchangeColors[0] || '')
+  useEffect(() => {
+    if (!isExchange || !exchangeColor || !exchangeSize) return
+
+    const stock = getVariantStock(exchangeSize, exchangeColor)
+    const isSameAsDelivered =
+      exchangeSize === item.variant_size &&
+      exchangeColor === item.variant_color
+
+    if (stock <= 0 || isSameAsDelivered) {
+      setExchangeSize('')
     }
-  }, [exchangeColor, exchangeColors, exchangeSize, exchangeSizes, isExchange])
+  }, [
+    exchangeColor,
+    exchangeSize,
+    isExchange,
+    item.variant_color,
+    item.variant_size,
+  ])
 
   useEffect(() => {
     return () => {
@@ -288,6 +390,11 @@ export default function ReturnModal({
         toast.error('Select a different size or color for exchange')
         return
       }
+
+      if (!selectedExchangeVariant) {
+        toast.error('Selected size/color is not available for exchange')
+        return
+      }
     }
 
     const bankPayload = resolveBankPayload()
@@ -421,53 +528,168 @@ export default function ReturnModal({
         </div>
 
         {isExchange && (
-          <div className="space-y-3">
-            <p className="text-sm text-gray-600">
-              Select a different size or color for the same product.
-            </p>
+          <div className="space-y-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-900">
+                Select exchange size &amp; color
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Choose a different size and/or color of the same product. Out of
+                stock options are crossed out.
+              </p>
+            </div>
 
-            {exchangeVariants.length === 0 ? (
+            <div className="rounded-lg border bg-white p-3 text-xs text-gray-600 space-y-1">
+              <p className="font-medium text-gray-800">Currently delivered</p>
+              <p>
+                {[item.variant_size, item.variant_color]
+                  .filter(Boolean)
+                  .join(' / ') || '—'}
+              </p>
+            </div>
+
+            {!hasExchangeOptions ? (
               <p className="text-sm text-red-600">
                 No alternate size/color is currently available for exchange.
               </p>
             ) : (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-sm font-medium">New Size</label>
-                  <select
-                    className="w-full border rounded-lg p-2 mt-1"
-                    value={exchangeSize}
-                    onChange={(event) => {
-                      setExchangeSize(event.target.value)
-                      setExchangeColor('')
-                    }}
-                  >
-                    <option value="">Select size</option>
-                    {exchangeSizes.map((size) => (
-                      <option key={size} value={size}>
-                        {size}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <>
+                {exchangeColors.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-sm font-semibold text-gray-900">
+                        Color:
+                      </span>
+                      {exchangeColor && (
+                        <span className="text-sm text-gray-600">
+                          {exchangeColor}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {exchangeColors.map((color) => {
+                        const available = isColorAvailable(color)
+                        const hex = colorHexByName.get(color)
+                        return (
+                          <button
+                            key={color}
+                            type="button"
+                            disabled={!available || busy}
+                            onClick={() => {
+                              setExchangeColor(color)
+                              if (
+                                exchangeSize &&
+                                (getVariantStock(exchangeSize, color) <= 0 ||
+                                  (exchangeSize === item.variant_size &&
+                                    color === item.variant_color))
+                              ) {
+                                setExchangeSize('')
+                              }
+                            }}
+                            className={cn(
+                              'inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border-2 transition-all bg-white',
+                              exchangeColor === color
+                                ? 'border-[#c39c41] bg-[#c39c41]/10 text-gray-900'
+                                : available
+                                  ? 'border-gray-300 text-gray-700 hover:border-[#c39c41]/60'
+                                  : 'border-gray-200 text-gray-300 cursor-not-allowed opacity-60'
+                            )}
+                          >
+                            {hex && (
+                              <span
+                                className="h-4 w-4 rounded-full border border-black/10 shrink-0"
+                                style={{ backgroundColor: hex }}
+                              />
+                            )}
+                            {color}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
 
-                <div>
-                  <label className="text-sm font-medium">New Color</label>
-                  <select
-                    className="w-full border rounded-lg p-2 mt-1"
-                    value={exchangeColor}
-                    onChange={(event) => setExchangeColor(event.target.value)}
-                    disabled={!exchangeSize}
-                  >
-                    <option value="">Select color</option>
-                    {exchangeColors.map((color) => (
-                      <option key={color} value={color}>
-                        {color}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+                {exchangeSizes.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-sm font-semibold text-gray-900">
+                        Size:
+                      </span>
+                      {exchangeSize && (
+                        <span className="text-sm text-gray-600">
+                          {exchangeSize}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {exchangeSizes.map((size) => {
+                        const available = isSizeAvailable(size)
+                        return (
+                          <button
+                            key={size}
+                            type="button"
+                            disabled={!available || busy || !exchangeColor}
+                            onClick={() => setExchangeSize(size)}
+                            className={cn(
+                              'relative h-10 min-w-[44px] px-3 text-sm font-medium rounded-lg border-2 transition-all bg-white',
+                              exchangeSize === size
+                                ? 'border-[#c39c41] bg-[#c39c41]/10 text-gray-900'
+                                : available
+                                  ? 'border-gray-300 text-gray-700 hover:border-[#c39c41]/60'
+                                  : 'border-gray-200 text-gray-300 cursor-not-allowed opacity-60'
+                            )}
+                          >
+                            {size}
+                            {!available && (
+                              <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                                <span className="absolute h-px w-full bg-gray-300 rotate-45" />
+                              </span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {!exchangeColor && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        Select a color first to see available sizes.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {selectedExchangeVariant && (
+                  <div className="rounded-lg border border-[#c39c41]/40 bg-white p-3 flex gap-3">
+                    {exchangePreviewImage ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={exchangePreviewImage}
+                        alt="Exchange variant"
+                        className="h-16 w-16 rounded-md object-cover border bg-gray-50"
+                      />
+                    ) : (
+                      <div className="h-16 w-16 rounded-md bg-gray-100 border" />
+                    )}
+                    <div className="text-sm min-w-0">
+                      <p className="font-medium text-gray-900">
+                        You will receive
+                      </p>
+                      <p className="text-gray-700">
+                        {[exchangeSize, exchangeColor]
+                          .filter(Boolean)
+                          .join(' / ')}
+                      </p>
+                      {selectedExchangeVariant.sku && (
+                        <p className="text-xs text-gray-500 mt-0.5 font-mono">
+                          SKU: {selectedExchangeVariant.sku}
+                        </p>
+                      )}
+                      <p className="text-xs text-green-700 mt-1">
+                        In stock ({selectedExchangeVariant.stock})
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -640,7 +862,7 @@ export default function ReturnModal({
             disabled={
               busy ||
               loadingReasons ||
-              (isExchange && exchangeVariants.length === 0)
+              (isExchange && !hasExchangeOptions)
             }
           >
             Submit Request

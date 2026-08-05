@@ -1133,19 +1133,31 @@ const markDelivered =
                                   </span>
                                 </p>
 
-                                {item.exchange_size && (
-                                  <p>
-                                    Exchange Size:{' '}
-                                    {item.exchange_size}
-                                  </p>
-                                )}
-
-                                {item.exchange_color && (
-                                  <p>
-                                    Exchange Color:{' '}
-                                    {item.exchange_color}
-                                  </p>
-                                )}
+                                {item.exchange_size || item.exchange_color ? (
+                                  <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 space-y-1">
+                                    <p className="font-medium text-amber-900">
+                                      Exchange variant
+                                    </p>
+                                    <p>
+                                      <span className="text-gray-500">
+                                        Delivered:
+                                      </span>{' '}
+                                      {[item.variant_size, item.variant_color]
+                                        .filter(Boolean)
+                                        .join(' / ') || '—'}
+                                    </p>
+                                    <p>
+                                      <span className="text-gray-500">
+                                        Customer wants:
+                                      </span>{' '}
+                                      <span className="font-semibold text-gray-900">
+                                        {[item.exchange_size, item.exchange_color]
+                                          .filter(Boolean)
+                                          .join(' / ') || '—'}
+                                      </span>
+                                    </p>
+                                  </div>
+                                ) : null}
 
                                 {item.refund_method === 'bank' &&
                                   item.bank_account && (
@@ -1250,7 +1262,9 @@ const markDelivered =
                                       approveReturn(item.id)
                                     }
                                   >
-                                    Approve
+                                    {item.return_type === 'exchange'
+                                      ? 'Approve Exchange'
+                                      : 'Approve Return'}
                                   </Button>
 
                                   <Button
@@ -1261,7 +1275,9 @@ const markDelivered =
                                       rejectReturn(item.id)
                                     }
                                   >
-                                    Reject
+                                    {item.return_type === 'exchange'
+                                      ? 'Reject Exchange'
+                                      : 'Reject Return'}
                                   </Button>
                                 </div>
                               )}
