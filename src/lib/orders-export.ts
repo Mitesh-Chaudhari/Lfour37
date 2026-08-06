@@ -184,11 +184,18 @@ type ExportOrder = {
   cancelled_at?: string | null
   created_at?: string | null
   shipping_address?: unknown
-  user?: {
-    full_name?: string | null
-    email?: string | null
-    phone?: string | null
-  } | null
+  user?:
+    | {
+        full_name?: string | null
+        email?: string | null
+        phone?: string | null
+      }
+    | Array<{
+        full_name?: string | null
+        email?: string | null
+        phone?: string | null
+      }>
+    | null
   items?: Array<{
     id: string
     product_name?: string | null
@@ -240,6 +247,11 @@ type ExportOrder = {
     | null
 }
 
+function normalizeUser(user: ExportOrder['user']) {
+  if (!user) return null
+  return Array.isArray(user) ? user[0] || null : user
+}
+
 function getShipment(order: ExportOrder) {
   const shipment = order.delhivery_shipment
   if (Array.isArray(shipment)) return shipment[0] || null
@@ -257,6 +269,7 @@ export function ordersToExportRows(orders: ExportOrder[]): OrdersExportRow[] {
 
   for (const order of orders) {
     const addr = asAddress(order.shipping_address)
+    const user = normalizeUser(order.user)
     const shipment = getShipment(order)
     const reversePickups = getReversePickups(order)
     const items = order.items?.length ? order.items : [null]
@@ -275,9 +288,9 @@ export function ordersToExportRows(orders: ExportOrder[]): OrdersExportRow[] {
         'Order Status': order.status || '',
         'Payment Method': order.payment_method || '',
         'Payment Status': order.payment_status || '',
-        'Customer Name': order.user?.full_name || '',
-        'Customer Email': order.user?.email || '',
-        'Customer Phone': order.user?.phone || addr.phone || '',
+        'Customer Name': user?.full_name || '',
+        'Customer Email': user?.email || '',
+        'Customer Phone': user?.phone || addr.phone || '',
         'Shipping Name': addr.full_name || '',
         'Shipping Phone': addr.phone || '',
         'Address Line 1': addr.address_line1 || '',

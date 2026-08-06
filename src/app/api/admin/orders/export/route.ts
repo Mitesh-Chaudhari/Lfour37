@@ -156,9 +156,20 @@ export async function GET(request: NextRequest) {
 
     const orders = (ordersResult.data || []).map((order) => ({
       ...order,
+      user: Array.isArray(order.user) ? order.user[0] || null : order.user,
       items: (order.items || []).map(
-        (item: { return_reason_id?: string | null }) => ({
+        (item: {
+          return_reason_id?: string | null
+          variant?: { sku?: string | null } | { sku?: string | null }[] | null
+          product?: { sku?: string | null } | { sku?: string | null }[] | null
+        }) => ({
           ...item,
+          variant: Array.isArray(item.variant)
+            ? item.variant[0] || null
+            : item.variant,
+          product: Array.isArray(item.product)
+            ? item.product[0] || null
+            : item.product,
           return_reason: item.return_reason_id
             ? {
                 id: item.return_reason_id,
@@ -169,7 +180,7 @@ export async function GET(request: NextRequest) {
       ),
     }))
 
-    const rows = ordersToExportRows(orders)
+    const rows = ordersToExportRows(orders as Parameters<typeof ordersToExportRows>[0])
     const xml = buildOrdersSpreadsheetXml(rows)
     const filename = `orders-${from}-to-${to}.xls`
 
