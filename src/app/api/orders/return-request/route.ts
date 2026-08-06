@@ -4,6 +4,12 @@ import { notifyReturnOrExchangeRequested } from '@/lib/whatsapp/order-notificati
 import { sendReturnOrExchangeRequestedOwnerNotificationEmail } from '@/lib/email'
 import logger from '@/lib/logger'
 import { isWithinReturnWindow } from '@/lib/returns'
+import {
+    findVariantByDims,
+    isSameVariantDims,
+    productHasColorOptions,
+    productHasSizeOptions,
+} from '@/lib/product-variants'
 
 export async function POST(req: NextRequest) {
     try {
@@ -154,16 +160,44 @@ export async function POST(req: NextRequest) {
         let finalExchangeColor = null
 
         if (isExchange) {
-            if (!exchange_size || !exchange_color) {
+            const { data: productVariants, error: variantsError } = await supabase
+                .from('product_variants')
+                .select('id, size, color, stock')
+                .eq('product_id', item.product_id)
+                .eq('is_active', true)
+
+            if (variantsError) {
                 return NextResponse.json(
-                    { error: 'Select exchange size and color' },
+                    { error: 'Unable to validate exchange options' },
+                    { status: 500 }
+                )
+            }
+
+            const activeVariants = productVariants || []
+            const requireSize = productHasSizeOptions(activeVariants)
+            const requireColor = productHasColorOptions(activeVariants)
+            const dimOptions = { requireSize, requireColor }
+
+            if (requireSize && !exchange_size) {
+                return NextResponse.json(
+                    { error: 'Select an exchange size' },
+                    { status: 400 }
+                )
+            }
+
+            if (requireColor && !exchange_color) {
+                return NextResponse.json(
+                    { error: 'Select an exchange color' },
                     { status: 400 }
                 )
             }
 
             if (
-                exchange_size === item.variant_size &&
-                exchange_color === item.variant_color
+                isSameVariantDims(
+                    { size: exchange_size, color: exchange_color },
+                    { size: item.variant_size, color: item.variant_color },
+                    dimOptions
+                )
             ) {
                 return NextResponse.json(
                     { error: 'Select a different size or color for exchange' },
@@ -171,15 +205,15 @@ export async function POST(req: NextRequest) {
                 )
             }
 
-            const { data: exchangeVariant } = await supabase
-                .from('product_variants')
-                .select('id')
-                .eq('product_id', item.product_id)
-                .eq('size', exchange_size)
-                .eq('color', exchange_color)
-                .eq('is_active', true)
-                .gt('stock', 0)
-                .maybeSingle()
+            const inStockVariants = activeVariants.filter(
+                (variant) => Number(variant.stock || 0) > 0
+            )
+
+            const exchangeVariant = findVariantByDims(
+                inStockVariants,
+                { size: exchange_size, color: exchange_color },
+                dimOptions
+            )
 
             if (!exchangeVariant) {
                 return NextResponse.json(
@@ -188,8 +222,8 @@ export async function POST(req: NextRequest) {
                 )
             }
 
-            finalExchangeSize = exchange_size
-            finalExchangeColor = exchange_color
+            finalExchangeSize = exchangeVariant.size || exchange_size || null
+            finalExchangeColor = exchangeVariant.color || exchange_color || null
         } else if (isCodOrder) {
             if (!['bank', 'store_credit'].includes(refund_method)) {
                 return NextResponse.json(

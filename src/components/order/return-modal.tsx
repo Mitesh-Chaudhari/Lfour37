@@ -6,6 +6,12 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { BlockingContainer } from '@/components/ui/blocking-container'
 import { createClient } from '@/lib/supabase/client'
+import {
+  findVariantByDims,
+  isSameVariantDims,
+  productHasColorOptions,
+  productHasSizeOptions,
+} from '@/lib/product-variants'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
 
@@ -78,12 +84,16 @@ export default function ReturnModal({
     return allVariants.filter((variant) => Number(variant.stock || 0) > 0)
   }, [allVariants])
 
+  const requiresSize = productHasSizeOptions(allVariants)
+  const requiresColor = productHasColorOptions(allVariants)
+  const variantDimOptions = { requireSize: requiresSize, requireColor: requiresColor }
+
   const exchangeColors = useMemo(() => {
     return Array.from(
       new Set(
         inStockVariants
           .map((variant) => variant.color)
-          .filter((color): color is string => Boolean(color))
+          .filter((color): color is string => Boolean(color?.trim()))
       )
     )
   }, [inStockVariants])
@@ -93,7 +103,7 @@ export default function ReturnModal({
       new Set(
         inStockVariants
           .map((variant) => variant.size)
-          .filter((size): size is string => Boolean(size))
+          .filter((size): size is string => Boolean(size?.trim()))
       )
     )
   }, [inStockVariants])
@@ -109,8 +119,10 @@ export default function ReturnModal({
   }, [allVariants])
 
   const getVariantStock = (size: string, color: string) => {
-    const match = allVariants.find(
-      (variant) => variant.size === size && variant.color === color
+    const match = findVariantByDims(
+      allVariants,
+      { size, color },
+      variantDimOptions
     )
     return Number(match?.stock || 0)
   }
@@ -118,50 +130,79 @@ export default function ReturnModal({
   const isColorAvailable = (color: string) => {
     return inStockVariants.some((variant) => {
       if (variant.color !== color) return false
-      // Allow same color if another size is in stock
-      return !(
-        variant.size === item.variant_size &&
-        variant.color === item.variant_color
+      return !isSameVariantDims(
+        variant,
+        { size: item.variant_size, color: item.variant_color },
+        variantDimOptions
       )
     })
   }
 
   const isSizeAvailable = (size: string) => {
-    if (!exchangeColor) {
+    if (requiresColor && !exchangeColor) {
       return inStockVariants.some((variant) => {
         if (variant.size !== size) return false
-        return !(
-          variant.size === item.variant_size &&
-          variant.color === item.variant_color
+        return !isSameVariantDims(
+          variant,
+          { size: item.variant_size, color: item.variant_color },
+          variantDimOptions
         )
       })
     }
 
     const stock = getVariantStock(size, exchangeColor)
     if (stock <= 0) return false
-    return !(size === item.variant_size && exchangeColor === item.variant_color)
+    return !isSameVariantDims(
+      { size, color: exchangeColor },
+      { size: item.variant_size, color: item.variant_color },
+      variantDimOptions
+    )
   }
 
+  const selectionComplete =
+    (!requiresSize || Boolean(exchangeSize)) &&
+    (!requiresColor || Boolean(exchangeColor))
+
   const selectedExchangeVariant = useMemo(() => {
-    if (!exchangeSize || !exchangeColor) return null
+    if (!selectionComplete) return null
     return (
-      inStockVariants.find(
-        (variant) =>
-          variant.size === exchangeSize && variant.color === exchangeColor
+      findVariantByDims(
+        inStockVariants,
+        { size: exchangeSize, color: exchangeColor },
+        variantDimOptions
       ) || null
     )
-  }, [exchangeColor, exchangeSize, inStockVariants])
+  }, [
+    exchangeColor,
+    exchangeSize,
+    inStockVariants,
+    requiresColor,
+    requiresSize,
+    selectionComplete,
+  ])
 
   const exchangePreviewImage =
     selectedExchangeVariant?.image_url || item.product_image || null
 
   const hasExchangeOptions = inStockVariants.some(
     (variant) =>
-      !(
-        variant.size === item.variant_size &&
-        variant.color === item.variant_color
+      !isSameVariantDims(
+        variant,
+        { size: item.variant_size, color: item.variant_color },
+        variantDimOptions
       )
   )
+
+  const isSameAsDeliveredSelection = isSameVariantDims(
+    { size: exchangeSize, color: exchangeColor },
+    { size: item.variant_size, color: item.variant_color },
+    variantDimOptions
+  )
+
+  const canSubmitExchange =
+    selectionComplete &&
+    Boolean(selectedExchangeVariant) &&
+    !isSameAsDeliveredSelection
 
   useEffect(() => {
     loadReasons()
@@ -177,7 +218,7 @@ export default function ReturnModal({
   }, [needsBankDetails])
 
   useEffect(() => {
-    if (!isExchange) return
+    if (!isExchange || !requiresColor) return
 
     // Prefer keeping the delivered color when exchanging size only
     if (
@@ -186,9 +227,10 @@ export default function ReturnModal({
       inStockVariants.some(
         (variant) =>
           variant.color === item.variant_color &&
-          !(
-            variant.size === item.variant_size &&
-            variant.color === item.variant_color
+          !isSameVariantDims(
+            variant,
+            { size: item.variant_size, color: item.variant_color },
+            variantDimOptions
           )
       )
     ) {
@@ -200,25 +242,31 @@ export default function ReturnModal({
     isExchange,
     item.variant_color,
     item.variant_size,
+    requiresColor,
+    requiresSize,
   ])
 
   useEffect(() => {
-    if (!isExchange || !exchangeColor || !exchangeSize) return
+    if (!isExchange || !selectionComplete) return
 
     const stock = getVariantStock(exchangeSize, exchangeColor)
-    const isSameAsDelivered =
-      exchangeSize === item.variant_size &&
-      exchangeColor === item.variant_color
-
-    if (stock <= 0 || isSameAsDelivered) {
-      setExchangeSize('')
+    if (stock <= 0 || isSameAsDeliveredSelection) {
+      if (requiresSize) {
+        setExchangeSize('')
+      } else if (requiresColor) {
+        setExchangeColor('')
+      }
     }
   }, [
     exchangeColor,
     exchangeSize,
     isExchange,
+    isSameAsDeliveredSelection,
     item.variant_color,
     item.variant_size,
+    requiresColor,
+    requiresSize,
+    selectionComplete,
   ])
 
   useEffect(() => {
@@ -378,15 +426,22 @@ export default function ReturnModal({
     }
 
     if (isExchange) {
-      if (!exchangeSize || !exchangeColor) {
-        toast.error('Select new size and color')
+      if (!hasExchangeOptions) {
+        toast.error('No alternate size/color is available for exchange')
         return
       }
 
-      if (
-        exchangeSize === item.variant_size &&
-        exchangeColor === item.variant_color
-      ) {
+      if (requiresColor && !exchangeColor) {
+        toast.error('Select an exchange color')
+        return
+      }
+
+      if (requiresSize && !exchangeSize) {
+        toast.error('Select an exchange size')
+        return
+      }
+
+      if (isSameAsDeliveredSelection) {
         toast.error('Select a different size or color for exchange')
         return
       }
@@ -427,8 +482,12 @@ export default function ReturnModal({
               : 'source'
             : null,
           bank_account: bankPayload,
-          exchange_size: isExchange ? exchangeSize : null,
-          exchange_color: isExchange ? exchangeColor : null,
+          exchange_size: isExchange
+            ? selectedExchangeVariant?.size || exchangeSize || null
+            : null,
+          exchange_color: isExchange
+            ? selectedExchangeVariant?.color || exchangeColor || null
+            : null,
         }),
       })
 
@@ -464,7 +523,7 @@ export default function ReturnModal({
           {isExchange ? 'Exchange Item' : 'Return Item'}
         </h2>
 
-        <div>
+        <div className='mb-3'>
           <label className="text-sm font-medium">
             {isExchange ? 'Exchange Reason' : 'Return Reason'}
           </label>
@@ -528,14 +587,27 @@ export default function ReturnModal({
         </div>
 
         {isExchange && (
-          <div className="space-y-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
+          <div className="space-y-4 my-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
             <div>
               <p className="text-sm font-semibold text-gray-900">
-                Select exchange size &amp; color
+                {requiresSize && requiresColor
+                  ? 'Select exchange size & color'
+                  : requiresSize
+                    ? 'Select exchange size'
+                    : requiresColor
+                      ? 'Select exchange color'
+                      : 'Select exchange option'}
               </p>
               <p className="text-xs text-gray-500 mt-0.5">
-                Choose a different size and/or color of the same product. Out of
-                stock options are crossed out.
+                Choose a different
+                {requiresSize && requiresColor
+                  ? ' size and/or color'
+                  : requiresSize
+                    ? ' size'
+                    : requiresColor
+                      ? ' color'
+                      : ' option'}{' '}
+                of the same product. Out of stock options are crossed out.
               </p>
             </div>
 
@@ -554,7 +626,7 @@ export default function ReturnModal({
               </p>
             ) : (
               <>
-                {exchangeColors.length > 0 && (
+                {requiresColor && exchangeColors.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-sm font-semibold text-gray-900">
@@ -578,10 +650,17 @@ export default function ReturnModal({
                             onClick={() => {
                               setExchangeColor(color)
                               if (
+                                requiresSize &&
                                 exchangeSize &&
                                 (getVariantStock(exchangeSize, color) <= 0 ||
-                                  (exchangeSize === item.variant_size &&
-                                    color === item.variant_color))
+                                  isSameVariantDims(
+                                    { size: exchangeSize, color },
+                                    {
+                                      size: item.variant_size,
+                                      color: item.variant_color,
+                                    },
+                                    variantDimOptions
+                                  ))
                               ) {
                                 setExchangeSize('')
                               }
@@ -609,7 +688,7 @@ export default function ReturnModal({
                   </div>
                 )}
 
-                {exchangeSizes.length > 0 && (
+                {requiresSize && exchangeSizes.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-sm font-semibold text-gray-900">
@@ -628,7 +707,11 @@ export default function ReturnModal({
                           <button
                             key={size}
                             type="button"
-                            disabled={!available || busy || !exchangeColor}
+                            disabled={
+                              !available ||
+                              busy ||
+                              (requiresColor && !exchangeColor)
+                            }
                             onClick={() => setExchangeSize(size)}
                             className={cn(
                               'relative h-10 min-w-[44px] px-3 text-sm font-medium rounded-lg border-2 transition-all bg-white',
@@ -649,7 +732,7 @@ export default function ReturnModal({
                         )
                       })}
                     </div>
-                    {!exchangeColor && (
+                    {requiresColor && !exchangeColor && (
                       <p className="text-xs text-gray-500 mt-2">
                         Select a color first to see available sizes.
                       </p>
@@ -674,7 +757,10 @@ export default function ReturnModal({
                         You will receive
                       </p>
                       <p className="text-gray-700">
-                        {[exchangeSize, exchangeColor]
+                        {[
+                          selectedExchangeVariant.size || exchangeSize,
+                          selectedExchangeVariant.color || exchangeColor,
+                        ]
                           .filter(Boolean)
                           .join(' / ')}
                       </p>
@@ -688,6 +774,16 @@ export default function ReturnModal({
                       </p>
                     </div>
                   </div>
+                )}
+
+                {hasExchangeOptions && !canSubmitExchange && (
+                  <p className="text-xs text-amber-700">
+                    {requiresColor && !exchangeColor
+                      ? 'Select a color to continue.'
+                      : requiresSize && !exchangeSize
+                        ? 'Select a size to continue.'
+                        : 'Select a different size or color than the delivered item.'}
+                  </p>
                 )}
               </>
             )}
@@ -709,7 +805,7 @@ export default function ReturnModal({
                     onChange={(event) => setRefundMethod(event.target.value)}
                   >
                     <option value="bank">Bank Account</option>
-                    <option value="store_credit">Store Credit</option>
+                    {/* <option value="store_credit">Store Credit</option> */}
                   </select>
                 </div>
 
@@ -862,7 +958,7 @@ export default function ReturnModal({
             disabled={
               busy ||
               loadingReasons ||
-              (isExchange && !hasExchangeOptions)
+              (isExchange && (!hasExchangeOptions || !canSubmitExchange))
             }
           >
             Submit Request

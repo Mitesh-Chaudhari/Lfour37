@@ -16,6 +16,11 @@ import {
   type BulkUploadRow,
 } from '@/lib/product-bulk-csv'
 import { parseKeyHighlightsCsv } from '@/lib/product-details'
+import {
+  normalizeVariantColor,
+  normalizeVariantColorGroup,
+  normalizeVariantSize,
+} from '@/lib/product-variants'
 import toast from 'react-hot-toast'
 
 type ProductRecord = {
@@ -208,15 +213,20 @@ export function ProductBulkUpload() {
             }
           }
 
-          if (row.size?.trim() && row.color?.trim()) {
+          {
+            const size = normalizeVariantSize(row.size)
+            const color = normalizeVariantColor(row.color)
             const { error: variantError } = await supabase
               .from('product_variants')
               .upsert(
                 {
                   product_id: product.id,
-                  size: row.size.trim(),
-                  color: row.color.trim(),
-                  color_group: row.color_group?.trim() || row.color.trim(),
+                  size,
+                  color,
+                  color_group: normalizeVariantColorGroup(
+                    row.color_group,
+                    color
+                  ),
                   color_hex: row.color_hex?.trim() || '#000000',
                   stock: Number(row.stock || 0),
                   price_modifier: Number(row.price_modifier || 0),

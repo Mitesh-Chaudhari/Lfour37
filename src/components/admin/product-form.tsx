@@ -20,6 +20,13 @@ import {
   buildKeyHighlightsForForm,
   DEFAULT_KEY_HIGHLIGHT_LABELS,
 } from '@/lib/product-details'
+import {
+  DEFAULT_VARIANT_COLOR,
+  DEFAULT_VARIANT_SIZE,
+  normalizeVariantColor,
+  normalizeVariantColorGroup,
+  normalizeVariantSize,
+} from '@/lib/product-variants'
 
 interface ProductFormProps {
   categories: {
@@ -459,14 +466,27 @@ export function ProductForm({
   const onSubmit = async (data: ProductFormData) => {
     setIsSaving(true)
     try {
-      // Validate variants
-      const validVariants =
-        variants.filter(
+      // Normalize blank size/color, then keep rows that look intentional
+      const validVariants = variants
+        .filter(
           (v) =>
-            v.size &&
-            v.color &&
-            v.color_group
+            Boolean(v.size?.trim()) ||
+            Boolean(v.color?.trim()) ||
+            Boolean(v.color_group?.trim()) ||
+            Number(v.stock || 0) > 0 ||
+            Boolean(v.image_url) ||
+            Boolean(v.file)
         )
+        .map((v) => {
+          const size = normalizeVariantSize(v.size)
+          const color = normalizeVariantColor(v.color)
+          return {
+            ...v,
+            size,
+            color,
+            color_group: normalizeVariantColorGroup(v.color_group, color),
+          }
+        })
       if (validVariants.length === 0) {
         toast.error('Please add at least one variant')
         return
@@ -969,7 +989,7 @@ export function ProductForm({
                       "
                     >
                       <option value="">
-                        Select Size
+                        Select Size (empty → {DEFAULT_VARIANT_SIZE})
                       </option>
 
                       {availableSizes.map(
@@ -989,7 +1009,7 @@ export function ProductForm({
                       value={variant.color}
                       onChange={(e) => updateVariant(i, 'color', e.target.value)}
                       className="w-24 px-2 py-1 text-sm border border-gray-300 rounded"
-                      placeholder="Black"
+                      placeholder={`e.g. Black (empty → ${DEFAULT_VARIANT_COLOR})`}
                     />
                   </td>
                   <td className="py-2 px-2">
