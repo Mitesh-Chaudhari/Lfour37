@@ -9,6 +9,7 @@ import {
 } from '@/lib/whatsapp/order-notifications'
 import logger from '@/lib/logger'
 import { OrderStatus } from '@/types'
+import { markCodCollectedOnDelivery } from '@/lib/cod-payment'
 
 export async function PATCH(req: NextRequest) {
   try {
@@ -46,6 +47,10 @@ export async function PATCH(req: NextRequest) {
     if (error) {
       logger.error('Order status update error', { error, order_id })
       return NextResponse.json({ error: 'Failed to update order' }, { status: 500 })
+    }
+
+    if (status === 'delivered') {
+      await markCodCollectedOnDelivery(order_id, updatedOrder, supabase)
     }
 
     // Shipped/delivered emails are sent from Delhivery milestone sync only.

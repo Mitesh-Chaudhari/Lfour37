@@ -810,7 +810,7 @@ export default function ReturnModal({
                 </div>
 
                 {refundMethod === 'bank' && (
-                  <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
+                  <div className="space-y-3 my-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-sm font-medium text-gray-900">

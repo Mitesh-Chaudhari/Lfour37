@@ -879,6 +879,10 @@ const markDelivered =
             ? {
                 ...o,
                 status: 'delivered',
+                payment_status:
+                  o.payment_method === 'cod'
+                    ? 'completed'
+                    : o.payment_status,
               }
             : o
         )

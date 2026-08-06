@@ -29,6 +29,7 @@ import {
   isShipmentWhatsAppMilestone,
 } from '@/lib/whatsapp/templates'
 import logger from '@/lib/logger'
+import { markCodCollectedOnDelivery } from '@/lib/cod-payment'
 
 type ShipmentRow = {
   id: string
@@ -588,6 +589,10 @@ export async function syncDelhiveryShipment(
       }
 
       await supabase.from('orders').update(orderUpdate).eq('id', order.id)
+
+      if (mappedOrderStatus === 'delivered') {
+        await markCodCollectedOnDelivery(order.id, order, supabase)
+      }
     } else if (tracking.awb && !order.tracking_number) {
       await supabase
         .from('orders')
