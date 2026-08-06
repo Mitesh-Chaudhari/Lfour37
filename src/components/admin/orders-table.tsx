@@ -10,6 +10,7 @@ import {
   Truck,
   PackageCheck,
   RefreshCw,
+  Download,
 } from 'lucide-react'
 
 const STATUS_OPTIONS: { value: OrderStatus; label: string }[] = [
@@ -219,6 +220,9 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
   const [search, setSearch] = useState('')
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [syncingTracking, setSyncingTracking] = useState(false)
+  const [exportFrom, setExportFrom] = useState('')
+  const [exportTo, setExportTo] = useState('')
+  const [exporting, setExporting] = useState(false)
   const autoSyncedRef = useRef(false)
 
   const applyDelhiverySyncResults = useCallback(
@@ -334,6 +338,48 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
       !o.user?.email?.toLowerCase().includes(search.toLowerCase())) return false
     return true
   })
+
+  const exportOrdersExcel = async () => {
+    if (!exportFrom || !exportTo) {
+      toast.error('Select from and to dates for the report')
+      return
+    }
+
+    if (exportFrom > exportTo) {
+      toast.error('From date must be on or before to date')
+      return
+    }
+
+    setExporting(true)
+    try {
+      const params = new URLSearchParams({
+        from: exportFrom,
+        to: exportTo,
+      })
+      const res = await fetch(`/api/admin/orders/export?${params.toString()}`)
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.error || 'Failed to export orders')
+        return
+      }
+
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `orders-${exportFrom}-to-${exportTo}.xls`
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
+      toast.success('Orders Excel report downloaded')
+    } catch {
+      toast.error('Failed to export orders')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const updateStatus = async (orderId: string, status: OrderStatus) => {
     setUpdatingId(orderId)
@@ -857,43 +903,81 @@ const markDelivered =
   return (
     <div className="space-y-4">
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <input
-          type="search"
-          placeholder="Search order # or email..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 px-4 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-        />
-        <select
-          value={selectedStatus}
-          onChange={(e) => setSelectedStatus(e.target.value)}
-          className="px-4 py-2 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-        >
-          <option value="all">All Statuses</option>
-          {STATUS_OPTIONS.map((s) => (
-            <option key={s.value} value={s.value}>{s.label}</option>
-          ))}
-        </select>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={syncingTracking}
-          onClick={() =>
-            refreshDelhiveryTracking(
-              orders
-                .filter((order) => canSyncDelhivery(order))
-                .slice(0, 50)
-                .map((order) => order.id)
-            )
-          }
-          className="shrink-0"
-        >
-          <RefreshCw
-            className={`h-4 w-4 mr-2 ${syncingTracking ? 'animate-spin' : ''}`}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <input
+            type="search"
+            placeholder="Search order # or email..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1 px-4 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
           />
-          Sync Delhivery
-        </Button>
+          <select
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+          >
+            <option value="all">All Statuses</option>
+            {STATUS_OPTIONS.map((s) => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </select>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={syncingTracking}
+            onClick={() =>
+              refreshDelhiveryTracking(
+                orders
+                  .filter((order) => canSyncDelhivery(order))
+                  .slice(0, 50)
+                  .map((order) => order.id)
+              )
+            }
+            className="shrink-0"
+          >
+            <RefreshCw
+              className={`h-4 w-4 mr-2 ${syncingTracking ? 'animate-spin' : ''}`}
+            />
+            Sync Delhivery
+          </Button>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
+          <div className="flex-1">
+            <label className="block text-xs font-medium text-gray-500 mb-1">
+              From date
+            </label>
+            <input
+              type="date"
+              value={exportFrom}
+              onChange={(e) => setExportFrom(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+          </div>
+          <div className="flex-1">
+            <label className="block text-xs font-medium text-gray-500 mb-1">
+              To date
+            </label>
+            <input
+              type="date"
+              value={exportTo}
+              onChange={(e) => setExportTo(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            loading={exporting}
+            disabled={exporting}
+            onClick={exportOrdersExcel}
+            className="shrink-0"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export Excel
+          </Button>
+        </div>
       </div>
 
       {/* Table */}
