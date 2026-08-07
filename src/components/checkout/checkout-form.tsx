@@ -28,6 +28,7 @@ import toast from 'react-hot-toast'
 import { RazorpayPaymentForm } from './razorpay-payment-form'
 import { BlockingContainer } from '@/components/ui/blocking-container'
 import { OptimizedImage } from '@/components/ui/optimized-image'
+import { getAttributionForCheckout } from '@/lib/attribution'
 import { createClient } from '@/lib/supabase/client'
 import { buildAuthHref } from '@/lib/auth-redirect'
 import { usePincodeLookup } from '@/hooks/use-pincode-lookup'
@@ -575,6 +576,7 @@ export function CheckoutForm({
           discount_amount: localDiscount,
           payment_method: paymentMethod,
           save_address: isGuest ? true : data.save_address,
+          attribution: getAttributionForCheckout(),
         }),
       })
 

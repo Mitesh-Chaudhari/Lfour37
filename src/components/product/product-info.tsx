@@ -197,6 +197,16 @@ export function ProductInfo({ product, sizeOrder = [], sizeGuides = [] }: Produc
       price: currentPrice,
       quantity,
     })
+    void import('@/lib/analytics-events').then(({ trackFunnelEvent }) =>
+      trackFunnelEvent('add_to_cart', {
+        productId: product.id,
+        properties: {
+          product_name: product.name,
+          price: currentPrice,
+          quantity,
+        },
+      })
+    )
     toast.success(`${product.name} added to cart!`)
     openCart()
   }

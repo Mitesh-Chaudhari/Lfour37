@@ -85,6 +85,12 @@ export function WishlistClient({ items: initialItems, userId }: { items: Wishlis
         price: product.price,
         quantity: 1,
       })
+      void import('@/lib/analytics-events').then(({ trackFunnelEvent }) =>
+        trackFunnelEvent('add_to_cart', {
+          productId: product.id,
+          properties: { product_name: product.name, price: product.price, quantity: 1 },
+        })
+      )
       toast.success('Added to cart!')
     } finally {
       setAddingId(null)

@@ -6,6 +6,21 @@ import { z } from 'zod'
 import { resolveHsnFromCategories, mappingsArrayToRecord } from '@/lib/hsn'
 import { calculatePrepaidDiscount } from '@/lib/prepaid-discount'
 
+const attributionSchema = z
+  .object({
+    utm_source: z.string().max(200).nullable().optional(),
+    utm_medium: z.string().max(200).nullable().optional(),
+    utm_campaign: z.string().max(200).nullable().optional(),
+    utm_content: z.string().max(500).nullable().optional(),
+    utm_term: z.string().max(200).nullable().optional(),
+    meta_campaign_id: z.string().max(200).nullable().optional(),
+    meta_adset_id: z.string().max(200).nullable().optional(),
+    meta_ad_id: z.string().max(200).nullable().optional(),
+    gclid: z.string().max(200).nullable().optional(),
+    fbclid: z.string().max(200).nullable().optional(),
+  })
+  .optional()
+
 const createOrderSchema = z.object({
   items: z.array(z.object({
     product_id: z.string().uuid(),
@@ -28,6 +43,7 @@ const createOrderSchema = z.object({
   discount_amount: z.number().min(0).default(0),
   payment_method: z.enum(['razorpay', 'cod']),
   save_address: z.boolean().nullable().optional(),
+  attribution: attributionSchema,
 })
 
 export async function POST(request: NextRequest) {
@@ -191,6 +207,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create order
+    const attr = data.attribution || {}
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .insert({
@@ -208,6 +225,16 @@ export async function POST(request: NextRequest) {
         shipping_address: data.shipping_address,
         payment_method: data.payment_method,
         payment_status: 'pending',
+        utm_source: attr.utm_source || null,
+        utm_medium: attr.utm_medium || null,
+        utm_campaign: attr.utm_campaign || null,
+        utm_content: attr.utm_content || null,
+        utm_term: attr.utm_term || null,
+        meta_campaign_id: attr.meta_campaign_id || null,
+        meta_adset_id: attr.meta_adset_id || null,
+        meta_ad_id: attr.meta_ad_id || null,
+        gclid: attr.gclid || null,
+        fbclid: attr.fbclid || null,
       })
       .select()
       .single()

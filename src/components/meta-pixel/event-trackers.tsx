@@ -36,6 +36,13 @@ export function MetaViewContentTracker({
       currency: META_CURRENCY,
       ...(category ? { content_category: category } : {}),
     })
+
+    void import('@/lib/analytics-events').then(({ trackFunnelEvent }) =>
+      trackFunnelEvent('view_item', {
+        productId,
+        properties: { product_name: productName, price },
+      })
+    )
   }, [productId, productName, price, category])
 
   return null
@@ -55,6 +62,15 @@ export function MetaInitiateCheckoutTracker() {
       numItems: items.reduce((sum, item) => sum + item.quantity, 0),
       contentIds: items.map((item) => item.product_id),
     })
+
+    void import('@/lib/analytics-events').then(({ trackFunnelEvent }) =>
+      trackFunnelEvent('begin_checkout', {
+        properties: {
+          value: getTotal(),
+          item_count: items.reduce((sum, item) => sum + item.quantity, 0),
+        },
+      })
+    )
   }, [items, getTotal])
 
   return null
@@ -86,6 +102,13 @@ export function MetaPurchaseTracker({ orderId, value, items }: PurchaseTrackerPr
       numItems: items.reduce((sum, item) => sum + item.quantity, 0),
       contentIds,
     })
+
+    void import('@/lib/analytics-events').then(({ trackFunnelEvent }) =>
+      trackFunnelEvent('purchase', {
+        orderId,
+        properties: { value, item_count: items.length },
+      })
+    )
   }, [orderId, value, items])
 
   return null
