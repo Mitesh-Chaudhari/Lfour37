@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Order, OrderItem, OrderStatus } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -215,8 +216,12 @@ interface AdminOrdersTableProps {
 }
 
 export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProps) {
+  const searchParams = useSearchParams()
+  const statusFromUrl = searchParams.get('status')
   const [orders, setOrders] = useState(initialOrders)
-  const [selectedStatus, setSelectedStatus] = useState<string>('all')
+  const [selectedStatus, setSelectedStatus] = useState<string>(
+    statusFromUrl || 'all'
+  )
   const [search, setSearch] = useState('')
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [syncingTracking, setSyncingTracking] = useState(false)
@@ -224,6 +229,10 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
   const [exportTo, setExportTo] = useState('')
   const [exporting, setExporting] = useState(false)
   const autoSyncedRef = useRef(false)
+
+  useEffect(() => {
+    if (statusFromUrl) setSelectedStatus(statusFromUrl)
+  }, [statusFromUrl])
 
   const applyDelhiverySyncResults = useCallback(
     (results: AdminDelhiverySyncPayload[]) => {

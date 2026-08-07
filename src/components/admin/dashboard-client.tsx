@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import {
   Area,
   AreaChart,
@@ -16,31 +17,75 @@ import { Input } from '@/components/ui/input'
 import toast from 'react-hot-toast'
 import { AlertTriangle, Loader2, TrendingDown, TrendingUp } from 'lucide-react'
 
+type PaymentMethodStats = {
+  orders: number
+  revenue: number
+  delivered: number
+  rto: number
+  rtoRate: number
+  confirmationRate: number
+  pendingConfirmation: number
+  cancelledBeforeShippingPct: number
+  deliveredPct: number
+  valueAtRisk: number
+  inTransit: number
+  cancelled: number
+}
+
 type DashboardData = {
   label: string
   preset: string
   range: { from: string; to: string }
+  scopeHint: string
   kpis: {
-    netRevenue: number
-    orders: number
+    ordersPlaced: number
+    ordersConfirmed: number
+    ordersPending: number
+    ordersCancelled: number
+    orderedRevenue: number
+    shippedRevenue: number
+    realisedRevenue: number
     aov: number
     itemsSold: number
     newCustomers: number
     repeatCustomers: number
-    conversionRate: number | null
+    websitePurchaseConversion: number | null
     contribution: number | null
+    contributionMarginPct: number | null
     delivered: number
     cancelled: number
     rto: number
-    prevNetRevenue: number
     revenueDelta: number
+    prevOrderedRevenue: number
+    netRevenue: number
+    orders: number
+  }
+  revenueTiers: {
+    ordered: number
+    shipped: number
+    realised: number
   }
   orderedVsRealised: {
-    grossOrdered: number
-    cancelled: number
-    returnedRto: number
+    grossProductValue: number
     discounts: number
-    netRealised: number
+    cancelled: number
+    returned: number
+    refunded: number
+    rtoExtra: number
+    netOrderRevenue: number
+    discountsNote?: string
+    realisedRevenue: number
+    shippedRevenue: number
+    orderedRevenue: number
+  }
+  contributionBreakdown: {
+    orderedRevenue: number
+    cogs: number
+    shipping: number
+    adsSpend: number
+    contribution: number | null
+    contributionMarginPct: number | null
+    hasCostData: boolean
   }
   orderFunnel: {
     placed: number
@@ -50,6 +95,7 @@ type DashboardData = {
     outForDelivery: number
     delivered: number
     cancelled: number
+    pending: number
     rto: number
     returned: number
     refunded: number
@@ -58,35 +104,26 @@ type DashboardData = {
     deliveryRate: number
   }
   paymentSplit: {
-    cod: {
-      orders: number
-      revenue: number
-      delivered: number
-      rto: number
-      rtoRate: number
-      confirmationRate: number
-    }
-    prepaid: {
-      orders: number
-      revenue: number
-      delivered: number
-      rto: number
-      rtoRate: number
-      confirmationRate: number
-    }
+    cod: PaymentMethodStats
+    prepaid: PaymentMethodStats
     codOrderPct: number
     prepaidOrderPct: number
   }
   websiteFunnel: {
     sessions: number
     productViews: number
+    sessionsWithProductView: number
+    productViewerRate: number | null
+    viewsPerVisitor: number | null
     addToCart: number
     checkoutStarted: number
     purchases: number
-    productViewRate: number | null
+    ordersInRange: number
     addToCartRate: number | null
     checkoutRate: number | null
     purchaseRate: number | null
+    websitePurchaseConversion?: number | null
+    trackingIncomplete: boolean
     note?: string
   }
   series: Array<{
@@ -117,7 +154,9 @@ type DashboardData = {
     revenue: number
     returns: number
     conversion: number | null
+    trackingUnavailable?: boolean
   }>
+  sizeSales: Array<{ size: string; units: number; pct: number }>
   productInsights: {
     bestSize: string | null
     bestColor: string | null
@@ -131,13 +170,37 @@ type DashboardData = {
     ordersPerCustomer: number
     topCities: Array<{ city: string; orders: number; revenue: number }>
     topPins: Array<{ pin: string; orders: number; revenue: number }>
+    topStates: Array<{
+      state: string
+      orders: number
+      revenue: number
+      aov: number
+      codPct: number
+      rtoPct: number
+    }>
+  }
+  shipmentAgeing: {
+    packedOver24h: number
+    shippedOver5d: number
+    ofdNotDelivered: number
   }
   alerts: {
     codAwaitingConfirmation: number
+    packedNotShipped: number
+    inTransit: number
+    cancelled: number
     delayedShipments: number
     rtoShipments: number
     readyToShip: number
+    returnsNeedingAction: number
     lowStockCount: number
+    links: {
+      pending: string
+      processing: string
+      shipped: string
+      cancelled: string
+      delivered: string
+    }
   }
   lowStock: Array<{
     id: string
@@ -202,6 +265,24 @@ function Kpi({
       </p>
       {hint ? <p className="mt-1 text-[11px] text-gray-500 sm:text-xs">{hint}</p> : null}
     </div>
+  )
+}
+
+function AlertLink({
+  href,
+  children,
+  className,
+}: {
+  href: string
+  children: React.ReactNode
+  className: string
+}) {
+  return (
+    <li>
+      <Link href={href} className={`hover:underline ${className}`}>
+        {children}
+      </Link>
+    </li>
   )
 }
 
@@ -300,18 +381,54 @@ export function DashboardClient() {
           <p className="text-sm font-semibold text-gray-900 mb-2">Needs Attention</p>
           {data ? (
             <ul className="space-y-1.5 text-sm">
-              <li className="text-red-700">
+              <AlertLink
+                href={data.alerts.links.pending}
+                className="text-red-700"
+              >
                 {data.alerts.codAwaitingConfirmation} COD awaiting confirmation
-              </li>
-              <li className="text-orange-700">
+              </AlertLink>
+              <AlertLink
+                href={data.alerts.links.processing}
+                className="text-orange-700"
+              >
+                {data.alerts.packedNotShipped} packed, not shipped
+              </AlertLink>
+              <AlertLink
+                href={data.alerts.links.shipped}
+                className="text-orange-700"
+              >
+                {data.alerts.inTransit} in transit
+              </AlertLink>
+              <AlertLink
+                href={data.alerts.links.shipped}
+                className="text-orange-700"
+              >
                 {data.alerts.delayedShipments} shipments delayed &gt; 3 days
-              </li>
-              <li className="text-orange-700">
+              </AlertLink>
+              <AlertLink
+                href={data.alerts.links.shipped}
+                className="text-orange-700"
+              >
                 {data.alerts.rtoShipments} RTO shipments
-              </li>
-              <li className="text-green-700">
+              </AlertLink>
+              <AlertLink
+                href={data.alerts.links.processing}
+                className="text-green-700"
+              >
                 {data.alerts.readyToShip} orders ready to ship
-              </li>
+              </AlertLink>
+              <AlertLink
+                href={data.alerts.links.delivered}
+                className="text-amber-700"
+              >
+                {data.alerts.returnsNeedingAction} returns needing action
+              </AlertLink>
+              <AlertLink
+                href={data.alerts.links.cancelled}
+                className="text-red-700"
+              >
+                {data.alerts.cancelled} cancelled in range
+              </AlertLink>
               <li className="text-orange-700">
                 {data.alerts.lowStockCount} low-stock variants
               </li>
@@ -322,41 +439,46 @@ export function DashboardClient() {
         </Card>
       </div>
 
-      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-        {PRESETS.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            onClick={() => setPreset(p.id)}
-            className={`shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-              preset === p.id
-                ? 'bg-gray-900 text-white border-gray-900'
-                : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
-        {preset === 'custom' && (
-          <div className="flex shrink-0 items-center gap-2">
-            <Input
-              type="date"
-              value={customFrom}
-              onChange={(e) => setCustomFrom(e.target.value)}
-              className="w-auto min-w-[8.5rem]"
-            />
-            <span className="text-gray-400">to</span>
-            <Input
-              type="date"
-              value={customTo}
-              onChange={(e) => setCustomTo(e.target.value)}
-              className="w-auto min-w-[8.5rem]"
-            />
-          </div>
-        )}
-        {loading && (
-          <Loader2 className="h-4 w-4 shrink-0 animate-spin self-center text-gray-400" />
-        )}
+      <div>
+        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+          {PRESETS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setPreset(p.id)}
+              className={`shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                preset === p.id
+                  ? 'bg-gray-900 text-white border-gray-900'
+                  : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+          {preset === 'custom' && (
+            <div className="flex shrink-0 items-center gap-2">
+              <Input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="w-auto min-w-[8.5rem]"
+              />
+              <span className="text-gray-400">to</span>
+              <Input
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="w-auto min-w-[8.5rem]"
+              />
+            </div>
+          )}
+          {loading && (
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin self-center text-gray-400" />
+          )}
+        </div>
+        {data?.scopeHint ? (
+          <p className="mt-1.5 text-xs text-gray-500">{data.scopeHint}</p>
+        ) : null}
       </div>
 
       {!data ? (
@@ -366,28 +488,49 @@ export function DashboardClient() {
       ) : (
         <>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 md:grid-cols-4 xl:grid-cols-7">
-            <Kpi label="Net Revenue" value={formatPrice(data.kpis.netRevenue)} />
-            <Kpi label="Orders" value={String(data.kpis.orders)} />
+            <Kpi
+              label="Orders Placed"
+              value={String(data.kpis.ordersPlaced)}
+              hint={`Confirmed ${data.kpis.ordersConfirmed} · Pending ${data.kpis.ordersPending} · Cancelled ${data.kpis.ordersCancelled}`}
+            />
+            <Kpi
+              label="Ordered Revenue"
+              value={formatPrice(data.kpis.orderedRevenue)}
+            />
             <Kpi label="AOV" value={formatPrice(data.kpis.aov)} />
-            <Kpi label="Items Sold" value={String(data.kpis.itemsSold)} />
+            <Kpi
+              label="Items Sold"
+              value={String(data.kpis.itemsSold)}
+              hint="Same valid-order scope"
+            />
             <Kpi label="Delivered" value={String(data.kpis.delivered)} />
             <Kpi label="RTO" value={String(data.kpis.rto)} />
             <Kpi label="Cancelled" value={String(data.kpis.cancelled)} />
           </div>
 
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 md:grid-cols-4">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-6">
             <Kpi
-              label="New Customers"
-              value={String(data.kpis.newCustomers)}
+              label="Shipped Revenue"
+              value={formatPrice(data.kpis.shippedRevenue)}
             />
             <Kpi
-              label="Repeat Customers"
-              value={String(data.kpis.repeatCustomers)}
+              label="Realised / Delivered Revenue"
+              value={formatPrice(data.kpis.realisedRevenue)}
             />
+            <Kpi label="New" value={String(data.kpis.newCustomers)} />
+            <Kpi label="Repeat" value={String(data.kpis.repeatCustomers)} />
             <Kpi
-              label="Conversion Rate"
-              value={pct(data.kpis.conversionRate)}
-              hint="Purchases ÷ sessions"
+              label="Purchase Conversion"
+              value={
+                data.kpis.websitePurchaseConversion == null
+                  ? 'Tracking issue'
+                  : pct(data.kpis.websitePurchaseConversion)
+              }
+              hint={
+                data.kpis.websitePurchaseConversion == null
+                  ? undefined
+                  : 'Valid orders ÷ sessions'
+              }
             />
             <Kpi
               label="Contribution"
@@ -396,36 +539,73 @@ export function DashboardClient() {
                   ? 'N/A'
                   : formatPrice(data.kpis.contribution)
               }
-              hint="Revenue − COGS − shipping − ads"
+              hint={
+                data.kpis.contributionMarginPct != null
+                  ? `${pct(data.kpis.contributionMarginPct)} margin`
+                  : 'Revenue − COGS − shipping − ads'
+              }
             />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <Card title="Ordered vs Realised Revenue" className="lg:col-span-1">
+            <Card title="Revenue Reconciliation" className="lg:col-span-1">
+              <div className="mb-4 grid grid-cols-3 gap-2 text-center text-xs">
+                <div className="rounded-lg bg-gray-50 p-2">
+                  <p className="text-gray-500">Ordered</p>
+                  <p className="mt-0.5 font-semibold text-gray-900">
+                    {formatPrice(data.revenueTiers.ordered)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-2">
+                  <p className="text-gray-500">Shipped</p>
+                  <p className="mt-0.5 font-semibold text-gray-900">
+                    {formatPrice(data.revenueTiers.shipped)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-2">
+                  <p className="text-gray-500">Realised</p>
+                  <p className="mt-0.5 font-semibold text-gray-900">
+                    {formatPrice(data.revenueTiers.realised)}
+                  </p>
+                </div>
+              </div>
               <dl className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <dt className="text-gray-600">Gross ordered</dt>
+                  <dt className="text-gray-600">Gross product value</dt>
                   <dd className="font-medium">
-                    {formatPrice(data.orderedVsRealised.grossOrdered)}
+                    {formatPrice(data.orderedVsRealised.grossProductValue)}
                   </dd>
+                </div>
+                <div className="flex justify-between text-red-700">
+                  <dt>Discounts</dt>
+                  <dd>−{formatPrice(data.orderedVsRealised.discounts)}</dd>
                 </div>
                 <div className="flex justify-between text-red-700">
                   <dt>Cancelled</dt>
                   <dd>−{formatPrice(data.orderedVsRealised.cancelled)}</dd>
                 </div>
                 <div className="flex justify-between text-red-700">
-                  <dt>Returned / RTO</dt>
-                  <dd>−{formatPrice(data.orderedVsRealised.returnedRto)}</dd>
+                  <dt>Returned</dt>
+                  <dd>−{formatPrice(data.orderedVsRealised.returned)}</dd>
                 </div>
                 <div className="flex justify-between text-red-700">
-                  <dt>Discounts</dt>
-                  <dd>−{formatPrice(data.orderedVsRealised.discounts)}</dd>
+                  <dt>Refunded</dt>
+                  <dd>−{formatPrice(data.orderedVsRealised.refunded)}</dd>
+                </div>
+                <div className="flex justify-between text-red-700">
+                  <dt>RTO (extra)</dt>
+                  <dd>−{formatPrice(data.orderedVsRealised.rtoExtra)}</dd>
                 </div>
                 <div className="flex justify-between border-t pt-2 font-semibold text-gray-900">
-                  <dt>Net realised</dt>
-                  <dd>{formatPrice(data.orderedVsRealised.netRealised)}</dd>
+                  <dt>Net order revenue</dt>
+                  <dd>{formatPrice(data.orderedVsRealised.netOrderRevenue)}</dd>
                 </div>
               </dl>
+              {data.orderedVsRealised.discountsNote ? (
+                <p className="mt-2 text-xs text-gray-500">
+                  {data.orderedVsRealised.discountsNote}
+                </p>
+              ) : null}
             </Card>
 
             <Card title="Trend" className="lg:col-span-2">
@@ -433,7 +613,7 @@ export function DashboardClient() {
                 <div className="flex flex-wrap gap-2">
                   {(
                     [
-                      ['revenue', 'Revenue'],
+                      ['revenue', 'Ordered Revenue'],
                       ['orders', 'Orders'],
                       ['aov', 'AOV'],
                       ['units_sold', 'Units'],
@@ -515,25 +695,79 @@ export function DashboardClient() {
             </Card>
           </div>
 
+          <Card title="Contribution Breakdown">
+            <div className="mb-4 flex flex-wrap items-end gap-4">
+              <div>
+                <p className="text-xs text-gray-500">Contribution</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {data.contributionBreakdown.contribution == null
+                    ? 'N/A'
+                    : formatPrice(data.contributionBreakdown.contribution)}
+                </p>
+              </div>
+              {data.contributionBreakdown.contributionMarginPct != null ? (
+                <p className="text-sm text-gray-600">
+                  Margin{' '}
+                  <span className="font-semibold text-gray-900">
+                    {pct(data.contributionBreakdown.contributionMarginPct)}
+                  </span>
+                </p>
+              ) : null}
+              {!data.contributionBreakdown.hasCostData ? (
+                <p className="text-xs text-amber-700">
+                  Cost data incomplete — set product cost prices for accurate COGS.
+                </p>
+              ) : null}
+            </div>
+            <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+              <div className="flex justify-between rounded-lg bg-gray-50 p-3 sm:block">
+                <dt className="text-gray-500">Ordered revenue</dt>
+                <dd className="font-semibold">
+                  {formatPrice(data.contributionBreakdown.orderedRevenue)}
+                </dd>
+              </div>
+              <div className="flex justify-between rounded-lg bg-gray-50 p-3 sm:block">
+                <dt className="text-gray-500">COGS</dt>
+                <dd className="font-semibold text-red-700">
+                  −{formatPrice(data.contributionBreakdown.cogs)}
+                </dd>
+              </div>
+              <div className="flex justify-between rounded-lg bg-gray-50 p-3 sm:block">
+                <dt className="text-gray-500">Shipping</dt>
+                <dd className="font-semibold text-red-700">
+                  −{formatPrice(data.contributionBreakdown.shipping)}
+                </dd>
+              </div>
+              <div className="flex justify-between rounded-lg bg-gray-50 p-3 sm:block">
+                <dt className="text-gray-500">Ads spend</dt>
+                <dd className="font-semibold text-red-700">
+                  −{formatPrice(data.contributionBreakdown.adsSpend)}
+                </dd>
+              </div>
+            </dl>
+          </Card>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card title="Order Status Funnel">
               <p className="text-sm text-gray-700 mb-3">
-                <span className="font-semibold">{data.orderFunnel.placed}</span> Orders
-                placed →{' '}
+                <span className="font-semibold">{data.orderFunnel.placed}</span>{' '}
+                Placed →{' '}
                 <span className="font-semibold">{data.orderFunnel.confirmed}</span>{' '}
-                confirmed →{' '}
-                <span className="font-semibold">{data.orderFunnel.packed}</span> packed
-                → <span className="font-semibold">{data.orderFunnel.shipped}</span>{' '}
-                shipped →{' '}
+                Confirmed →{' '}
+                <span className="font-semibold">{data.orderFunnel.packed}</span>{' '}
+                Packed →{' '}
+                <span className="font-semibold">{data.orderFunnel.shipped}</span>{' '}
+                Shipped →{' '}
                 <span className="font-semibold">
                   {data.orderFunnel.outForDelivery}
                 </span>{' '}
                 OFD →{' '}
                 <span className="font-semibold">{data.orderFunnel.delivered}</span>{' '}
-                delivered
+                Delivered
               </p>
               <p className="text-sm text-gray-600 mb-3">
-                {data.orderFunnel.cancelled} Cancelled | {data.orderFunnel.rto} RTO |{' '}
+                {data.orderFunnel.pending} Pending | {data.orderFunnel.cancelled}{' '}
+                Cancelled | {data.orderFunnel.rto} RTO |{' '}
                 {data.orderFunnel.returned} Returned | {data.orderFunnel.refunded}{' '}
                 Refunded
               </p>
@@ -565,9 +799,12 @@ export function DashboardClient() {
                       <th className="py-2">Type</th>
                       <th>Orders</th>
                       <th>Revenue</th>
-                      <th>Delivered</th>
-                      <th>RTO</th>
+                      <th>Pending</th>
+                      <th>Confirm %</th>
+                      <th>Cancel before ship</th>
+                      <th>Delivered %</th>
                       <th>RTO %</th>
+                      <th>Value at risk</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -581,9 +818,12 @@ export function DashboardClient() {
                         <td className="py-2 font-medium">{label}</td>
                         <td>{row.orders}</td>
                         <td>{formatPrice(row.revenue)}</td>
-                        <td>{row.delivered}</td>
-                        <td>{row.rto}</td>
+                        <td>{row.pendingConfirmation}</td>
+                        <td>{pct(row.confirmationRate)}</td>
+                        <td>{pct(row.cancelledBeforeShippingPct)}</td>
+                        <td>{pct(row.deliveredPct)}</td>
                         <td>{pct(row.rtoRate)}</td>
+                        <td>{formatPrice(row.valueAtRisk)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -603,15 +843,15 @@ export function DashboardClient() {
                   </span>
                 </p>
                 <p>
-                  COD confirmation:{' '}
+                  COD in transit:{' '}
                   <span className="font-semibold">
-                    {pct(data.paymentSplit.cod.confirmationRate)}
+                    {data.paymentSplit.cod.inTransit}
                   </span>
                 </p>
                 <p>
-                  COD RTO rate:{' '}
+                  COD cancelled:{' '}
                   <span className="font-semibold">
-                    {pct(data.paymentSplit.cod.rtoRate)}
+                    {data.paymentSplit.cod.cancelled}
                   </span>
                 </p>
               </div>
@@ -620,22 +860,86 @@ export function DashboardClient() {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card title="Website Conversion Funnel">
-              <p className="text-xs text-amber-700 mb-2">{data.websiteFunnel.note}</p>
+              {data.websiteFunnel.trackingIncomplete ? (
+                <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                  <div>
+                    <p className="font-semibold">Tracking unavailable</p>
+                    <p className="mt-0.5 text-xs text-amber-800">
+                      {data.websiteFunnel.note ||
+                        'Funnel rates hidden until AddToCart / Checkout / Purchase tracking is reliable.'}
+                    </p>
+                  </div>
+                </div>
+              ) : data.websiteFunnel.note ? (
+                <p className="text-xs text-amber-700 mb-2">{data.websiteFunnel.note}</p>
+              ) : null}
               <p className="text-sm text-gray-700 mb-3">
                 {data.websiteFunnel.sessions} Visitors →{' '}
-                {data.websiteFunnel.productViews} Product views →{' '}
+                {data.websiteFunnel.productViews} Product views (
+                {data.websiteFunnel.sessionsWithProductView} sessions) →{' '}
                 {data.websiteFunnel.addToCart} ATC →{' '}
                 {data.websiteFunnel.checkoutStarted} Checkout →{' '}
                 {data.websiteFunnel.purchases} Purchases
+                {data.websiteFunnel.ordersInRange > 0
+                  ? ` · ${data.websiteFunnel.ordersInRange} orders in range`
+                  : ''}
               </p>
               <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-                <p>Product view rate: {pct(data.websiteFunnel.productViewRate)}</p>
-                <p>Add-to-cart rate: {pct(data.websiteFunnel.addToCartRate)}</p>
-                <p>Checkout rate: {pct(data.websiteFunnel.checkoutRate)}</p>
-                <p>Purchase rate: {pct(data.websiteFunnel.purchaseRate)}</p>
+                <p>
+                  Product viewer rate:{' '}
+                  {pct(data.websiteFunnel.productViewerRate)}
+                </p>
+                <p>
+                  Views per visitor:{' '}
+                  {data.websiteFunnel.viewsPerVisitor == null
+                    ? '—'
+                    : data.websiteFunnel.viewsPerVisitor.toFixed(2)}
+                </p>
+                {data.websiteFunnel.trackingIncomplete ? (
+                  <>
+                    <p className="text-gray-400">Add-to-cart rate: Tracking unavailable</p>
+                    <p className="text-gray-400">Checkout rate: Tracking unavailable</p>
+                    <p className="text-gray-400">Purchase rate: Tracking unavailable</p>
+                  </>
+                ) : (
+                  <>
+                    <p>Add-to-cart rate: {pct(data.websiteFunnel.addToCartRate)}</p>
+                    <p>Checkout rate: {pct(data.websiteFunnel.checkoutRate)}</p>
+                    <p>Purchase rate: {pct(data.websiteFunnel.purchaseRate)}</p>
+                  </>
+                )}
               </div>
             </Card>
 
+            <Card title="Shipment Ageing">
+              <div className="grid grid-cols-1 gap-3 text-center sm:grid-cols-3">
+                <div className="rounded-lg bg-amber-50 p-3">
+                  <p className="text-xs text-amber-800">Packed &gt; 24h</p>
+                  <p className="text-2xl font-bold text-amber-900">
+                    {data.shipmentAgeing.packedOver24h}
+                  </p>
+                  <p className="mt-1 text-xs text-amber-700">Not yet shipped</p>
+                </div>
+                <div className="rounded-lg bg-orange-50 p-3">
+                  <p className="text-xs text-orange-700">Shipped &gt; 5d</p>
+                  <p className="text-2xl font-bold text-orange-800">
+                    {data.shipmentAgeing.shippedOver5d}
+                  </p>
+                  <p className="mt-1 text-xs text-orange-600">Still in transit</p>
+                </div>
+                <div className="rounded-lg bg-red-50 p-3">
+                  <p className="text-xs text-red-700">OFD not delivered</p>
+                  <p className="text-2xl font-bold text-red-800">
+                    {data.shipmentAgeing.ofdNotDelivered}
+                  </p>
+                  <p className="mt-1 text-xs text-red-600">Out for delivery</p>
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card title="New vs Returning Customers">
               <div className="mb-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
                 <div className="rounded-lg bg-gray-50 p-3">
@@ -663,6 +967,43 @@ export function DashboardClient() {
                   <dd>{data.customers.ordersPerCustomer.toFixed(2)}</dd>
                 </div>
               </dl>
+            </Card>
+
+            <Card title="Top States">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-gray-500 border-b">
+                      <th className="py-2">State</th>
+                      <th>Orders</th>
+                      <th>Revenue</th>
+                      <th>AOV</th>
+                      <th>COD %</th>
+                      <th>RTO %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.customers.topStates.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-4 text-gray-400">
+                          No state data in range
+                        </td>
+                      </tr>
+                    ) : (
+                      data.customers.topStates.map((s) => (
+                        <tr key={s.state} className="border-b border-gray-50">
+                          <td className="py-2 max-w-[120px] truncate">{s.state}</td>
+                          <td>{s.orders}</td>
+                          <td>{formatPrice(s.revenue)}</td>
+                          <td>{formatPrice(s.aov)}</td>
+                          <td>{pct(s.codPct)}</td>
+                          <td>{pct(s.rtoPct)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </Card>
           </div>
 
@@ -695,7 +1036,11 @@ export function DashboardClient() {
                           <td>{p.orders}</td>
                           <td>{formatPrice(p.revenue)}</td>
                           <td>{p.returns}</td>
-                          <td>{pct(p.conversion)}</td>
+                          <td>
+                            {p.trackingUnavailable
+                              ? 'Tracking unavailable'
+                              : pct(p.conversion)}
+                          </td>
                         </tr>
                       ))
                     )}
@@ -711,6 +1056,39 @@ export function DashboardClient() {
               </p>
             </Card>
 
+            <Card title="Size Sales">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-gray-500 border-b">
+                      <th className="py-2">Size</th>
+                      <th>Units</th>
+                      <th>Share</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.sizeSales.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="py-4 text-gray-400">
+                          No size sales in range
+                        </td>
+                      </tr>
+                    ) : (
+                      data.sizeSales.map((row) => (
+                        <tr key={row.size} className="border-b border-gray-50">
+                          <td className="py-2 font-medium">{row.size}</td>
+                          <td>{row.units}</td>
+                          <td>{pct(row.pct)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card title="Top Cities & PIN Codes">
               <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
                 <div>
@@ -738,6 +1116,35 @@ export function DashboardClient() {
                       </li>
                     ))}
                   </ul>
+                </div>
+              </div>
+            </Card>
+
+            <Card title="Cancelled / Returned / RTO">
+              <div className="grid grid-cols-1 gap-3 text-center sm:grid-cols-3">
+                <div className="rounded-lg bg-red-50 p-3">
+                  <p className="text-xs text-red-700">Cancelled</p>
+                  <p className="text-2xl font-bold text-red-800">
+                    {data.orderFunnel.cancelled}
+                  </p>
+                  <p className="text-xs text-red-600 mt-1">
+                    {pct(data.orderFunnel.cancellationRate)} of placed
+                  </p>
+                </div>
+                <div className="rounded-lg bg-orange-50 p-3">
+                  <p className="text-xs text-orange-700">RTO</p>
+                  <p className="text-2xl font-bold text-orange-800">
+                    {data.orderFunnel.rto}
+                  </p>
+                  <p className="text-xs text-orange-600 mt-1">
+                    {pct(data.orderFunnel.rtoRate)} of shipped
+                  </p>
+                </div>
+                <div className="rounded-lg bg-amber-50 p-3">
+                  <p className="text-xs text-amber-800">Returned</p>
+                  <p className="text-2xl font-bold text-amber-900">
+                    {data.orderFunnel.returned}
+                  </p>
                 </div>
               </div>
             </Card>
@@ -857,71 +1264,40 @@ export function DashboardClient() {
             </div>
           </Card>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card title="Cancelled / Returned / RTO">
-              <div className="grid grid-cols-1 gap-3 text-center sm:grid-cols-3">
-                <div className="rounded-lg bg-red-50 p-3">
-                  <p className="text-xs text-red-700">Cancelled</p>
-                  <p className="text-2xl font-bold text-red-800">
-                    {data.orderFunnel.cancelled}
-                  </p>
-                  <p className="text-xs text-red-600 mt-1">
-                    {pct(data.orderFunnel.cancellationRate)} of placed
-                  </p>
-                </div>
-                <div className="rounded-lg bg-orange-50 p-3">
-                  <p className="text-xs text-orange-700">RTO</p>
-                  <p className="text-2xl font-bold text-orange-800">
-                    {data.orderFunnel.rto}
-                  </p>
-                  <p className="text-xs text-orange-600 mt-1">
-                    {pct(data.orderFunnel.rtoRate)} of shipped
-                  </p>
-                </div>
-                <div className="rounded-lg bg-amber-50 p-3">
-                  <p className="text-xs text-amber-800">Returned</p>
-                  <p className="text-2xl font-bold text-amber-900">
-                    {data.orderFunnel.returned}
-                  </p>
-                </div>
-              </div>
-            </Card>
-
-            <Card title="Low Stock">
-              {data.lowStock.length === 0 ? (
-                <p className="text-sm text-gray-400">All variants well stocked</p>
-              ) : (
-                <div className="space-y-2">
-                  {data.lowStock.map((variant) => (
-                    <div
-                      key={variant.id}
-                      className="flex items-center justify-between p-2 rounded-lg bg-orange-50"
-                    >
-                      <div>
-                        <p className="text-sm font-medium text-gray-900 flex items-center gap-1">
-                          <AlertTriangle className="h-3.5 w-3.5 text-orange-500" />
-                          {(variant.product as { name?: string } | null)?.name ||
-                            'Product'}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {variant.size} / {variant.color}
-                        </p>
-                      </div>
-                      <span
-                        className={`text-sm font-bold ${
-                          variant.stock === 0 ? 'text-red-600' : 'text-orange-600'
-                        }`}
-                      >
-                        {variant.stock === 0
-                          ? 'Out of stock'
-                          : `${variant.stock} left`}
-                      </span>
+          <Card title="Low Stock">
+            {data.lowStock.length === 0 ? (
+              <p className="text-sm text-gray-400">All variants well stocked</p>
+            ) : (
+              <div className="space-y-2">
+                {data.lowStock.map((variant) => (
+                  <div
+                    key={variant.id}
+                    className="flex items-center justify-between p-2 rounded-lg bg-orange-50"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 text-orange-500" />
+                        {(variant.product as { name?: string } | null)?.name ||
+                          'Product'}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {variant.size} / {variant.color}
+                      </p>
                     </div>
-                  ))}
-                </div>
-              )}
-            </Card>
-          </div>
+                    <span
+                      className={`text-sm font-bold ${
+                        variant.stock === 0 ? 'text-red-600' : 'text-orange-600'
+                      }`}
+                    >
+                      {variant.stock === 0
+                        ? 'Out of stock'
+                        : `${variant.stock} left`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
         </>
       )}
     </div>

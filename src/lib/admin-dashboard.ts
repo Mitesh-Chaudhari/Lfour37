@@ -110,15 +110,6 @@ export function resolveDatePreset(
   }
 }
 
-function isBookedRevenue(order: {
-  payment_method?: string | null
-  payment_status?: string | null
-}) {
-  return (
-    order.payment_method === 'cod' || order.payment_status === 'completed'
-  )
-}
-
 function isExcludedStatus(status?: string | null) {
   return ['cancelled', 'refunded', 'returned'].includes(status || '')
 }
@@ -293,21 +284,110 @@ export async function buildAdminDashboard(
     }
   }
 
-  const successful = orders.filter(
-    (o) => isBookedRevenue(o) && !isExcludedStatus(o.status)
-  )
-  const prevSuccessful = prevOrders.filter(
-    (o) => isBookedRevenue(o) && !isExcludedStatus(o.status)
+  const SCOPE_HINT =
+    'Same date range for all KPIs. Valid orders = not cancelled / refunded / returned.'
+
+  // --- Shared order sets (consistent scope) ---
+  const placedOrders = orders
+  const cancelledOrders = orders.filter((o) => o.status === 'cancelled')
+  const refundedOrders = orders.filter((o) => o.status === 'refunded')
+  const returnedOrders = orders.filter((o) => o.status === 'returned')
+  const pendingOrders = orders.filter((o) => o.status === 'pending')
+
+  // Confirmed = accepted into fulfillment pipeline
+  const confirmedOrders = orders.filter((o) =>
+    ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)
   )
 
-  const netRevenue = successful.reduce((s, o) => s + Number(o.total || 0), 0)
-  const prevNetRevenue = prevSuccessful.reduce(
+  // Valid / ordered scope (exclude terminal losses) — used for revenue & items
+  const validOrders = orders.filter((o) => !isExcludedStatus(o.status))
+
+  const isRtoOrder = (o: OrderRow) =>
+    asArray(o.delhivery_shipments).some((sh) =>
+      isRtoShipment(sh.status, sh.instructions)
+    )
+
+  const rtoOrders = orders.filter(isRtoOrder)
+
+  // Funnel stages — each stage is a subset of the previous where possible
+  const packedOrders = confirmedOrders.filter(
+    (o) =>
+      asArray(o.delhivery_shipments).length > 0 || Boolean(o.tracking_number)
+  )
+  const shippedOrders = confirmedOrders.filter((o) =>
+    ['shipped', 'delivered'].includes(o.status)
+  )
+  const ofdOrders = shippedOrders.filter((o) =>
+    asArray(o.delhivery_shipments).some((sh) => {
+      const t = `${sh.status || ''} ${sh.instructions || ''}`.toLowerCase()
+      return (
+        t.includes('out for delivery') ||
+        t.includes('dispatched') ||
+        t.includes('ofd')
+      )
+    })
+  )
+  const deliveredOrders = confirmedOrders.filter(
+    (o) => o.status === 'delivered'
+  )
+
+  const placed = placedOrders.length
+  const confirmed = confirmedOrders.length
+  const packed = packedOrders.length
+  const shipped = shippedOrders.length
+  const ofd = ofdOrders.length
+  const delivered = deliveredOrders.length
+  const cancelled = cancelledOrders.length
+  const refunded = refundedOrders.length
+  const returned = returnedOrders.length
+  const pendingConfirmation = pendingOrders.length
+  const rtoCount = rtoOrders.length
+
+  // --- Revenue tiers ---
+  const sumTotal = (list: OrderRow[]) =>
+    list.reduce((s, o) => s + Number(o.total || 0), 0)
+  const sumSubtotal = (list: OrderRow[]) =>
+    list.reduce((s, o) => s + Number(o.subtotal || 0), 0)
+  const sumDiscount = (list: OrderRow[]) =>
+    list.reduce((s, o) => s + Number(o.discount_amount || 0), 0)
+
+  const grossProductValue = sumSubtotal(placedOrders)
+  const discounts = sumDiscount(placedOrders)
+  const cancelledValue = sumTotal(cancelledOrders)
+  const returnedValue = sumTotal(returnedOrders)
+  const refundedValue = sumTotal(refundedOrders)
+  // RTO counted in cancelled usually; only add RTO totals not already cancelled/returned
+  const rtoExtraValue = sumTotal(
+    rtoOrders.filter(
+      (o) => o.status !== 'cancelled' && o.status !== 'returned'
+    )
+  )
+
+  // Reconciles: Gross product − discounts − cancelled − returned − refunded − extra RTO
+  const netOrderRevenue =
+    grossProductValue -
+    discounts -
+    cancelledValue -
+    returnedValue -
+    refundedValue -
+    rtoExtraValue
+
+  const orderedRevenue = sumTotal(validOrders)
+  const shippedRevenue = sumTotal(shippedOrders)
+  const realisedRevenue = sumTotal(deliveredOrders)
+
+  const prevValid = prevOrders.filter((o) => !isExcludedStatus(o.status))
+  const prevOrderedRevenue = prevValid.reduce(
     (s, o) => s + Number(o.total || 0),
     0
   )
-  const orderCount = successful.length
-  const aov = orderCount > 0 ? netRevenue / orderCount : 0
 
+  const orderCountPlaced = placed
+  const orderCountValid = validOrders.length
+  const aov =
+    orderCountValid > 0 ? orderedRevenue / orderCountValid : 0
+
+  // Items sold on SAME scope as valid/ordered revenue
   let itemsSold = 0
   let cogs = 0
   let hasAnyCost = false
@@ -325,13 +405,15 @@ export async function buildAdminDashboard(
     }
   >()
 
-  for (const order of successful) {
+  for (const order of validOrders) {
     for (const item of order.items || []) {
       if (item.status === 'cancelled') continue
       const qty = Number(item.quantity || 0)
       itemsSold += qty
       const cost = Number(item.product?.cost_price || 0)
-      if (item.product?.cost_price != null) hasAnyCost = true
+      if (item.product?.cost_price != null && Number(item.product.cost_price) > 0) {
+        hasAnyCost = true
+      }
       cogs += cost * qty
 
       if (item.variant_size) {
@@ -370,150 +452,141 @@ export async function buildAdminDashboard(
     }
   }
 
-  const shippingCost = successful.reduce(
+  const shippingCost = validOrders.reduce(
     (s, o) => s + Number(o.shipping_amount || 0),
     0
   )
   const adsSpend = spendRows.reduce((s, r) => s + Number(r.amount || 0), 0)
   const contribution =
     hasAnyCost || adsSpend > 0 || shippingCost > 0
-      ? netRevenue - cogs - shippingCost - adsSpend
+      ? orderedRevenue - cogs - shippingCost - adsSpend
+      : null
+  const contributionMarginPct =
+    contribution != null && orderedRevenue > 0
+      ? (contribution / orderedRevenue) * 100
       : null
 
-  // New vs repeat among successful orders in range
+  const contributionBreakdown = {
+    orderedRevenue,
+    cogs,
+    shipping: shippingCost,
+    adsSpend,
+    contribution,
+    contributionMarginPct,
+    hasCostData: hasAnyCost,
+  }
+
+  // New vs repeat among valid orders
   let newCustomers = 0
   let repeatCustomers = 0
   const buyers = new Set<string>()
-  for (const order of successful) {
+  for (const order of validOrders) {
     if (buyers.has(order.user_id)) continue
     buyers.add(order.user_id)
     const firstAt = firstOrderByUser.get(order.user_id)
-    const isNew =
-      firstAt &&
-      firstAt >= fromIso &&
-      firstAt <= toIso
+    const isNew = firstAt && firstAt >= fromIso && firstAt <= toIso
     if (isNew) newCustomers += 1
     else repeatCustomers += 1
   }
 
-  const sessions = new Set(
+  const sessionIds = new Set(
     events
-      .filter((e) => e.event_type === 'session_start' || e.event_type === 'page_view')
       .map((e) => e.session_id)
-      .filter(Boolean)
+      .filter((id): id is string => Boolean(id))
   )
-  const sessionCount = sessions.size || events.filter((e) => e.event_type === 'page_view').length
-  const conversionRate =
-    sessionCount > 0 ? (orderCount / sessionCount) * 100 : null
+  const sessionCount = sessionIds.size
+  const pageViews = events.filter((e) => e.event_type === 'page_view').length
+  const sessions =
+    sessionCount ||
+    events.filter((e) => e.event_type === 'session_start').length ||
+    pageViews
 
-  // Ordered vs realised
-  const grossOrdered = orders.reduce((s, o) => s + Number(o.total || 0), 0)
-  const cancelledRevenue = orders
-    .filter((o) => o.status === 'cancelled')
-    .reduce((s, o) => s + Number(o.total || 0), 0)
-  const returnedRevenue = orders
-    .filter((o) => o.status === 'returned' || o.status === 'refunded')
-    .reduce((s, o) => s + Number(o.total || 0), 0)
-  const rtoOrders = orders.filter((o) =>
-    asArray(o.delhivery_shipments).some((sh) =>
-      isRtoShipment(sh.status, sh.instructions)
-    )
-  )
-  const rtoRevenue = rtoOrders.reduce((s, o) => s + Number(o.total || 0), 0)
-  const discountTotal = orders.reduce(
-    (s, o) => s + Number(o.discount_amount || 0),
-    0
-  )
+  const viewItemEvents = events.filter((e) => e.event_type === 'view_item')
+  const sessionsWithProductView = new Set(
+    viewItemEvents.map((e) => e.session_id).filter(Boolean)
+  ).size
+  const productViews = viewItemEvents.length
+  const addToCart = events.filter((e) => e.event_type === 'add_to_cart').length
+  const checkoutStarted = events.filter(
+    (e) => e.event_type === 'begin_checkout'
+  ).length
+  const trackedPurchases = events.filter(
+    (e) => e.event_type === 'purchase'
+  ).length
 
-  // Order funnel
-  const placed = orders.length
-  const confirmed = orders.filter((o) =>
-    ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)
-  ).length
-  const packed = orders.filter(
-    (o) =>
-      asArray(o.delhivery_shipments).length > 0 || Boolean(o.tracking_number)
-  ).length
-  const shipped = orders.filter((o) =>
-    ['shipped', 'delivered'].includes(o.status)
-  ).length
-  const ofd = orders.filter((o) =>
-    asArray(o.delhivery_shipments).some((sh) => {
-      const t = `${sh.status || ''} ${sh.instructions || ''}`.toLowerCase()
-      return (
-        t.includes('out for delivery') ||
-        t.includes('dispatched') ||
-        t.includes('ofd')
-      )
-    })
-  ).length
-  const delivered = orders.filter((o) => o.status === 'delivered').length
-  const cancelled = orders.filter((o) => o.status === 'cancelled').length
-  const returned = orders.filter(
-    (o) =>
-      o.status === 'returned' ||
-      (o.items || []).some(
-        (i) =>
-          i.status === 'returned' ||
-          i.return_status === 'return_approved' ||
-          i.return_status === 'return_requested'
-      )
-  ).length
-  const refunded = orders.filter((o) => o.status === 'refunded').length
-  const rtoCount = rtoOrders.length
+  // Tracking is incomplete if we have orders but ATC/checkout/purchase events don't make sense
+  const trackingIncomplete =
+    addToCart === 0 ||
+    checkoutStarted === 0 ||
+    (orderCountValid > 0 && trackedPurchases === 0) ||
+    (trackedPurchases > 0 &&
+      checkoutStarted === 0 &&
+      addToCart < trackedPurchases)
+
+  const websitePurchaseConversion =
+    sessions > 0 ? (orderCountValid / sessions) * 100 : null
 
   const cancellationRate = placed > 0 ? (cancelled / placed) * 100 : 0
-  const rtoRate = shipped > 0 ? (rtoCount / shipped) * 100 : 0
+  const rtoRate = shipped > 0 ? (rtoCount / Math.max(shipped, 1)) * 100 : 0
   const deliveryRate = shipped > 0 ? (delivered / shipped) * 100 : 0
 
-  // COD vs prepaid
+  // COD vs prepaid — placed counts match COD+Prepaid = Placed
   const byPay = (method: 'cod' | 'prepaid') => {
     const subset = orders.filter((o) =>
       method === 'cod'
         ? o.payment_method === 'cod'
         : o.payment_method !== 'cod'
     )
-    const subsetSuccess = subset.filter(
-      (o) => isBookedRevenue(o) && !isExcludedStatus(o.status)
+    const subsetValid = subset.filter((o) => !isExcludedStatus(o.status))
+    const subsetConfirmed = subset.filter((o) =>
+      ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)
     )
-    const subsetDelivered = subset.filter((o) => o.status === 'delivered').length
-    const subsetRto = subset.filter((o) =>
-      asArray(o.delhivery_shipments).some((sh) =>
-        isRtoShipment(sh.status, sh.instructions)
-      )
-    ).length
+    const subsetDelivered = subset.filter((o) => o.status === 'delivered')
+    const subsetCancelled = subset.filter((o) => o.status === 'cancelled')
+    const subsetPending = subset.filter((o) => o.status === 'pending')
     const subsetShipped = subset.filter((o) =>
-      ['shipped', 'delivered', 'cancelled', 'returned'].includes(o.status)
-    ).length
-    const confirmedCod = subset.filter((o) =>
-      ['processing', 'shipped', 'delivered', 'paid'].includes(o.status)
-    ).length
+      ['shipped', 'delivered'].includes(o.status)
+    )
+    const subsetRto = subset.filter(isRtoOrder)
+    const subsetInTransit = subset.filter((o) => o.status === 'shipped')
+    const cancelledBeforeShip = subset.filter(
+      (o) =>
+        o.status === 'cancelled' &&
+        !['shipped', 'delivered'].includes(o.status)
+    )
 
     return {
       orders: subset.length,
-      revenue: subsetSuccess.reduce((s, o) => s + Number(o.total || 0), 0),
-      delivered: subsetDelivered,
-      rto: subsetRto,
-      rtoRate: subsetShipped > 0 ? (subsetRto / subsetShipped) * 100 : 0,
+      revenue: sumTotal(subsetValid),
+      delivered: subsetDelivered.length,
+      rto: subsetRto.length,
+      rtoRate:
+        subsetShipped.length > 0
+          ? (subsetRto.length / subsetShipped.length) * 100
+          : 0,
       confirmationRate:
-        subset.length > 0 ? (confirmedCod / subset.length) * 100 : 0,
+        subset.length > 0
+          ? (subsetConfirmed.length / subset.length) * 100
+          : 0,
+      pendingConfirmation: subsetPending.length,
+      cancelledBeforeShippingPct:
+        subset.length > 0
+          ? (cancelledBeforeShip.length / subset.length) * 100
+          : 0,
+      deliveredPct:
+        subset.length > 0
+          ? (subsetDelivered.length / subset.length) * 100
+          : 0,
+      valueAtRisk: sumTotal(subsetInTransit),
+      inTransit: subsetInTransit.length,
+      cancelled: subsetCancelled.length,
     }
   }
 
   const codStats = byPay('cod')
   const prepaidStats = byPay('prepaid')
-  const payTotal = orders.length || 1
+  const payTotal = placed || 1
 
-  // Website funnel
-  const countEvents = (type: string) =>
-    events.filter((e) => e.event_type === type).length
-  const websiteFunnel = {
-    sessions: sessionCount,
-    productViews: countEvents('view_item'),
-    addToCart: countEvents('add_to_cart'),
-    checkoutStarted: countEvents('begin_checkout'),
-    purchases: countEvents('purchase') || orderCount,
-  }
   const rate = (num: number, den: number) =>
     den > 0 ? (num / den) * 100 : null
 
@@ -535,7 +608,7 @@ export async function buildAdminDashboard(
     string,
     { orders: number; revenue: number; channelKey: string }
   >()
-  for (const order of successful) {
+  for (const order of validOrders) {
     const label = channelFromAttribution({
       utm_source: order.utm_source,
       gclid: order.gclid,
@@ -583,7 +656,6 @@ export async function buildAdminDashboard(
     })
     .sort((a, b) => b.revenue - a.revenue)
 
-  // Product performance
   const viewCounts = new Map<string, number>()
   const atcCounts = new Map<string, number>()
   for (const e of events) {
@@ -606,13 +678,27 @@ export async function buildAdminDashboard(
         orders: p.orders.size,
         revenue: p.revenue,
         returns: p.returns,
-        conversion: views > 0 ? (p.orders.size / views) * 100 : null,
+        conversion: trackingIncomplete
+          ? null
+          : views > 0
+            ? (p.orders.size / views) * 100
+            : null,
+        trackingUnavailable: trackingIncomplete,
       }
     })
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 10)
 
-  const topBy = <T,>(map: Map<string, number>) =>
+  const sizeSalesTotal = [...sizeCounts.values()].reduce((a, b) => a + b, 0)
+  const sizeSales = [...sizeCounts.entries()]
+    .map(([size, units]) => ({
+      size,
+      units,
+      pct: sizeSalesTotal > 0 ? (units / sizeSalesTotal) * 100 : 0,
+    }))
+    .sort((a, b) => b.units - a.units)
+
+  const topBy = (map: Map<string, number>) =>
     [...map.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null
 
   const mostViewedId = topBy(viewCounts)
@@ -621,12 +707,16 @@ export async function buildAdminDashboard(
     (a, b) => b.returns - a.returns
   )[0]
 
-  // Geo
   const cityMap = new Map<string, { orders: number; revenue: number }>()
   const pinMap = new Map<string, { orders: number; revenue: number }>()
-  for (const order of successful) {
+  const stateMap = new Map<
+    string,
+    { orders: number; revenue: number; cod: number; rto: number }
+  >()
+  for (const order of validOrders) {
     const city = order.shipping_address?.city?.trim() || 'Unknown'
     const pin = order.shipping_address?.postal_code?.trim() || 'Unknown'
+    const state = order.shipping_address?.state?.trim() || 'Unknown'
     const c = cityMap.get(city) || { orders: 0, revenue: 0 }
     c.orders += 1
     c.revenue += Number(order.total || 0)
@@ -635,6 +725,17 @@ export async function buildAdminDashboard(
     p.orders += 1
     p.revenue += Number(order.total || 0)
     pinMap.set(pin, p)
+    const st = stateMap.get(state) || {
+      orders: 0,
+      revenue: 0,
+      cod: 0,
+      rto: 0,
+    }
+    st.orders += 1
+    st.revenue += Number(order.total || 0)
+    if (order.payment_method === 'cod') st.cod += 1
+    if (isRtoOrder(order)) st.rto += 1
+    stateMap.set(state, st)
   }
 
   const topCities = [...cityMap.entries()]
@@ -645,28 +746,54 @@ export async function buildAdminDashboard(
     .map(([pin, v]) => ({ pin, ...v }))
     .sort((a, b) => b.orders - a.orders)
     .slice(0, 8)
+  const topStates = [...stateMap.entries()]
+    .map(([state, v]) => ({
+      state,
+      orders: v.orders,
+      revenue: v.revenue,
+      aov: v.orders > 0 ? v.revenue / v.orders : 0,
+      codPct: v.orders > 0 ? (v.cod / v.orders) * 100 : 0,
+      rtoPct: v.orders > 0 ? (v.rto / v.orders) * 100 : 0,
+    }))
+    .sort((a, b) => b.orders - a.orders)
+    .slice(0, 8)
 
   const uniqueCustomers = buyers.size
   const avgCustomerSpend =
-    uniqueCustomers > 0 ? netRevenue / uniqueCustomers : 0
+    uniqueCustomers > 0 ? orderedRevenue / uniqueCustomers : 0
   const ordersPerCustomer =
-    uniqueCustomers > 0 ? orderCount / uniqueCustomers : 0
+    uniqueCustomers > 0 ? orderCountValid / uniqueCustomers : 0
   const repeatPurchaseRate =
     uniqueCustomers > 0 ? (repeatCustomers / uniqueCustomers) * 100 : 0
 
-  // Alerts
-  const codAwaiting = orders.filter(
-    (o) =>
-      o.payment_method === 'cod' &&
-      (o.status === 'pending' ||
-        (o.status === 'processing' &&
-          asArray(o.delhivery_shipments).length === 0))
+  const packedNotShipped = packedOrders.filter(
+    (o) => !['shipped', 'delivered'].includes(o.status)
   ).length
-  const readyToShip = orders.filter(
-    (o) =>
-      o.status === 'processing' &&
-      !asArray(o.delhivery_shipments).some((s) => s.awb)
+  const inTransit = orders.filter((o) => o.status === 'shipped').length
+  const returnsNeedingAction = orders.filter((o) =>
+    (o.items || []).some(
+      (i) =>
+        i.return_status === 'return_requested' ||
+        i.return_status === 'return_approved'
+    )
   ).length
+
+  const now = Date.now()
+  const hoursSince = (iso?: string | null) =>
+    iso ? (now - new Date(iso).getTime()) / 3600000 : 0
+
+  const packedOver24h = packedOrders.filter(
+    (o) =>
+      !['shipped', 'delivered'].includes(o.status) &&
+      hoursSince(
+        asArray(o.delhivery_shipments)[0]?.created_at || o.created_at
+      ) > 24
+  ).length
+  const shippedOver5d = orders.filter(
+    (o) => o.status === 'shipped' && hoursSince(o.shipped_at || o.created_at) > 120
+  ).length
+  const ofdNotDelivered = ofdOrders.filter((o) => o.status !== 'delivered').length
+
   const delayedShipments = (delayedShipmentsRes.data || []).filter((sh) => {
     const t = `${sh.status || ''}`.toLowerCase()
     return (
@@ -677,31 +804,65 @@ export async function buildAdminDashboard(
     )
   }).length
 
+  const reconciliationCheck =
+    grossProductValue -
+    discounts -
+    cancelledValue -
+    returnedValue -
+    refundedValue -
+    rtoExtraValue
+
   return {
     range,
     previous,
+    scopeHint: SCOPE_HINT,
     kpis: {
-      netRevenue,
-      orders: orderCount,
+      ordersPlaced: orderCountPlaced,
+      ordersConfirmed: confirmed,
+      ordersPending: pendingConfirmation,
+      ordersCancelled: cancelled,
+      orderedRevenue,
+      shippedRevenue,
+      realisedRevenue,
       aov,
       itemsSold,
       newCustomers,
       repeatCustomers,
-      conversionRate,
+      websitePurchaseConversion: trackingIncomplete
+        ? null
+        : websitePurchaseConversion,
       contribution,
+      contributionMarginPct,
       delivered,
       cancelled,
       rto: rtoCount,
-      prevNetRevenue,
-      revenueDelta: netRevenue - prevNetRevenue,
+      prevOrderedRevenue,
+      revenueDelta: orderedRevenue - prevOrderedRevenue,
+      // legacy aliases kept for safer UI rollout
+      netRevenue: orderedRevenue,
+      orders: orderCountPlaced,
+    },
+    revenueTiers: {
+      ordered: orderedRevenue,
+      shipped: shippedRevenue,
+      realised: realisedRevenue,
     },
     orderedVsRealised: {
-      grossOrdered,
-      cancelled: cancelledRevenue,
-      returnedRto: returnedRevenue + rtoRevenue,
-      discounts: discountTotal,
-      netRealised: netRevenue,
+      grossProductValue,
+      discounts,
+      cancelled: cancelledValue,
+      returned: returnedValue,
+      refunded: refundedValue,
+      rtoExtra: rtoExtraValue,
+      netOrderRevenue,
+      reconciliationCheck,
+      discountsNote:
+        'Discounts are deducted from gross product value before cancellations.',
+      realisedRevenue,
+      shippedRevenue,
+      orderedRevenue,
     },
+    contributionBreakdown,
     orderFunnel: {
       placed,
       confirmed,
@@ -710,6 +871,7 @@ export async function buildAdminDashboard(
       outForDelivery: ofd,
       delivered,
       cancelled,
+      pending: pendingConfirmation,
       rto: rtoCount,
       returned,
       refunded,
@@ -724,34 +886,50 @@ export async function buildAdminDashboard(
       prepaidOrderPct: (prepaidStats.orders / payTotal) * 100,
     },
     websiteFunnel: {
-      ...websiteFunnel,
-      productViewRate: rate(websiteFunnel.productViews, websiteFunnel.sessions),
-      addToCartRate: rate(websiteFunnel.addToCart, websiteFunnel.productViews),
-      checkoutRate: rate(
-        websiteFunnel.checkoutStarted,
-        websiteFunnel.addToCart
-      ),
-      purchaseRate: rate(
-        websiteFunnel.purchases,
-        websiteFunnel.checkoutStarted
-      ),
-      note: 'Funnel fills after tracking deploy',
+      sessions,
+      productViews,
+      sessionsWithProductView,
+      productViewerRate: rate(sessionsWithProductView, sessions),
+      viewsPerVisitor: sessions > 0 ? productViews / sessions : null,
+      addToCart,
+      checkoutStarted,
+      purchases: trackedPurchases,
+      ordersInRange: orderCountValid,
+      addToCartRate: trackingIncomplete
+        ? null
+        : rate(addToCart, Math.max(sessionsWithProductView, 1)),
+      checkoutRate: trackingIncomplete
+        ? null
+        : rate(checkoutStarted, Math.max(addToCart, 1)),
+      purchaseRate: trackingIncomplete
+        ? null
+        : rate(trackedPurchases, Math.max(checkoutStarted, 1)),
+      websitePurchaseConversion: trackingIncomplete
+        ? null
+        : websitePurchaseConversion,
+      trackingIncomplete,
+      note: trackingIncomplete
+        ? 'Funnel tracking incomplete — AddToCart / BeginCheckout / Purchase events need attention. Rates hidden until reliable.'
+        : undefined,
     },
     series,
     comparison: {
-      currentRevenue: netRevenue,
-      previousRevenue: prevNetRevenue,
-      delta: netRevenue - prevNetRevenue,
+      currentRevenue: orderedRevenue,
+      previousRevenue: prevOrderedRevenue,
+      delta: orderedRevenue - prevOrderedRevenue,
     },
     attribution,
     marketingSpend: spendRows,
     topProducts,
+    sizeSales,
     productInsights: {
       bestSize: topBy(sizeCounts),
       bestColor: topBy(colorCounts),
       mostViewedProductId: mostViewedId,
       mostAddedToCartProductId: mostAtcId,
-      highestConverting: topProducts.find((p) => p.conversion != null) || null,
+      highestConverting: trackingIncomplete
+        ? null
+        : topProducts.find((p) => p.conversion != null) || null,
       highestReturned: highestReturn
         ? {
             name: highestReturn.name,
@@ -767,13 +945,30 @@ export async function buildAdminDashboard(
       ordersPerCustomer,
       topCities,
       topPins,
+      topStates,
+    },
+    shipmentAgeing: {
+      packedOver24h,
+      shippedOver5d,
+      ofdNotDelivered,
     },
     alerts: {
-      codAwaitingConfirmation: codAwaiting,
+      codAwaitingConfirmation: codStats.pendingConfirmation,
+      packedNotShipped,
+      inTransit,
+      cancelled,
       delayedShipments,
       rtoShipments: rtoCount,
-      readyToShip,
+      readyToShip: packedNotShipped,
+      returnsNeedingAction,
       lowStockCount: lowStockRes.data?.length || 0,
+      links: {
+        pending: '/admin/orders?status=pending',
+        processing: '/admin/orders?status=processing',
+        shipped: '/admin/orders?status=shipped',
+        cancelled: '/admin/orders?status=cancelled',
+        delivered: '/admin/orders?status=delivered',
+      },
     },
     lowStock: lowStockRes.data || [],
   }

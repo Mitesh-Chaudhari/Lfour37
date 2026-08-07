@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { AdminOrdersTable } from '@/components/admin/orders-table'
 
@@ -106,7 +107,9 @@ export default async function AdminOrdersPage() {
           return/exchange pickups sync from Delhivery
         </p>
       </div>
-      <AdminOrdersTable orders={orders} />
+      <Suspense fallback={<p className="text-sm text-gray-400">Loading orders…</p>}>
+        <AdminOrdersTable orders={orders} />
+      </Suspense>
     </div>
   )
 }
