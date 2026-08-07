@@ -94,7 +94,7 @@ export function PromotionsClient({ coupons: initialCoupons }: { coupons: Coupon[
       {showForm && (
         <div className="bg-white rounded-2xl border border-gray-200 p-6">
           <h2 className="text-lg font-semibold mb-4">New Coupon</h2>
-          <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-2 gap-4">
+          <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Input
               label="Coupon Code"
               placeholder="SUMMER20"

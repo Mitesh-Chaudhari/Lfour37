@@ -71,7 +71,7 @@ export function SizeGuidesClient({ guides: initialGuides }: SizeGuidesClientProp
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <p className="text-sm text-gray-600">
           Manage measurement tables shown on the size guide page and product pages.
         </p>

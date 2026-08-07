@@ -236,7 +236,7 @@ export default function HeroSlidesAdmin() {
               className="input hero-slide-input w-33"
             />
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <input placeholder="CTA Text"
                 value={slide.cta_text}
                 onChange={(e) => handleChange(i, 'cta_text', e.target.value)}
@@ -250,7 +250,7 @@ export default function HeroSlidesAdmin() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <input placeholder="Secondary Text"
                 value={slide.secondary_text || ''}
                 onChange={(e) => handleChange(i, 'secondary_text', e.target.value)}

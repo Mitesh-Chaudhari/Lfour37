@@ -17,6 +17,8 @@ import {
   TicketSlash,
   SquareX,
   Newspaper,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -26,6 +28,10 @@ import { OptimizedImage } from '@/components/ui/optimized-image'
 
 interface AdminSidebarProps {
   user: { full_name: string | null; email: string; role: string }
+  mobileOpen?: boolean
+  collapsed?: boolean
+  onMobileClose?: () => void
+  onToggleCollapse?: () => void
 }
 
 type NotificationKey = 'orders' | 'cancelRequests'
@@ -43,9 +49,23 @@ const NAV_ITEMS: Array<{
   { href: '/admin/sizes', icon: Ruler, label: 'Product Sizes' },
   { href: '/admin/size-guides', icon: Ruler, label: 'Size Guides' },
   { href: '/admin/hsn-codes', icon: Hash, label: 'Manage HSN Code' },
-  { href: '/admin/orders', icon: ShoppingBag, label: 'Orders', notificationKey: 'orders' },
-  { href: '/admin/order-cancel-requests', icon: SquareX, label: 'Cancel Requests', notificationKey: 'cancelRequests' },
-  { href: '/admin/cancel-reasons', icon: SquareX, label: 'Order Cancel Reasons Manage' },
+  {
+    href: '/admin/orders',
+    icon: ShoppingBag,
+    label: 'Orders',
+    notificationKey: 'orders',
+  },
+  {
+    href: '/admin/order-cancel-requests',
+    icon: SquareX,
+    label: 'Cancel Requests',
+    notificationKey: 'cancelRequests',
+  },
+  {
+    href: '/admin/cancel-reasons',
+    icon: SquareX,
+    label: 'Order Cancel Reasons Manage',
+  },
   { href: '/admin/pages', icon: TicketSlash, label: 'Content Pages' },
   { href: '/admin/blogs', icon: Newspaper, label: 'Blog' },
   { href: '/admin/users', icon: Users, label: 'Users' },
@@ -67,16 +87,23 @@ function getSeenCancelIds(): string[] {
   }
 }
 
-export function AdminSidebar({ user }: AdminSidebarProps) {
+export function AdminSidebar({
+  user,
+  mobileOpen = false,
+  collapsed = false,
+  onMobileClose,
+  onToggleCollapse,
+}: AdminSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
-  const [notifications, setNotifications] = useState<Record<NotificationKey, boolean>>({
+  const [notifications, setNotifications] = useState<
+    Record<NotificationKey, boolean>
+  >({
     orders: false,
     cancelRequests: false,
   })
 
-  // Poll for new (unvisited) orders and cancel requests
   useEffect(() => {
     let cancelled = false
 
@@ -84,7 +111,6 @@ export function AdminSidebar({ user }: AdminSidebarProps) {
       try {
         let ordersSince = localStorage.getItem(SEEN_ORDERS_AT_KEY)
         if (!ordersSince) {
-          // First run: only orders from now on count as "new"
           ordersSince = new Date().toISOString()
           localStorage.setItem(SEEN_ORDERS_AT_KEY, ordersSince)
         }
@@ -106,7 +132,7 @@ export function AdminSidebar({ user }: AdminSidebarProps) {
           cancelRequests: unseenCancelRequests,
         })
       } catch {
-        // Notification dots are best-effort; never break the sidebar
+        // best-effort
       }
     }
 
@@ -118,7 +144,6 @@ export function AdminSidebar({ user }: AdminSidebarProps) {
     }
   }, [pathname])
 
-  // Visiting a page marks its items as seen and clears the dot
   useEffect(() => {
     if (pathname.startsWith('/admin/orders')) {
       localStorage.setItem(SEEN_ORDERS_AT_KEY, new Date().toISOString())
@@ -139,90 +164,149 @@ export function AdminSidebar({ user }: AdminSidebarProps) {
         .catch(() => {})
       setNotifications((n) => ({ ...n, cancelRequests: false }))
     }
+
+    // Auto-close mobile drawer after navigation
+    onMobileClose?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on route change
   }, [pathname])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     router.push('/login')
   }
-  const LOGO_IMAGE = [
-    '/images/logo.png',
-  ]
+
+  const LOGO_IMAGE = ['/images/logo.png']
+  const showLabels = !collapsed
+
   return (
-    <aside className="fixed inset-y-0 left-0 w-64 bg-gray-900 text-white flex flex-col z-30">
-      {/* Logo */}
-      <div className="p-4 border-b border-gray-800">
-        <Link href="/admin" className="flex items-center gap-2">
-          {/* <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
-            <span className="text-white font-bold text-sm">TM</span>
-          </div>
-          <div>
-            <p className="font-bold text-white text-sm">Lfour37</p>
-            <p className="text-xs text-gray-400">Admin Panel</p>
-          </div> */}
-          <div>
-            <OptimizedImage
-              src={LOGO_IMAGE[0]}
-              alt="Lfour37"
-              width={60}
-              height={60}
-              variant="logo"
-              priority
-              className="object-cover transition-transform duration-700 group-hover:scale-105"
-            />
-            <p className="text-xs text-gray-400">Admin Panel</p>
-          </div>
+    <aside
+      className={cn(
+        'fixed inset-y-0 left-0 z-50 flex flex-col bg-gray-900 text-white transition-transform duration-200 lg:z-30 lg:translate-x-0',
+        collapsed ? 'lg:w-16' : 'lg:w-64',
+        'w-72 max-w-[85vw]',
+        mobileOpen ? 'translate-x-0' : '-translate-x-full'
+      )}
+    >
+      <div
+        className={cn(
+          'flex items-center border-b border-gray-800',
+          collapsed ? 'justify-center p-3' : 'gap-2 p-4'
+        )}
+      >
+        <Link
+          href="/admin"
+          className={cn(
+            'flex min-w-0 items-center',
+            collapsed ? 'justify-center' : 'gap-2'
+          )}
+          onClick={() => onMobileClose?.()}
+          title="Admin Dashboard"
+        >
+          <OptimizedImage
+            src={LOGO_IMAGE[0]}
+            alt="Lfour37"
+            width={collapsed ? 36 : 60}
+            height={collapsed ? 36 : 60}
+            variant="logo"
+            priority
+            className="object-cover"
+          />
+          {showLabels && (
+            <div className="min-w-0 lg:block">
+              <p className="text-xs text-gray-400">Admin Panel</p>
+            </div>
+          )}
         </Link>
+
+        {onToggleCollapse && (
+          <button
+            type="button"
+            className="ml-auto hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white lg:inline-flex"
+            onClick={onToggleCollapse}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? (
+              <PanelLeftOpen className="h-4 w-4" />
+            ) : (
+              <PanelLeftClose className="h-4 w-4" />
+            )}
+          </button>
+        )}
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-        {NAV_ITEMS.map(({ href, icon: Icon, label, exact, notificationKey }) => {
-          const isActive = exact ? pathname === href : pathname.startsWith(href)
-          const showDot =
-            notificationKey && !isActive && notifications[notificationKey]
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-purple-600 text-white'
-                  : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-              )}
-            >
-              <Icon className="h-5 w-5" />
-              {label}
-              {showDot && (
-                <span
-                  className="ml-auto h-2 w-2 shrink-0 rounded-full bg-red-500 animate-pulse"
-                  aria-label="New items"
-                />
-              )}
-            </Link>
-          )
-        })}
+      <nav className="flex-1 space-y-1 overflow-y-auto p-2 sm:p-3">
+        {NAV_ITEMS.map(
+          ({ href, icon: Icon, label, exact, notificationKey }) => {
+            const isActive = exact
+              ? pathname === href
+              : pathname.startsWith(href)
+            const showDot =
+              notificationKey && !isActive && notifications[notificationKey]
+            return (
+              <Link
+                key={href}
+                href={href}
+                title={label}
+                className={cn(
+                  'relative flex items-center rounded-xl text-sm font-medium transition-colors',
+                  collapsed
+                    ? 'justify-center px-2 py-2.5'
+                    : 'gap-3 px-3 py-2.5',
+                  isActive
+                    ? 'bg-purple-600 text-white'
+                    : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                )}
+              >
+                <Icon className="h-5 w-5 shrink-0" />
+                {showLabels && (
+                  <span className="min-w-0 flex-1 truncate">{label}</span>
+                )}
+                {showDot && (
+                  <span
+                    className={cn(
+                      'h-2 w-2 shrink-0 rounded-full bg-red-500 animate-pulse',
+                      collapsed
+                        ? 'absolute right-1.5 top-1.5'
+                        : 'ml-auto'
+                    )}
+                    aria-label="New items"
+                  />
+                )}
+              </Link>
+            )
+          }
+        )}
       </nav>
 
-      {/* User */}
-      <div className="p-4 border-t border-gray-800">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="h-8 w-8 rounded-full bg-purple-600 flex items-center justify-center">
-            <span className="text-xs font-bold">
-              {(user.full_name || user.email).charAt(0).toUpperCase()}
-            </span>
+      <div className={cn('border-t border-gray-800', collapsed ? 'p-2' : 'p-4')}>
+        {!collapsed && (
+          <div className="mb-3 flex items-center gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple-600">
+              <span className="text-xs font-bold">
+                {(user.full_name || user.email).charAt(0).toUpperCase()}
+              </span>
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-white">
+                {user.full_name || user.email}
+              </p>
+              <p className="truncate text-xs capitalize text-gray-400">
+                {user.role.replace('_', ' ')}
+              </p>
+            </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-white truncate">{user.full_name || user.email}</p>
-            <p className="text-xs text-gray-400 capitalize">{user.role.replace('_', ' ')}</p>
-          </div>
-        </div>
+        )}
         <button
           onClick={handleSignOut}
-          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-800 rounded-xl transition-colors"
+          title="Sign Out"
+          className={cn(
+            'flex w-full items-center rounded-xl text-sm text-gray-400 transition-colors hover:bg-gray-800 hover:text-white',
+            collapsed ? 'justify-center px-2 py-2.5' : 'gap-2 px-3 py-2'
+          )}
         >
-          <LogOut className="h-4 w-4" /> Sign Out
+          <LogOut className="h-4 w-4 shrink-0" />
+          {showLabels && <span>Sign Out</span>}
         </button>
       </div>
     </aside>

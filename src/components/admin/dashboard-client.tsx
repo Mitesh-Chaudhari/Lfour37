@@ -193,12 +193,14 @@ function Kpi({
   hint?: string
 }) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-4">
-      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+    <div className="rounded-2xl border border-gray-200 bg-white p-3 sm:p-4">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:text-xs">
         {label}
       </p>
-      <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
-      {hint ? <p className="text-xs text-gray-500 mt-1">{hint}</p> : null}
+      <p className="mt-1 break-words text-lg font-bold text-gray-900 sm:text-2xl">
+        {value}
+      </p>
+      {hint ? <p className="mt-1 text-[11px] text-gray-500 sm:text-xs">{hint}</p> : null}
     </div>
   )
 }
@@ -285,16 +287,16 @@ export function DashboardClient() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-500 mt-1">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Dashboard</h1>
+          <p className="mt-1 text-sm text-gray-500 sm:text-base">
             LFOUR37 operations overview
             {data?.range ? ` · ${data.range.from} → ${data.range.to}` : ''}
           </p>
         </div>
 
-        <Card className="lg:min-w-[280px] !p-4">
+        <Card className="w-full !p-4 lg:min-w-[280px] lg:max-w-sm">
           <p className="text-sm font-semibold text-gray-900 mb-2">Needs Attention</p>
           {data ? (
             <ul className="space-y-1.5 text-sm">
@@ -320,13 +322,13 @@ export function DashboardClient() {
         </Card>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
         {PRESETS.map((p) => (
           <button
             key={p.id}
             type="button"
             onClick={() => setPreset(p.id)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+            className={`shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
               preset === p.id
                 ? 'bg-gray-900 text-white border-gray-900'
                 : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
@@ -336,23 +338,25 @@ export function DashboardClient() {
           </button>
         ))}
         {preset === 'custom' && (
-          <div className="flex items-center gap-2 ml-2">
+          <div className="flex shrink-0 items-center gap-2">
             <Input
               type="date"
               value={customFrom}
               onChange={(e) => setCustomFrom(e.target.value)}
-              className="w-auto"
+              className="w-auto min-w-[8.5rem]"
             />
             <span className="text-gray-400">to</span>
             <Input
               type="date"
               value={customTo}
               onChange={(e) => setCustomTo(e.target.value)}
-              className="w-auto"
+              className="w-auto min-w-[8.5rem]"
             />
           </div>
         )}
-        {loading && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
+        {loading && (
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin self-center text-gray-400" />
+        )}
       </div>
 
       {!data ? (
@@ -361,7 +365,7 @@ export function DashboardClient() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 md:grid-cols-4 xl:grid-cols-7">
             <Kpi label="Net Revenue" value={formatPrice(data.kpis.netRevenue)} />
             <Kpi label="Orders" value={String(data.kpis.orders)} />
             <Kpi label="AOV" value={formatPrice(data.kpis.aov)} />
@@ -371,7 +375,7 @@ export function DashboardClient() {
             <Kpi label="Cancelled" value={String(data.kpis.cancelled)} />
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 md:grid-cols-4">
             <Kpi
               label="New Customers"
               value={String(data.kpis.newCustomers)}
@@ -425,7 +429,7 @@ export function DashboardClient() {
             </Card>
 
             <Card title="Trend" className="lg:col-span-2">
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                 <div className="flex flex-wrap gap-2">
                   {(
                     [
@@ -533,7 +537,7 @@ export function DashboardClient() {
                 {data.orderFunnel.returned} Returned | {data.orderFunnel.refunded}{' '}
                 Refunded
               </p>
-              <div className="grid grid-cols-3 gap-2 text-center text-sm">
+              <div className="grid grid-cols-1 gap-2 text-center text-sm sm:grid-cols-3">
                 <div className="rounded-lg bg-gray-50 p-2">
                   <p className="text-xs text-gray-500">Cancel rate</p>
                   <p className="font-semibold">
@@ -585,7 +589,7 @@ export function DashboardClient() {
                   </tbody>
                 </table>
               </div>
-              <div className="grid grid-cols-2 gap-2 mt-3 text-sm">
+              <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
                 <p>
                   COD % of orders:{' '}
                   <span className="font-semibold">
@@ -624,7 +628,7 @@ export function DashboardClient() {
                 {data.websiteFunnel.checkoutStarted} Checkout →{' '}
                 {data.websiteFunnel.purchases} Purchases
               </p>
-              <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
                 <p>Product view rate: {pct(data.websiteFunnel.productViewRate)}</p>
                 <p>Add-to-cart rate: {pct(data.websiteFunnel.addToCartRate)}</p>
                 <p>Checkout rate: {pct(data.websiteFunnel.checkoutRate)}</p>
@@ -633,7 +637,7 @@ export function DashboardClient() {
             </Card>
 
             <Card title="New vs Returning Customers">
-              <div className="grid grid-cols-2 gap-3 text-sm mb-4">
+              <div className="mb-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
                 <div className="rounded-lg bg-gray-50 p-3">
                   <p className="text-xs text-gray-500">New</p>
                   <p className="text-xl font-bold">{data.customers.newCustomers}</p>
@@ -708,7 +712,7 @@ export function DashboardClient() {
             </Card>
 
             <Card title="Top Cities & PIN Codes">
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
                 <div>
                   <p className="text-xs font-medium text-gray-500 mb-2">Cities</p>
                   <ul className="space-y-1">
@@ -781,15 +785,15 @@ export function DashboardClient() {
               </table>
             </div>
 
-            <div className="rounded-xl border border-dashed border-gray-200 p-3">
-              <p className="text-sm font-medium text-gray-800 mb-2">
+            <div className="flex flex-col gap-2 rounded-xl border border-dashed border-gray-200 p-3 sm:flex-row sm:flex-wrap sm:items-end">
+              <p className="w-full text-sm font-medium text-gray-800 sm:mb-0">
                 Add marketing spend
               </p>
-              <div className="flex flex-wrap gap-2 items-end">
-                <div>
+              <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+                <div className="w-full sm:w-auto">
                   <label className="text-xs text-gray-500">Channel</label>
                   <select
-                    className="block border rounded-lg px-2 py-1.5 text-sm"
+                    className="block w-full border rounded-lg px-2 py-1.5 text-sm sm:w-auto"
                     value={spendForm.channel}
                     onChange={(e) =>
                       setSpendForm((s) => ({ ...s, channel: e.target.value }))
@@ -800,19 +804,19 @@ export function DashboardClient() {
                     <option value="other">Other</option>
                   </select>
                 </div>
-                <div>
+                <div className="w-full sm:w-auto">
                   <label className="text-xs text-gray-500">Amount (₹)</label>
                   <Input
                     value={spendForm.amount}
                     onChange={(e) =>
                       setSpendForm((s) => ({ ...s, amount: e.target.value }))
                     }
-                    className="w-28"
+                    className="w-full sm:w-28"
                     type="number"
                     min="0"
                   />
                 </div>
-                <div>
+                <div className="w-full sm:w-auto">
                   <label className="text-xs text-gray-500">Date</label>
                   <Input
                     type="date"
@@ -823,10 +827,10 @@ export function DashboardClient() {
                         spend_date: e.target.value,
                       }))
                     }
-                    className="w-auto"
+                    className="w-full sm:w-auto"
                   />
                 </div>
-                <div>
+                <div className="w-full sm:w-auto">
                   <label className="text-xs text-gray-500">Campaign</label>
                   <Input
                     value={spendForm.campaign_name}
@@ -836,7 +840,7 @@ export function DashboardClient() {
                         campaign_name: e.target.value,
                       }))
                     }
-                    className="w-40"
+                    className="w-full sm:w-40"
                     placeholder="Optional"
                   />
                 </div>
@@ -845,6 +849,7 @@ export function DashboardClient() {
                   onClick={addSpend}
                   loading={savingSpend}
                   size="sm"
+                  className="w-full sm:w-auto"
                 >
                   Save spend
                 </Button>
@@ -854,7 +859,7 @@ export function DashboardClient() {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card title="Cancelled / Returned / RTO">
-              <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="grid grid-cols-1 gap-3 text-center sm:grid-cols-3">
                 <div className="rounded-lg bg-red-50 p-3">
                   <p className="text-xs text-red-700">Cancelled</p>
                   <p className="text-2xl font-bold text-red-800">

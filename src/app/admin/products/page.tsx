@@ -49,20 +49,20 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Products</h1>
-          <p className="text-gray-500 mt-1">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Products</h1>
+          <p className="mt-1 text-sm text-gray-500 sm:text-base">
             {activeCategoryLabel
               ? `Showing products in ${activeCategoryLabel}`
               : `${products.length} products total`}
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:gap-3">
           <ProductBulkUpload />
           <Link
             href="/admin/products/new"
-            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-xl font-medium hover:bg-purple-700 transition-colors"
+            className="flex items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 py-2 font-medium text-white transition-colors hover:bg-purple-700"
           >
             <Plus className="h-4 w-4" /> Add Product
           </Link>

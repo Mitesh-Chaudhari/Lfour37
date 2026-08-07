@@ -175,7 +175,7 @@ export function SizeGuideEditor({
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <Link href="/admin/size-guides" className="text-sm text-primary-600 hover:underline">
           Back to size guides
         </Link>

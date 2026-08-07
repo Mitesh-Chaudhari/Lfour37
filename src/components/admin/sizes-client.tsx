@@ -179,7 +179,7 @@ export function SizesClient({
       {showForm && (
         <form
           onSubmit={saveSize}
-          className="grid gap-4 rounded-2xl border border-gray-200 bg-white p-6 sm:grid-cols-2"
+          className="grid grid-cols-1 gap-4 rounded-2xl border border-gray-200 bg-white p-4 sm:grid-cols-2 sm:p-6"
         >
           <div className="sm:col-span-2">
             <h2 className="text-lg font-semibold">

@@ -708,7 +708,7 @@ export function ProductForm({
           }}
         />
         <Input label="Slug" helperText="URL-friendly identifier" error={errors.slug?.message} {...register('slug')} />
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className="text-sm font-medium text-gray-700 mb-1 block">Status</label>
             <select
@@ -771,7 +771,7 @@ export function ProductForm({
         </div>
 
         <div className="space-y-3">
-          <div className="grid grid-cols-[1fr_1fr_auto] gap-2 text-xs font-medium text-gray-500 px-0.5">
+          <div className="hidden grid-cols-[1fr_1fr_auto] gap-2 px-0.5 text-xs font-medium text-gray-500 sm:grid">
             <span>Label</span>
             <span>Value</span>
             <span className="w-10" />
@@ -782,7 +782,10 @@ export function ProductForm({
             )
 
             return (
-              <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+              <div
+                key={index}
+                className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-center"
+              >
                 <Input
                   value={item.label}
                   placeholder="e.g. Material"
@@ -829,7 +832,7 @@ export function ProductForm({
       {/* Pricing */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
         <h2 className="text-lg font-semibold">Pricing</h2>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Input label="Price (Rs)" type="number" step="0.01" min="0" error={errors.price?.message} {...register('price', { valueAsNumber: true })} />
           <Input
             label="Compare Price (Rs)"
@@ -934,7 +937,7 @@ export function ProductForm({
 
       {/* Variants */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold">Variants (Size / Color)</h2>
             <Link
@@ -944,7 +947,13 @@ export function ProductForm({
               Manage available sizes
             </Link>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={addVariant}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={addVariant}
+            className="w-full sm:w-auto"
+          >
             <Plus className="h-4 w-4" /> Add Variant
           </Button>
         </div>

@@ -68,26 +68,26 @@ export function AnalyticsClient({ revenueChartData, topProducts, paymentMethods,
   return (
     <div className="space-y-6">
       {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
         {[
           { label: 'Total Revenue', value: formatPrice(totalRevenue), sub: 'Last 30 days' },
           { label: 'Total Orders', value: totalOrders, sub: 'Last 30 days' },
           { label: 'New Users', value: totalUsers, sub: 'Last 30 days' },
           { label: 'Avg. Order Value', value: formatPrice(avgOrderValue), sub: 'Per order' },
         ].map((card) => (
-          <div key={card.label} className="bg-white rounded-2xl border border-gray-200 p-5">
+          <div key={card.label} className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-5">
             <p className="text-sm text-gray-500">{card.label}</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{card.value}</p>
+            <p className="mt-1 break-words text-xl font-bold text-gray-900 sm:text-2xl">{card.value}</p>
             <p className="text-xs text-gray-400 mt-1">{card.sub}</p>
           </div>
         ))}
       </div>
 
       {/* Revenue chart */}
-      <div className="bg-white rounded-2xl border border-gray-200 p-6">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-base font-semibold text-gray-900">Revenue & Orders (30 days)</h2>
-          <Button variant="outline" size="sm" onClick={exportCSV}>
+          <Button variant="outline" size="sm" onClick={exportCSV} className="w-full sm:w-auto">
             <Download className="h-4 w-4" /> Export CSV
           </Button>
         </div>
@@ -116,9 +116,9 @@ export function AnalyticsClient({ revenueChartData, topProducts, paymentMethods,
         </ResponsiveContainer>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
         {/* Payment methods */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-6">
+        <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6">
           <h2 className="text-base font-semibold text-gray-900 mb-4">Payment Methods</h2>
           {paymentPieData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
@@ -137,7 +137,7 @@ export function AnalyticsClient({ revenueChartData, topProducts, paymentMethods,
         </div>
 
         {/* Orders by status */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-6">
+        <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6">
           <h2 className="text-base font-semibold text-gray-900 mb-4">Orders by Status</h2>
           {statusPieData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
@@ -157,7 +157,7 @@ export function AnalyticsClient({ revenueChartData, topProducts, paymentMethods,
       </div>
 
       {/* New users chart */}
-      <div className="bg-white rounded-2xl border border-gray-200 p-6">
+      <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6">
         <h2 className="text-base font-semibold text-gray-900 mb-4">New Users (30 days)</h2>
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={userChartData}>
@@ -172,10 +172,11 @@ export function AnalyticsClient({ revenueChartData, topProducts, paymentMethods,
 
       {/* Top products */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100">
+        <div className="px-4 py-4 border-b border-gray-100 sm:px-6">
           <h2 className="text-base font-semibold text-gray-900">Top Products by Revenue</h2>
         </div>
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[480px] text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
               <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">#</th>
@@ -200,6 +201,7 @@ export function AnalyticsClient({ revenueChartData, topProducts, paymentMethods,
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   )

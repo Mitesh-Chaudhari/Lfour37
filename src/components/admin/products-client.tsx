@@ -213,8 +213,8 @@ export function AdminProductsClient({
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
-          <div className="md:col-span-2 xl:col-span-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="sm:col-span-2 xl:col-span-2">
             <Input
               placeholder="Search by name, SKU, slug, or barcode..."
               value={search}
