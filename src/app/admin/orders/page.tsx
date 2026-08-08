@@ -41,7 +41,15 @@ async function getOrders() {
         variant_size,
         variant_color,
         variant:product_variants(sku),
-        product:products(sku)
+        product:products(
+          sku,
+          cost_price,
+          compare_price,
+          name,
+          categories:product_categories(
+            category:categories(id, name, slug, parent_id)
+          )
+        )
       ),
 
       payment:payments(
@@ -87,12 +95,27 @@ async function getOrders() {
 
   return (data || []).map((order) => ({
     ...order,
-    items: (order.items || []).map((item: { return_reason_id?: string | null }) => ({
-      ...item,
-      return_reason: item.return_reason_id
-        ? { id: item.return_reason_id, label: reasonById.get(item.return_reason_id) }
-        : null,
-    })),
+    items: (order.items || []).map(
+      (item: {
+        return_reason_id?: string | null
+        variant?: { sku?: string | null } | { sku?: string | null }[] | null
+        product?:
+          | { sku?: string | null; cost_price?: number | null }
+          | { sku?: string | null; cost_price?: number | null }[]
+          | null
+      }) => ({
+        ...item,
+        variant: Array.isArray(item.variant)
+          ? item.variant[0] || null
+          : item.variant,
+        product: Array.isArray(item.product)
+          ? item.product[0] || null
+          : item.product,
+        return_reason: item.return_reason_id
+          ? { id: item.return_reason_id, label: reasonById.get(item.return_reason_id) }
+          : null,
+      })
+    ),
   }))
 }
 

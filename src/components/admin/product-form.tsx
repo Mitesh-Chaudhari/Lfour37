@@ -15,6 +15,7 @@ import { OptimizedImage } from '@/components/ui/optimized-image'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { resolveHsnFromCategories } from '@/lib/hsn'
+import { resolvePurchasePriceFromCategories } from '@/lib/purchase-price'
 import { buildCategoryTree, getDeepestSelectedCategoryIds } from '@/lib/categories'
 import {
   buildKeyHighlightsForForm,
@@ -44,6 +45,7 @@ interface ProductFormProps {
     short_description?: string
     price: number
     compare_price?: number
+    cost_price?: number | null
     sku?: string
     hsn_code?: string | null
     status: string
@@ -308,6 +310,10 @@ export function ProductForm({
       short_description: initialData?.short_description || '',
       price: initialData?.price || 0,
       compare_price: initialData?.compare_price,
+      cost_price:
+        initialData?.cost_price != null && initialData.cost_price > 0
+          ? initialData.cost_price
+          : undefined,
       sku: initialData?.sku || '',
       hsn_code: initialData?.hsn_code || '',
       status: (initialData?.status as 'active' | 'inactive' | 'draft') || 'draft',
@@ -322,8 +328,10 @@ export function ProductForm({
     },
   })
   const selectedCategories = watch('category_ids') || [];
+  const comparePrice = watch('compare_price')
   const productName = watch('name')
   const skipInitialHsnAutofill = useRef(true)
+  const skipInitialPurchaseAutofill = useRef(true)
 
   useEffect(() => {
     if (skipInitialHsnAutofill.current) {
@@ -346,6 +354,39 @@ export function ProductForm({
       setValue('hsn_code', resolvedHsn)
     }
   }, [selectedCategories, categories, hsnMappings, setValue])
+
+  useEffect(() => {
+    if (skipInitialPurchaseAutofill.current) {
+      skipInitialPurchaseAutofill.current = false
+      // New products: fill once categories + compare price are present
+      if (initialData?.cost_price != null && initialData.cost_price > 0) {
+        return
+      }
+    }
+
+    if (!selectedCategories.length) return
+
+    const resolved = resolvePurchasePriceFromCategories(
+      comparePrice,
+      selectedCategories,
+      categories.map((category) => ({
+        id: category.id,
+        name: category.name,
+        slug: category.slug,
+        parent_id: category.parent_id ?? null,
+      }))
+    )
+
+    if (resolved != null) {
+      setValue('cost_price', resolved)
+    }
+  }, [
+    selectedCategories,
+    comparePrice,
+    categories,
+    setValue,
+    initialData?.cost_price,
+  ])
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
@@ -545,6 +586,12 @@ export function ProductForm({
           data.compare_price &&
           data.compare_price > 0
             ? data.compare_price
+            : null,
+        cost_price:
+          data.cost_price != null &&
+          !Number.isNaN(data.cost_price) &&
+          data.cost_price >= 0
+            ? data.cost_price
             : null,
         sku: data.sku || null,
         hsn_code: data.hsn_code?.trim() || null,
@@ -839,8 +886,20 @@ export function ProductForm({
             type="number"
             step="0.01"
             min="0"
-            helperText="Original price (optional)"
+            helperText="MRP / original price — used to auto-calc purchase price"
             {...register('compare_price', {
+              setValueAs: (v) =>
+                v === '' ? undefined : Number(v),
+            })}
+          />
+          <Input
+            label="Purchase Price (Rs)"
+            type="number"
+            step="0.01"
+            min="0"
+            helperText="Auto: T-shirts/Shirts/Sweatshirts = (compare÷2)−200; Jeans/Trousers = compare÷2. Editable."
+            error={errors.cost_price?.message}
+            {...register('cost_price', {
               setValueAs: (v) =>
                 v === '' ? undefined : Number(v),
             })}

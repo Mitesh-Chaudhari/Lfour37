@@ -27,7 +27,7 @@ export default async function AdminProductEditPage({ params }: Props) {
       .single(),
     supabase
       .from('categories')
-      .select('id, name, parent_id')
+      .select('id, name, slug, parent_id')
       .eq('is_active', true)
       .order('name'),
     supabase

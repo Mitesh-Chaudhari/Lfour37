@@ -53,7 +53,15 @@ const ORDERS_SELECT = `
     variant_size,
     variant_color,
     variant:product_variants(sku),
-    product:products(sku)
+    product:products(
+      sku,
+      cost_price,
+      compare_price,
+      name,
+      categories:product_categories(
+        category:categories(id, name, slug, parent_id)
+      )
+    )
   ),
   delhivery_shipment:delhivery_shipments(
     awb,
@@ -161,7 +169,10 @@ export async function GET(request: NextRequest) {
         (item: {
           return_reason_id?: string | null
           variant?: { sku?: string | null } | { sku?: string | null }[] | null
-          product?: { sku?: string | null } | { sku?: string | null }[] | null
+          product?:
+            | { sku?: string | null; cost_price?: number | null }
+            | { sku?: string | null; cost_price?: number | null }[]
+            | null
         }) => ({
           ...item,
           variant: Array.isArray(item.variant)

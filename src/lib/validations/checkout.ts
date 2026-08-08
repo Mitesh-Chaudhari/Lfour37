@@ -90,7 +90,21 @@ export const productSchema = z.object({
     },
     z.number().min(0).optional()
   ),
-  cost_price: z.number().min(0).optional(),
+  cost_price: z.preprocess(
+    (value) => {
+      if (
+        value === '' ||
+        value === null ||
+        value === undefined ||
+        Number.isNaN(value)
+      ) {
+        return undefined
+      }
+
+      return Number(value)
+    },
+    z.number().min(0).optional()
+  ),
   sku: z.string().max(100).optional(),
   status: z.enum(['active', 'inactive', 'draft']),
   is_featured: z.boolean().optional().default(false),

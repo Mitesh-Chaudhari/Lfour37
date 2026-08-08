@@ -13,6 +13,10 @@ import {
   RefreshCw,
   Download,
 } from 'lucide-react'
+import {
+  resolveItemPurchasePrice,
+  type PurchasePriceProductInput,
+} from '@/lib/purchase-price'
 
 const STATUS_OPTIONS: { value: OrderStatus; label: string }[] = [
   { value: 'pending', label: 'Pending' },
@@ -60,7 +64,7 @@ type AdminOrderItem = OrderItem & {
   cancel_custom_reason?: string | null
   cancel_reason?: { label?: string } | null
   variant?: { sku?: string | null } | null
-  product?: { sku?: string | null } | null
+  product?: (PurchasePriceProductInput & { sku?: string | null }) | null
 }
 
 function getItemSku(item: AdminOrderItem): string | null {
@@ -71,6 +75,48 @@ function getItemSku(item: AdminOrderItem): string | null {
   if (productSku) return productSku
 
   return null
+}
+
+function getItemPurchasePrice(item: AdminOrderItem): number | null {
+  return resolveItemPurchasePrice(item.product, item.product_name)
+}
+
+function getItemComparePrice(item: AdminOrderItem): number | null {
+  const compare = item.product?.compare_price
+  if (compare == null || !Number.isFinite(compare) || compare <= 0) return null
+  return compare
+}
+
+function getOrderPurchaseTotal(order: { items?: AdminOrderItem[] }): number | null {
+  const items = order.items || []
+  if (!items.length) return null
+
+  let total = 0
+  let hasAny = false
+  for (const item of items) {
+    const unit = getItemPurchasePrice(item)
+    if (unit == null) continue
+    hasAny = true
+    total += unit * (item.quantity || 0)
+  }
+
+  return hasAny ? Math.round(total * 100) / 100 : null
+}
+
+function getOrderCompareTotal(order: { items?: AdminOrderItem[] }): number | null {
+  const items = order.items || []
+  if (!items.length) return null
+
+  let total = 0
+  let hasAny = false
+  for (const item of items) {
+    const unit = getItemComparePrice(item)
+    if (unit == null) continue
+    hasAny = true
+    total += unit * (item.quantity || 0)
+  }
+
+  return hasAny ? Math.round(total * 100) / 100 : null
 }
 
 function formatItemVariant(item: AdminOrderItem): string {
@@ -1002,6 +1048,8 @@ const markDelivered =
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Order</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Customer</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Total</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Compare Price</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Purchase Price</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Payment</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Items</th>
@@ -1033,6 +1081,30 @@ const markDelivered =
                   </td>
                   <td className="px-4 py-3">
                     <span className="font-bold text-gray-900">{formatPrice(order.total)}</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {(() => {
+                      const compareTotal = getOrderCompareTotal(order)
+                      return compareTotal != null ? (
+                        <span className="font-bold text-gray-700">
+                          {formatPrice(compareTotal)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )
+                    })()}
+                  </td>
+                  <td className="px-4 py-3">
+                    {(() => {
+                      const purchaseTotal = getOrderPurchaseTotal(order)
+                      return purchaseTotal != null ? (
+                        <span className="font-bold text-emerald-700">
+                          {formatPrice(purchaseTotal)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )
+                    })()}
                   </td>
                   <td className="px-4 py-3">
                     <Badge variant={order.payment_status === 'completed' ? 'success' : 'warning'}>
@@ -1099,6 +1171,7 @@ const markDelivered =
                     <div className="space-y-2">
                       {order.items?.map((item: AdminOrderItem) => {
                         const sku = getItemSku(item)
+                        const purchasePrice = getItemPurchasePrice(item)
 
                         return (
                         <div key={item.id} className="text-xs border rounded p-2 bg-gray-50">
@@ -1124,7 +1197,28 @@ const markDelivered =
                           </p>
 
                           <p className="text-gray-500">
-                            Qty: {item.quantity} • {formatPrice(item.total_price)}
+                            Qty: {item.quantity} • Sell: {formatPrice(item.total_price)}
+                          </p>
+
+                          <p className="text-gray-500">
+                            Compare:{' '}
+                            {item.product?.compare_price != null &&
+                            item.product.compare_price > 0
+                              ? formatPrice(item.product.compare_price)
+                              : '—'}
+                          </p>
+
+                          <p className="mt-1 font-semibold text-emerald-700">
+                            Purchase:{' '}
+                            {purchasePrice != null
+                              ? `${formatPrice(purchasePrice)}${
+                                  item.quantity > 1
+                                    ? ` × ${item.quantity} = ${formatPrice(
+                                        purchasePrice * item.quantity
+                                      )}`
+                                    : ''
+                                }`
+                              : '—'}
                           </p>
 
                           {item.refund_status && (

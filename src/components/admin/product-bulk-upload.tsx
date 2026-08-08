@@ -21,6 +21,10 @@ import {
   normalizeVariantColorGroup,
   normalizeVariantSize,
 } from '@/lib/product-variants'
+import {
+  computePurchasePrice,
+  detectPurchasePriceKind,
+} from '@/lib/purchase-price'
 import toast from 'react-hot-toast'
 
 type ProductRecord = {
@@ -102,12 +106,21 @@ async function linkProductCategory(
 function buildProductInsert(row: BulkUploadRow, productSlug: string) {
   const listSortOrder = parseOptionalNumber(row.list_sort_order)
   const comparePrice = parseOptionalNumber(row.compare_price)
+  const categoryHint = row.category_slug || ''
+  const purchaseKind =
+    detectPurchasePriceKind(categoryHint) ||
+    categoryHint
+      .split(/[/>]/)
+      .map((part) => detectPurchasePriceKind(part.trim()))
+      .find((kind): kind is NonNullable<typeof kind> => kind != null) ||
+    null
 
   return {
     name: row.name!,
     slug: productSlug,
     price: Number(row.price),
     compare_price: comparePrice != null && comparePrice > 0 ? comparePrice : null,
+    cost_price: computePurchasePrice(comparePrice, purchaseKind),
     description: row.description || null,
     short_description: row.short_description || null,
     key_highlights: parseKeyHighlightsCsv(row.key_highlights),

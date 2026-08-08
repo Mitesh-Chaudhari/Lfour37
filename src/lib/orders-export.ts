@@ -1,5 +1,7 @@
 /** Build Excel-compatible SpreadsheetML (.xls) without external deps. */
 
+import { resolveItemPurchasePrice } from '@/lib/purchase-price'
+
 export type OrdersExportRow = Record<string, string | number | null | undefined>
 
 export const ORDERS_EXPORT_COLUMNS = [
@@ -25,6 +27,8 @@ export const ORDERS_EXPORT_COLUMNS = [
   'Color',
   'Quantity',
   'Unit Price',
+  'Compare Price',
+  'Purchase Price',
   'Item Total',
   'Item Status',
   'Return Status',
@@ -217,7 +221,20 @@ type ExportOrder = {
     bank_account?: unknown
     seal_tag_image_url?: string | null
     variant?: { sku?: string | null } | null
-    product?: { sku?: string | null } | null
+    product?: {
+      sku?: string | null
+      cost_price?: number | null
+      compare_price?: number | null
+      name?: string | null
+      categories?: Array<{
+        category?: {
+          id: string
+          name: string
+          slug?: string | null
+          parent_id?: string | null
+        } | null
+      }> | null
+    } | null
   }> | null
   delhivery_shipment?:
     | {
@@ -305,6 +322,10 @@ export function ordersToExportRows(orders: ExportOrder[]): OrdersExportRow[] {
         Color: item?.variant_color || '',
         Quantity: item?.quantity ?? '',
         'Unit Price': item?.unit_price ?? '',
+        'Compare Price': item?.product?.compare_price ?? '',
+        'Purchase Price': item
+          ? resolveItemPurchasePrice(item.product, item.product_name) ?? ''
+          : '',
         'Item Total': item?.total_price ?? '',
         'Item Status': item?.status || '',
         'Return Status': item?.return_status || '',
