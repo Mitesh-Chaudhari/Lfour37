@@ -115,20 +115,12 @@ export async function POST(req: NextRequest) {
     .eq('order_id', item.order_id)
 
   const allCancelled = areAllOrderItemsCancelled(siblings || [])
+  let delhiveryCancelError: string | null = null
 
   if (allCancelled) {
-    const delhiveryCancel = await cancelDelhiveryShipmentForOrder(item.order_id)
-    if (!delhiveryCancel.ok && !delhiveryCancel.skipped) {
-      return NextResponse.json(
-        {
-          error:
-            delhiveryCancel.error ||
-            'Could not cancel the Delhivery shipment for this order',
-        },
-        { status: 409 }
-      )
-    }
-
+    // Always mark the order cancelled when every item is cancelled.
+    // Do not gate this on Delhivery — a carrier failure used to leave
+    // items cancelled while orders.status stayed processing.
     await supabase
       .from('orders')
       .update({
@@ -136,6 +128,17 @@ export async function POST(req: NextRequest) {
         cancelled_at: new Date().toISOString(),
       })
       .eq('id', item.order_id)
+
+    const delhiveryCancel = await cancelDelhiveryShipmentForOrder(item.order_id)
+    if (!delhiveryCancel.ok && !delhiveryCancel.skipped) {
+      delhiveryCancelError =
+        delhiveryCancel.error ||
+        'Order cancelled, but Delhivery shipment could not be cancelled'
+      logger.warn('Order cancelled but Delhivery cancel failed', {
+        orderId: item.order_id,
+        error: delhiveryCancelError,
+      })
+    }
   }
 
   let refund = null
@@ -223,5 +226,6 @@ export async function POST(req: NextRequest) {
     refund,
     refund_error: refundError,
     all_items_cancelled: allCancelled,
+    delhivery_error: delhiveryCancelError,
   })
 }

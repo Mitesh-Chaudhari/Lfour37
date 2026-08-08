@@ -94,18 +94,8 @@ export async function POST(req: NextRequest) {
     let delhiveryCancel: DelhiveryCancelResult = { ok: true, skipped: true }
 
     if (allCancelled) {
-      delhiveryCancel = await cancelDelhiveryShipmentForOrder(item.order_id)
-      if (!delhiveryCancel.ok && !delhiveryCancel.skipped) {
-        return NextResponse.json(
-          {
-            error:
-              delhiveryCancel.error ||
-              'Could not cancel the Delhivery shipment for this order',
-          },
-          { status: 409 }
-        )
-      }
-
+      // Always mark the order cancelled when every item is cancelled.
+      // Carrier cancel is best-effort and must not leave status stuck on processing.
       await admin
         .from('orders')
         .update({
@@ -113,6 +103,14 @@ export async function POST(req: NextRequest) {
           cancelled_at: new Date().toISOString(),
         })
         .eq('id', item.order_id)
+
+      delhiveryCancel = await cancelDelhiveryShipmentForOrder(item.order_id)
+      if (!delhiveryCancel.ok && !delhiveryCancel.skipped) {
+        logger.warn('Cancel approved but Delhivery cancel failed', {
+          orderId: item.order_id,
+          error: delhiveryCancel.error,
+        })
+      }
     }
 
     const { data: order } = await admin

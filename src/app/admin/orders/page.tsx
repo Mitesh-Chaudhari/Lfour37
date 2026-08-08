@@ -1,6 +1,8 @@
 import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { AdminOrdersTable } from '@/components/admin/orders-table'
+import { areAllOrderItemsCancelled } from '@/lib/order-status'
+import logger from '@/lib/logger'
 
 async function getOrders() {
   const supabase = await createClient()
@@ -93,8 +95,42 @@ async function getOrders() {
     (returnReasons || []).map((reason) => [reason.id, reason.label])
   )
 
+  // Heal rows where every item is cancelled but the order is still open
+  // (e.g. older cancels blocked by Delhivery failures).
+  const stuckOrderIds = (data || [])
+    .filter((order) => {
+      const items = order.items || []
+      if (!areAllOrderItemsCancelled(items)) return false
+      return !['cancelled', 'refunded'].includes(order.status || '')
+    })
+    .map((order) => order.id)
+
+  const healedAt = new Date().toISOString()
+  if (stuckOrderIds.length > 0) {
+    const { error: healError } = await supabase
+      .from('orders')
+      .update({
+        status: 'cancelled',
+        cancelled_at: healedAt,
+      })
+      .in('id', stuckOrderIds)
+
+    if (healError) {
+      logger.warn('Failed to heal cancelled order statuses', {
+        healError,
+        stuckOrderIds,
+      })
+    }
+  }
+
+  const stuckIdSet = new Set(stuckOrderIds)
+
   return (data || []).map((order) => ({
     ...order,
+    status: stuckIdSet.has(order.id) ? 'cancelled' : order.status,
+    cancelled_at: stuckIdSet.has(order.id)
+      ? order.cancelled_at || healedAt
+      : order.cancelled_at,
     items: (order.items || []).map(
       (item: {
         return_reason_id?: string | null

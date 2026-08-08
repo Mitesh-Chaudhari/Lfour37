@@ -730,26 +730,44 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
         toast.error(`Cancellation approved, but refund failed: ${data.refund_error}`)
       } else if (data.refund) {
         toast.success('Cancellation approved and refund initiated')
+      } else if (data.delhivery && !data.delhivery.ok && !data.delhivery.skipped) {
+        toast.success(
+          'Cancellation approved. Order marked cancelled — Delhivery cancel needs follow-up.'
+        )
       } else {
         toast.success('Cancellation approved')
       }
 
       setOrders((prev) =>
-        prev.map((order) => ({
-          ...order,
-          items: order.items?.map((item: AdminOrderItem) =>
+        prev.map((order) => {
+          const items = order.items?.map((item: AdminOrderItem) =>
             item.id === itemId
               ? {
                   ...item,
-                  status: 'cancelled',
+                  status: 'cancelled' as const,
                   refund_status: data.refund ? 'completed' : item.refund_status,
                   refunded_amount: data.refund
                     ? item.total_price
                     : item.refunded_amount,
                 }
               : item
-          ),
-        }))
+          )
+
+          const fullyCancelled =
+            data.all_items_cancelled ||
+            (items?.length
+              ? items.every((item) => item.status === 'cancelled')
+              : false)
+
+          return {
+            ...order,
+            items,
+            status: fullyCancelled ? 'cancelled' : order.status,
+            cancelled_at: fullyCancelled
+              ? order.cancelled_at || new Date().toISOString()
+              : order.cancelled_at,
+          }
+        })
       )
     } catch {
       toast.error('Error approving cancellation')
