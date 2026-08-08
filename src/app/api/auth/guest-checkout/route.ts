@@ -1,8 +1,8 @@
 import { randomBytes } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/server'
 import { getAuthUserByEmail, syncUserProfile } from '@/lib/auth-users'
+import { mintSessionWithPassword } from '@/lib/auth-session'
 import { guestCheckoutAccountSchema } from '@/lib/validations/checkout'
 import { sendSetPasswordEmail } from '@/lib/email'
 import logger from '@/lib/logger'
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error:
-            'An account with this email already exists. Please sign in to continue.',
+            'An account with this email already exists. Verify with OTP to continue.',
           code: 'EMAIL_EXISTS',
         },
         { status: 409 }
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error:
-            'An account with this email already exists. Please sign in to continue.',
+            'An account with this email already exists. Verify with OTP to continue.',
           code: 'EMAIL_EXISTS',
         },
         { status: 409 }
@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           {
             error:
-              'An account with this email already exists. Please sign in to continue.',
+              'An account with this email already exists. Verify with OTP to continue.',
             code: 'EMAIL_EXISTS',
           },
           { status: 409 }
@@ -115,7 +115,6 @@ export async function POST(req: NextRequest) {
         full_name: fullName,
         phone,
         phone_verified: true,
-        // Phone OTP proves identity; email is collected but not OTP-verified.
         email_verified: false,
       })
     } catch (profileError) {
@@ -147,8 +146,6 @@ export async function POST(req: NextRequest) {
           email,
         })
       } else {
-        // Use hashed_token on our own page (button click verifies).
-        // Do NOT email Supabase action_link — email scanners often consume one-time OTPs.
         const hashedToken = linkData.properties?.hashed_token
         if (hashedToken) {
           const setPasswordUrl =
@@ -164,22 +161,10 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const { data: signInData, error: signInError } =
-      await createSupabaseClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          auth: {
-            persistSession: false,
-            autoRefreshToken: false,
-          },
-        }
-      ).auth.signInWithPassword({
-        email,
-        password,
-      })
-
-    if (signInError || !signInData.session) {
+    let session
+    try {
+      session = await mintSessionWithPassword(email, password, created.user.id)
+    } catch (signInError) {
       logger.error('Guest checkout auto sign-in failed', {
         signInError,
         email,
@@ -195,8 +180,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      access_token: signInData.session.access_token,
-      refresh_token: signInData.session.refresh_token,
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
       user: {
         id: created.user.id,
         email,

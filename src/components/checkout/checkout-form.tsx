@@ -93,6 +93,13 @@ export function CheckoutForm({
   const [isSendOtpClicked, setIsSendOtpClicked] = useState(false)
   const [emailExists, setEmailExists] = useState(false)
   const [checkingEmail, setCheckingEmail] = useState(false)
+  const [reclaimChannel, setReclaimChannel] = useState<'phone' | 'email' | null>(
+    null
+  )
+  const [reclaimPhoneHint, setReclaimPhoneHint] = useState<string | null>(null)
+  const [accountReclaimed, setAccountReclaimed] = useState(false)
+  const [guestAddresses, setGuestAddresses] = useState<Address[]>([])
+  const [emailLocked, setEmailLocked] = useState(false)
 
   const subtotal = getSubtotal()
   const [localDiscount, setLocalDiscount] = useState(discountAmount)
@@ -140,10 +147,11 @@ export function CheckoutForm({
   const { status: pinStatus, data: pinData } = usePincodeLookup(
     postalCode,
     (data) => {
-      // Don't overwrite city/state that came from a saved address
-      const savedAddr = !isGuest
-        ? addresses.find((a) => a.id === selectedAddressId)
-        : undefined
+      const savedPool = accountReclaimed ? guestAddresses : addresses
+      const savedAddr =
+        (!isGuest || accountReclaimed) && selectedAddressId
+          ? savedPool.find((a) => a.id === selectedAddressId)
+          : undefined
       if (savedAddr && savedAddr.postal_code.trim() === (postalCode || '').trim()) {
         return
       }
@@ -199,9 +207,9 @@ export function CheckoutForm({
     }
   }, [codUnavailable, paymentMethod, setValue])
 
-  // Guest phone change invalidates OTP verification
+  // Guest phone change invalidates OTP verification (new-email path only)
   useEffect(() => {
-    if (!isGuest) return
+    if (!isGuest || emailExists || accountReclaimed) return
 
     if (verifiedPhone && verifiedPhone !== guestPhone) {
       setPhoneVerified(false)
@@ -209,10 +217,10 @@ export function CheckoutForm({
       setIsSendOtpClicked(false)
       setOtp('')
     }
-  }, [guestPhone, isGuest, verifiedPhone])
+  }, [guestPhone, isGuest, verifiedPhone, emailExists, accountReclaimed])
 
   useEffect(() => {
-    if (!isGuest || !isValidPhone || !guestPhone) return
+    if (!isGuest || !isValidPhone || !guestPhone || emailExists) return
 
     const checkPhoneVerification = async (phone: string) => {
       try {
@@ -232,35 +240,101 @@ export function CheckoutForm({
     }
 
     checkPhoneVerification(guestPhone)
-  }, [guestPhone, isGuest, isValidPhone])
+  }, [guestPhone, isGuest, isValidPhone, emailExists])
 
   useEffect(() => {
     if (!isGuest) return
 
     if (!guestEmail || !isValidEmail) {
       setEmailExists(false)
+      setReclaimChannel(null)
+      setReclaimPhoneHint(null)
       return
     }
+
+    if (emailLocked && accountReclaimed) return
 
     const timeout = setTimeout(async () => {
       try {
         setCheckingEmail(true)
-        const res = await fetch('/api/auth/check-email', {
+        const res = await fetch('/api/auth/guest-lookup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: guestEmail }),
         })
         const data = await res.json()
-        setEmailExists(Boolean(data.exists))
+        const exists = Boolean(data.exists)
+        setEmailExists(exists)
+
+        if (exists) {
+          setReclaimChannel(data.channel === 'email' ? 'email' : 'phone')
+          setReclaimPhoneHint(data.phone_hint || null)
+          // Existing account must use reclaim OTP — clear new-user phone verify
+          setPhoneVerified(false)
+          setVerifiedPhone('')
+          setIsSendOtpClicked(false)
+          setOtp('')
+          setAccountReclaimed(false)
+          if (data.full_name) {
+            setValue('full_name', data.full_name)
+          }
+          const savedPhone = String(data.phone || '')
+            .replace(/\D/g, '')
+            .slice(-10)
+          if (savedPhone.length === 10) {
+            setValue('phone', savedPhone, { shouldValidate: true })
+          }
+        } else {
+          setReclaimChannel(null)
+          setReclaimPhoneHint(null)
+        }
       } catch {
         setEmailExists(false)
+        setReclaimChannel(null)
+        setReclaimPhoneHint(null)
       } finally {
         setCheckingEmail(false)
       }
     }, 500)
 
     return () => clearTimeout(timeout)
-  }, [guestEmail, isGuest, isValidEmail])
+  }, [guestEmail, isGuest, isValidEmail, emailLocked, accountReclaimed, setValue])
+
+  // Prefill from reclaimed saved address
+  useEffect(() => {
+    if (!accountReclaimed || !guestAddresses.length) return
+
+    const addr =
+      guestAddresses.find((a) => a.id === selectedAddressId) ||
+      guestAddresses[0]
+    if (!addr) return
+
+    setValue('full_name', addr.full_name)
+    const addrPhone = (addr.phone || '').replace(/\D/g, '').slice(-10)
+    // Keep verified account phone if address has none; otherwise use address phone
+    if (addrPhone.length === 10) {
+      setValue('phone', addrPhone)
+      if (phoneVerified && verifiedPhone && verifiedPhone !== addrPhone) {
+        // Delivery phone changed from verified account phone — require re-verify
+        setPhoneVerified(false)
+        setVerifiedPhone('')
+        setIsSendOtpClicked(false)
+      }
+    }
+    setValue('address_line1', addr.address_line1)
+    setValue('address_line2', addr.address_line2 || '')
+    setValue('city', addr.city)
+    setValue('state', addr.state)
+    setValue('postal_code', addr.postal_code)
+    setValue('country', addr.country)
+  }, [
+    selectedAddressId,
+    guestAddresses,
+    accountReclaimed,
+    setValue,
+    phoneVerified,
+    verifiedPhone,
+  ])
 
   const afterCoupon = Math.max(0, subtotal - localDiscount)
   const prepaidDiscount = calculatePrepaidDiscount(afterCoupon, paymentMethod)
@@ -270,6 +344,42 @@ export function CheckoutForm({
   const total = Math.max(0, afterCoupon - prepaidDiscount) + taxAmount + shippingAmount
 
   const sendOtp = async () => {
+    // Existing account not yet reclaimed → OTP to on-file phone/email
+    if (emailExists && !accountReclaimed) {
+      if (!guestEmail || !isValidEmail) {
+        toast.error('Enter a valid email first')
+        return
+      }
+
+      setSendingOtp(true)
+      try {
+        const res = await fetch('/api/auth/send-guest-reclaim-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: guestEmail }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          toast.error(data.error || 'Failed to send OTP')
+          return
+        }
+        setReclaimChannel(data.channel === 'email' ? 'email' : 'phone')
+        setReclaimPhoneHint(data.phone_hint || reclaimPhoneHint)
+        setIsSendOtpClicked(true)
+        toast.success(
+          data.channel === 'email'
+            ? 'OTP sent to your email'
+            : `OTP sent on WhatsApp to ${data.phone_hint || 'your saved number'}`
+        )
+      } catch {
+        toast.error('Failed to send OTP')
+      } finally {
+        setSendingOtp(false)
+      }
+      return
+    }
+
+    // New guest, or reclaimed account still missing a phone
     if (!isValidPhone) {
       toast.error('Please enter a valid 10 digit phone number')
       return
@@ -304,6 +414,113 @@ export function CheckoutForm({
 
     setVerifyingOtp(true)
     try {
+      if (emailExists && !accountReclaimed) {
+        const channel = reclaimChannel || 'phone'
+        const res = await fetch('/api/auth/guest-reclaim', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: guestEmail,
+            otp: otp.trim(),
+            channel,
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          toast.error(data.error || 'Invalid OTP')
+          return
+        }
+
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: data.access_token,
+          refresh_token: data.refresh_token,
+        })
+
+        if (sessionError) {
+          toast.error('Verified, but sign-in failed. Please try again.')
+          return
+        }
+
+        if (data.profile?.full_name) {
+          setValue('full_name', data.profile.full_name)
+        }
+
+        const addrs = (data.addresses || []) as Address[]
+        setGuestAddresses(addrs)
+        if (addrs.length) {
+          const defaultAddr =
+            addrs.find((a) => a.is_default) || addrs[0]
+          setSelectedAddressId(defaultAddr.id)
+        }
+
+        let resolvedPhone = (
+          data.profile?.phone ||
+          addrs.find((a) => (a.phone || '').replace(/\D/g, '').length >= 10)
+            ?.phone ||
+          ''
+        )
+          .replace(/\D/g, '')
+          .slice(-10)
+
+        // After session is set, re-read profile in case phone was missed
+        if (resolvedPhone.length !== 10) {
+          try {
+            const { data: profileRow } = await supabase
+              .from('users')
+              .select('phone, phone_verified')
+              .eq('id', data.profile?.id)
+              .maybeSingle()
+            const fromDb = (profileRow?.phone || '')
+              .replace(/\D/g, '')
+              .slice(-10)
+            if (fromDb.length === 10) {
+              resolvedPhone = fromDb
+              if (profileRow?.phone_verified) {
+                data.profile = {
+                  ...data.profile,
+                  phone: fromDb,
+                  phone_verified: true,
+                }
+              }
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        setAccountReclaimed(true)
+        setEmailLocked(true)
+        setOtp('')
+        setIsSendOtpClicked(false)
+
+        if (resolvedPhone.length === 10) {
+          setValue('phone', resolvedPhone, { shouldValidate: true })
+          const alreadyVerified =
+            Boolean(data.profile?.phone_verified) ||
+            data.requires_phone_otp === false
+          if (alreadyVerified) {
+            setVerifiedPhone(resolvedPhone)
+            setPhoneVerified(true)
+            toast.success('Welcome back — account and phone verified')
+          } else {
+            setVerifiedPhone('')
+            setPhoneVerified(false)
+            toast.success(
+              'Account verified. Confirm your phone via WhatsApp OTP to continue.'
+            )
+          }
+        } else {
+          setValue('phone', '')
+          setVerifiedPhone('')
+          setPhoneVerified(false)
+          toast.success(
+            'Account verified. Please add and verify your phone for WhatsApp updates.'
+          )
+        }
+        return
+      }
+
+      // New guest phone OTP, or reclaimed account that still needs a phone
       const res = await fetch('/api/auth/verify-phone-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -316,6 +533,22 @@ export function CheckoutForm({
       }
       setPhoneVerified(true)
       setVerifiedPhone(guestPhone || '')
+
+      if (accountReclaimed && guestPhone) {
+        try {
+          await fetch('/api/profile', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              full_name: watch('full_name') || 'Customer',
+              phone: guestPhone,
+            }),
+          })
+        } catch {
+          // Order can still use shipping phone; profile sync is best-effort
+        }
+      }
+
       toast.success('Phone verified')
     } catch {
       toast.error('Failed to verify OTP')
@@ -332,10 +565,29 @@ export function CheckoutForm({
       return false
     }
 
+    if (!data.phone || !/^[0-9]{10}$/.test(data.phone)) {
+      toast.error('A valid 10-digit phone number is required for WhatsApp updates')
+      return false
+    }
+
     if (emailExists) {
-      toast.error(
-        'An account with this email already exists. Please sign in to continue.'
-      )
+      if (!accountReclaimed) {
+        toast.error('Please verify the OTP sent to your saved phone or email')
+        return false
+      }
+
+      if (!phoneVerified || verifiedPhone !== data.phone) {
+        toast.error('Please verify your phone number for WhatsApp updates')
+        return false
+      }
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (session) return true
+      toast.error('Session expired. Please verify OTP again.')
+      setAccountReclaimed(false)
+      setPhoneVerified(false)
       return false
     }
 
@@ -359,9 +611,10 @@ export function CheckoutForm({
     if (!res.ok) {
       if (result.code === 'EMAIL_EXISTS') {
         setEmailExists(true)
+        setReclaimChannel('phone')
         toast.error(
           result.error ||
-            'An account with this email already exists. Please sign in.'
+            'An account with this email already exists. Verify with OTP to continue.'
         )
       } else {
         toast.error(result.error || 'Failed to create account')
@@ -589,14 +842,35 @@ export function CheckoutForm({
                       {...register('full_name')}
                     />
                   </div>
+
+                  {/* Email + email OTP only */}
                   <div className="sm:col-span-2">
-                    <Input
-                      label="Email"
-                      type="email"
-                      leftIcon={<Mail className="h-4 w-4" />}
-                      error={errors.email?.message}
-                      {...register('email')}
-                    />
+                    <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
+                      <div className="flex-1">
+                        <Input
+                          label="Email"
+                          type="email"
+                          leftIcon={<Mail className="h-4 w-4" />}
+                          error={errors.email?.message}
+                          disabled={emailLocked}
+                          {...register('email')}
+                        />
+                      </div>
+                      {emailExists &&
+                        !accountReclaimed &&
+                        reclaimChannel === 'email' && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={sendOtp}
+                            loading={sendingOtp}
+                            disabled={!isValidEmail}
+                            className="sm:mb-0 shrink-0"
+                          >
+                            {isSendOtpClicked ? 'Resend email OTP' : 'Send email OTP'}
+                          </Button>
+                        )}
+                    </div>
                     <p className="text-xs text-gray-500 mt-1">
                       Order updates and your set-password link go to this address.
                     </p>
@@ -605,20 +879,63 @@ export function CheckoutForm({
                         Checking email...
                       </p>
                     )}
-                    {emailExists && (
-                      <p className="text-xs text-red-600 mt-1">
-                        This email is already registered.{' '}
+                    {emailExists && !accountReclaimed && (
+                      <p className="text-xs text-amber-700 mt-1 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                        Account found.{' '}
+                        {reclaimChannel === 'email'
+                          ? 'Verify with email OTP to continue.'
+                          : `Verify with WhatsApp OTP${
+                              reclaimPhoneHint ? ` (${reclaimPhoneHint})` : ''
+                            } on the phone field below.`}{' '}
+                        Prefer password?{' '}
                         <Link
                           href={buildAuthHref('/login', '/checkout')}
                           className="underline font-medium"
                         >
                           Sign in
-                        </Link>{' '}
-                        to continue.
+                        </Link>
+                        .
+                      </p>
+                    )}
+                    {emailExists &&
+                      !accountReclaimed &&
+                      reclaimChannel === 'email' &&
+                      isSendOtpClicked && (
+                        <div className="mt-3 flex flex-col sm:flex-row gap-3 sm:items-end">
+                          <div className="flex-1">
+                            <Input
+                              label="Email OTP"
+                              inputMode="numeric"
+                              maxLength={6}
+                              value={otp}
+                              onChange={(e) => setOtp(e.target.value)}
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            onClick={verifyOtp}
+                            loading={verifyingOtp}
+                            className="sm:mb-0"
+                          >
+                            Verify email OTP
+                          </Button>
+                        </div>
+                      )}
+                    {accountReclaimed && (
+                      <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                        <Check className="h-3.5 w-3.5" /> Account verified —
+                        signed in to continue checkout
+                      </p>
+                    )}
+                    {accountReclaimed && !phoneVerified && (
+                      <p className="text-xs text-amber-700 mt-1 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                        Add your phone and verify via WhatsApp so order updates
+                        can be sent.
                       </p>
                     )}
                   </div>
 
+                  {/* Phone + WhatsApp OTP only */}
                   <div className="sm:col-span-2">
                     <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
                       <div className="flex-1">
@@ -628,67 +945,102 @@ export function CheckoutForm({
                           inputMode="numeric"
                           maxLength={10}
                           error={errors.phone?.message}
+                          disabled={Boolean(phoneVerified && verifiedPhone)}
                           {...register('phone')}
                         />
                       </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={sendOtp}
-                        loading={sendingOtp}
-                        disabled={!isValidPhone || phoneVerified}
-                        className="sm:mb-0"
-                      >
-                        {phoneVerified
-                          ? 'Verified'
-                          : isSendOtpClicked
-                            ? 'Resend OTP'
-                            : 'Send OTP'}
-                      </Button>
+                      {(emailExists &&
+                        !accountReclaimed &&
+                        reclaimChannel === 'phone') ||
+                      ((!emailExists || accountReclaimed) &&
+                        !phoneVerified) ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={sendOtp}
+                          loading={sendingOtp}
+                          disabled={
+                            phoneVerified ||
+                            (emailExists &&
+                            !accountReclaimed &&
+                            reclaimChannel === 'phone'
+                              ? !isValidEmail
+                              : !isValidPhone)
+                          }
+                          className="sm:mb-0 shrink-0"
+                        >
+                          {phoneVerified
+                            ? 'Verified'
+                            : isSendOtpClicked
+                              ? 'Resend WhatsApp OTP'
+                              : 'Send WhatsApp OTP'}
+                        </Button>
+                      ) : null}
                     </div>
                     <p className="text-xs text-gray-500 mt-1">
-                      We&apos;ll send a verification code on WhatsApp.
+                      {emailExists &&
+                      !accountReclaimed &&
+                      reclaimChannel === 'phone'
+                        ? `Saved number filled from your account${
+                            reclaimPhoneHint ? ` (${reclaimPhoneHint})` : ''
+                          }. Verify with WhatsApp OTP to continue.`
+                        : accountReclaimed && !phoneVerified
+                          ? 'Enter your phone and verify via WhatsApp for order updates.'
+                          : emailExists &&
+                              !accountReclaimed &&
+                              reclaimChannel === 'email'
+                            ? 'After email verification, phone is still required for WhatsApp updates.'
+                            : "We'll send a verification code on WhatsApp."}
                     </p>
-                  </div>
 
-                  {!phoneVerified && isSendOtpClicked && (
-                    <div className="sm:col-span-2 flex flex-col sm:flex-row gap-3 sm:items-end">
-                      <div className="flex-1">
-                        <Input
-                          label="OTP"
-                          inputMode="numeric"
-                          maxLength={6}
-                          value={otp}
-                          onChange={(e) => setOtp(e.target.value)}
-                        />
-                      </div>
-                      <Button
-                        type="button"
-                        onClick={verifyOtp}
-                        loading={verifyingOtp}
-                      >
-                        Verify OTP
-                      </Button>
-                    </div>
-                  )}
+                    {((emailExists &&
+                      !accountReclaimed &&
+                      reclaimChannel === 'phone') ||
+                      ((!emailExists || accountReclaimed) &&
+                        !phoneVerified)) &&
+                      isSendOtpClicked && (
+                        <div className="mt-3 flex flex-col sm:flex-row gap-3 sm:items-end">
+                          <div className="flex-1">
+                            <Input
+                              label="WhatsApp OTP"
+                              inputMode="numeric"
+                              maxLength={6}
+                              value={otp}
+                              onChange={(e) => setOtp(e.target.value)}
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            onClick={verifyOtp}
+                            loading={verifyingOtp}
+                            className="sm:mb-0"
+                          >
+                            Verify WhatsApp OTP
+                          </Button>
+                        </div>
+                      )}
+                  </div>
 
                   {phoneVerified && (
                     <p className="sm:col-span-2 text-sm text-green-600 flex items-center gap-1">
-                      <Check className="h-4 w-4" /> Phone number verified
+                      <Check className="h-4 w-4" /> Phone ready for WhatsApp
+                      updates
                     </p>
                   )}
                 </div>
               </div>
             )}
 
-            {!isGuest && addresses.length > 0 && (
+            {((!isGuest && addresses.length > 0) ||
+              (accountReclaimed && guestAddresses.length > 0)) && (
               <div className="bg-white rounded-xl border border-gray-200 p-6">
                 <div className="flex items-center gap-2 mb-4">
                   <MapPin className="h-5 w-5 text-purple-600" />
                   <h2 className="text-lg font-semibold">Saved Addresses</h2>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                  {addresses.map((addr) => (
+                  {(accountReclaimed ? guestAddresses : addresses).map(
+                    (addr) => (
                     <button
                       key={addr.id}
                       type="button"
@@ -952,7 +1304,9 @@ export function CheckoutForm({
               loading={isSubmitting}
               disabled={
                 isGuest &&
-                (emailExists || !phoneVerified)
+                (!isValidPhone ||
+                  !phoneVerified ||
+                  (emailExists && !accountReclaimed))
               }
             >
               {paymentMethod === 'cod' ? 'Place Order' : 'Continue to Payment'}
