@@ -84,7 +84,7 @@ export function resolvePurchasePriceFromCategories(
     let d = 0
     let current: string | null = id
     while (current) {
-      const parent = byId.get(current)?.parent_id ?? null
+      const parent: string | null = byId.get(current)?.parent_id ?? null
       if (!parent) break
       d++
       current = parent
