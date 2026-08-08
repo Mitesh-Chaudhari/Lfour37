@@ -166,68 +166,37 @@ export default function RegisterForm() {
     }
     setIsLoading(true)
     try {
-        const { data: signUpData, error } =
-        await supabase.auth.signUp({
-            email: data.email,
-            password:
-            data.password,
+      const registerRes = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: data.email,
+          password: data.password,
+          full_name: data.full_name,
+          phone: data.phone,
+          gender: data.gender || null,
+          dob: data.dob || null,
+        }),
+      })
 
-            options: {
-            data: {
-                full_name:
-                data.full_name,
+      const registerResult = await registerRes.json().catch(() => null)
 
-                phone:
-                data.phone,
-
-                phone_verified: true,
-
-                gender:
-                data.gender || null,
-
-                dob: data.dob || null,
-            },
-
-            emailRedirectTo:
-                `${window.location.origin}/api/auth/callback`,
-            },
-        })
-
-      if (error) {
-        if (error.message.includes('already registered')) {
-          toast.error('An account with this email already exists')
+      if (!registerRes.ok) {
+        if (registerResult?.code === 'EMAIL_EXISTS') {
+          setEmailExists(true)
+          toast.error(
+            registerResult?.error ||
+              'An account with this email already exists'
+          )
         } else {
-          toast.error(error.message)
+          toast.error(
+            registerResult?.error || 'Failed to create account'
+          )
         }
         return
       }
 
-      if (signUpData.user?.id) {
-        const profileRes = await fetch('/api/auth/complete-registration', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: signUpData.user.id,
-            email: data.email,
-            full_name: data.full_name,
-            phone: data.phone,
-            phone_verified: true,
-            gender: data.gender || null,
-            dob: data.dob || null,
-          }),
-        })
-
-        if (!profileRes.ok) {
-          const profileError = await profileRes.json().catch(() => null)
-          toast.error(
-            profileError?.error ||
-              'Account created but profile setup failed. Please contact support.'
-          )
-          return
-        }
-      }
-
-      toast.success('Account created! Check your email to verify your account.')
+      toast.success('Account created! You can sign in with your email and password.')
       router.push(
         `/login?redirectTo=${encodeURIComponent(
           redirectTo

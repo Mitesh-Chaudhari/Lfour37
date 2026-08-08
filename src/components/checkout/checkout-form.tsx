@@ -91,12 +91,6 @@ export function CheckoutForm({
   const [sendingOtp, setSendingOtp] = useState(false)
   const [verifyingOtp, setVerifyingOtp] = useState(false)
   const [isSendOtpClicked, setIsSendOtpClicked] = useState(false)
-  const [emailVerified, setEmailVerified] = useState(false)
-  const [verifiedEmail, setVerifiedEmail] = useState('')
-  const [emailOtp, setEmailOtp] = useState('')
-  const [sendingEmailOtp, setSendingEmailOtp] = useState(false)
-  const [verifyingEmailOtp, setVerifyingEmailOtp] = useState(false)
-  const [isSendEmailOtpClicked, setIsSendEmailOtpClicked] = useState(false)
   const [emailExists, setEmailExists] = useState(false)
   const [checkingEmail, setCheckingEmail] = useState(false)
 
@@ -217,18 +211,6 @@ export function CheckoutForm({
     }
   }, [guestPhone, isGuest, verifiedPhone])
 
-  // Guest email change invalidates email OTP verification
-  useEffect(() => {
-    if (!isGuest) return
-
-    if (verifiedEmail && verifiedEmail !== (guestEmail || '').trim().toLowerCase()) {
-      setEmailVerified(false)
-      setVerifiedEmail('')
-      setIsSendEmailOtpClicked(false)
-      setEmailOtp('')
-    }
-  }, [guestEmail, isGuest, verifiedEmail])
-
   useEffect(() => {
     if (!isGuest || !isValidPhone || !guestPhone) return
 
@@ -251,30 +233,6 @@ export function CheckoutForm({
 
     checkPhoneVerification(guestPhone)
   }, [guestPhone, isGuest, isValidPhone])
-
-  useEffect(() => {
-    if (!isGuest || !isValidEmail || !guestEmail) return
-
-    const normalized = guestEmail.trim().toLowerCase()
-    const checkEmailVerification = async (email: string) => {
-      try {
-        const res = await fetch('/api/auth/check-email-verified', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email }),
-        })
-        const data = await res.json()
-        if (data.verified) {
-          setEmailVerified(true)
-          setVerifiedEmail(email)
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    checkEmailVerification(normalized)
-  }, [guestEmail, isGuest, isValidEmail])
 
   useEffect(() => {
     if (!isGuest) return
@@ -366,69 +324,6 @@ export function CheckoutForm({
     }
   }
 
-  const sendEmailOtp = async () => {
-    if (!isValidEmail) {
-      toast.error('Please enter a valid email address')
-      return
-    }
-    if (emailExists) {
-      toast.error('This email is already registered. Please sign in.')
-      return
-    }
-
-    setSendingEmailOtp(true)
-    try {
-      const res = await fetch('/api/auth/send-email-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: guestEmail }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        if (data.code === 'EMAIL_EXISTS') setEmailExists(true)
-        toast.error(data.error || 'Failed to send email OTP')
-        return
-      }
-      setIsSendEmailOtpClicked(true)
-      toast.success('OTP sent to your email')
-    } catch {
-      toast.error('Failed to send email OTP')
-    } finally {
-      setSendingEmailOtp(false)
-    }
-  }
-
-  const verifyEmailOtp = async () => {
-    if (!emailOtp.trim()) {
-      toast.error('Enter the email OTP')
-      return
-    }
-
-    setVerifyingEmailOtp(true)
-    try {
-      const res = await fetch('/api/auth/verify-email-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: guestEmail,
-          otp: emailOtp.trim(),
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        toast.error(data.error || 'Invalid OTP')
-        return
-      }
-      setEmailVerified(true)
-      setVerifiedEmail((guestEmail || '').trim().toLowerCase())
-      toast.success('Email verified')
-    } catch {
-      toast.error('Failed to verify email OTP')
-    } finally {
-      setVerifyingEmailOtp(false)
-    }
-  }
-
   const ensureGuestSession = async (data: CheckoutFormData) => {
     if (!isGuest) return true
 
@@ -441,14 +336,6 @@ export function CheckoutForm({
       toast.error(
         'An account with this email already exists. Please sign in to continue.'
       )
-      return false
-    }
-
-    if (
-      !emailVerified ||
-      verifiedEmail !== data.email.trim().toLowerCase()
-    ) {
-      toast.error('Please verify your email')
       return false
     }
 
@@ -703,39 +590,15 @@ export function CheckoutForm({
                     />
                   </div>
                   <div className="sm:col-span-2">
-                    <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
-                      <div className="flex-1">
-                        <Input
-                          label="Email"
-                          type="email"
-                          leftIcon={<Mail className="h-4 w-4" />}
-                          error={errors.email?.message}
-                          {...register('email')}
-                        />
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={sendEmailOtp}
-                        loading={sendingEmailOtp}
-                        disabled={
-                          !isValidEmail ||
-                          emailVerified ||
-                          emailExists ||
-                          checkingEmail
-                        }
-                        className="sm:mb-0"
-                      >
-                        {emailVerified
-                          ? 'Verified'
-                          : isSendEmailOtpClicked
-                            ? 'Resend OTP'
-                            : 'Send OTP'}
-                      </Button>
-                    </div>
+                    <Input
+                      label="Email"
+                      type="email"
+                      leftIcon={<Mail className="h-4 w-4" />}
+                      error={errors.email?.message}
+                      {...register('email')}
+                    />
                     <p className="text-xs text-gray-500 mt-1">
-                      Use an email you can access — we&apos;ll send a code to verify it,
-                      and order updates go to this address.
+                      Order updates and your set-password link go to this address.
                     </p>
                     {checkingEmail && (
                       <p className="text-xs text-gray-400 mt-1">
@@ -752,31 +615,6 @@ export function CheckoutForm({
                           Sign in
                         </Link>{' '}
                         to continue.
-                      </p>
-                    )}
-                    {!emailVerified && isSendEmailOtpClicked && (
-                      <div className="mt-3 flex flex-col sm:flex-row gap-3 sm:items-end">
-                        <div className="flex-1">
-                          <Input
-                            label="Email OTP"
-                            inputMode="numeric"
-                            maxLength={6}
-                            value={emailOtp}
-                            onChange={(e) => setEmailOtp(e.target.value)}
-                          />
-                        </div>
-                        <Button
-                          type="button"
-                          onClick={verifyEmailOtp}
-                          loading={verifyingEmailOtp}
-                        >
-                          Verify Email
-                        </Button>
-                      </div>
-                    )}
-                    {emailVerified && (
-                      <p className="text-sm text-green-600 flex items-center gap-1 mt-2">
-                        <Check className="h-4 w-4" /> Email verified
                       </p>
                     )}
                   </div>
@@ -1114,7 +952,7 @@ export function CheckoutForm({
               loading={isSubmitting}
               disabled={
                 isGuest &&
-                (emailExists || !phoneVerified || !emailVerified)
+                (emailExists || !phoneVerified)
               }
             >
               {paymentMethod === 'cod' ? 'Place Order' : 'Continue to Payment'}

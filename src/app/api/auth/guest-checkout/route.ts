@@ -78,19 +78,6 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { data: verifiedEmail } = await supabase
-      .from('verified_emails')
-      .select('email')
-      .eq('email', email)
-      .maybeSingle()
-
-    if (!verifiedEmail) {
-      return NextResponse.json(
-        { error: 'Please verify your email with OTP before continuing' },
-        { status: 400 }
-      )
-    }
-
     const password = randomBytes(24).toString('base64url')
 
     const { data: created, error: createError } =
@@ -128,7 +115,8 @@ export async function POST(req: NextRequest) {
         full_name: fullName,
         phone,
         phone_verified: true,
-        email_verified: true,
+        // Phone OTP proves identity; email is collected but not OTP-verified.
+        email_verified: false,
       })
     } catch (profileError) {
       logger.error('Guest checkout profile sync failed', {

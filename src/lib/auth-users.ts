@@ -49,6 +49,22 @@ export async function getAuthUserById(userId: string): Promise<User | null> {
   return data.user
 }
 
+/**
+ * Marks the auth user as email-confirmed so they can sign in even when
+ * Supabase Auth → "Confirm email" is enabled. Does not prove inbox ownership.
+ */
+export async function confirmAuthEmail(userId: string): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase.auth.admin.updateUserById(userId, {
+    email_confirm: true,
+  })
+
+  if (error) {
+    logger.error('Failed to auto-confirm auth email', { error, userId })
+    throw new Error(error.message || 'Could not confirm email')
+  }
+}
+
 export async function syncUserProfile(
   input: UserProfileInput
 ): Promise<void> {

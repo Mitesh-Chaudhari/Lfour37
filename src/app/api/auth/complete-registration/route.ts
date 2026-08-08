@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { syncUserProfile } from '@/lib/auth-users'
+import { confirmAuthEmail, syncUserProfile } from '@/lib/auth-users'
 import logger from '@/lib/logger'
 import { z } from 'zod'
 
@@ -21,7 +21,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
     }
 
-    await syncUserProfile(parsed.data)
+    const data = parsed.data
+
+    // Auto-confirm so login works even if Supabase "Confirm email" is ON.
+    // Phone OTP is the ownership check; email_verified stays false unless proven.
+    await confirmAuthEmail(data.user_id)
+
+    await syncUserProfile({
+      ...data,
+      email_verified: false,
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {
