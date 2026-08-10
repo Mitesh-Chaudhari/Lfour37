@@ -1,53 +1,26 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
-import { Edit, Eye, Search, X } from 'lucide-react'
+import { usePathname, useRouter } from 'next/navigation'
+import { ChevronLeft, ChevronRight, Edit, Eye, Search, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { OptimizedImage } from '@/components/ui/optimized-image'
 import { AdminProductDeleteButton } from '@/components/admin/AdminProductDeleteButton'
 import {
-  extractCategoryIdsFromProduct,
-  getCategoryDescendantIds,
-  getCategoryPathLabel,
-  getProductCategoryPathLabel,
-} from '@/lib/categories'
+  ADMIN_PRODUCTS_PAGE_SIZE,
+  type AdminCategory,
+  type AdminProduct,
+  type AdminProductFlag,
+  type AdminProductSort,
+  type AdminProductsQuery,
+} from '@/lib/admin-products-query'
+import { getCategoryPathLabel, getProductCategoryPathLabel } from '@/lib/categories'
 import { formatPrice } from '@/lib/utils'
-import type { Product, ProductStatus } from '@/types'
+import type { ProductStatus } from '@/types'
 
-type AdminCategory = {
-  id: string
-  name: string
-  slug: string
-  parent_id: string | null
-}
-
-type AdminProduct = Product & {
-  product_categories?: Array<{
-    category?: {
-      id: string
-      name: string
-      slug: string
-      parent_id: string | null
-    } | null
-  }> | null
-}
-
-type SortOption =
-  | 'list_sort_order'
-  | 'newest'
-  | 'oldest'
-  | 'name_asc'
-  | 'name_desc'
-  | 'price_asc'
-  | 'price_desc'
-  | 'sold_desc'
-  | 'sold_asc'
-
-type FlagFilter = 'all' | 'featured' | 'new' | 'trending' | 'sale'
-
-const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+const SORT_OPTIONS: { value: AdminProductSort; label: string }[] = [
   { value: 'list_sort_order', label: 'Sort Order' },
   { value: 'newest', label: 'Newest First' },
   { value: 'oldest', label: 'Oldest First' },
@@ -66,7 +39,7 @@ const STATUS_OPTIONS: { value: 'all' | ProductStatus; label: string }[] = [
   { value: 'draft', label: 'Draft' },
 ]
 
-const FLAG_OPTIONS: { value: FlagFilter; label: string }[] = [
+const FLAG_OPTIONS: { value: AdminProductFlag; label: string }[] = [
   { value: 'all', label: 'All Products' },
   { value: 'featured', label: 'Featured' },
   { value: 'new', label: 'New Arrival' },
@@ -77,51 +50,86 @@ const FLAG_OPTIONS: { value: FlagFilter; label: string }[] = [
 const selectClassName =
   'h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500'
 
-function compareProducts(a: AdminProduct, b: AdminProduct, sortBy: SortOption): number {
-  switch (sortBy) {
-    case 'list_sort_order': {
-      const aOrder = a.list_sort_order ?? Number.POSITIVE_INFINITY
-      const bOrder = b.list_sort_order ?? Number.POSITIVE_INFINITY
-      if (aOrder !== bOrder) return aOrder - bOrder
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+function getPageNumbers(
+  currentPage: number,
+  totalPages: number
+): Array<number | 'ellipsis'> {
+  const pages = Array.from({ length: totalPages }, (_, i) => i + 1).filter(
+    (p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2
+  )
+
+  const withEllipsis: Array<number | 'ellipsis'> = []
+  for (let i = 0; i < pages.length; i++) {
+    if (i > 0 && pages[i] - pages[i - 1] > 1) {
+      withEllipsis.push('ellipsis')
     }
-    case 'newest':
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    case 'oldest':
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-    case 'name_asc':
-      return a.name.localeCompare(b.name)
-    case 'name_desc':
-      return b.name.localeCompare(a.name)
-    case 'price_asc':
-      return a.price - b.price
-    case 'price_desc':
-      return b.price - a.price
-    case 'sold_desc':
-      return (b.total_sold || 0) - (a.total_sold || 0)
-    case 'sold_asc':
-      return (a.total_sold || 0) - (b.total_sold || 0)
-    default:
-      return 0
+    withEllipsis.push(pages[i])
   }
+  return withEllipsis
+}
+
+function buildProductsHref(
+  query: AdminProductsQuery,
+  updates: Partial<AdminProductsQuery>
+): string {
+  const next: AdminProductsQuery = { ...query, ...updates }
+  const params = new URLSearchParams()
+
+  if (next.q) params.set('q', next.q)
+  if (next.status !== 'all') params.set('status', next.status)
+  if (next.category !== 'all') params.set('category', next.category)
+  if (next.flag !== 'all') params.set('flag', next.flag)
+  if (next.sort !== 'list_sort_order') params.set('sort', next.sort)
+  if (next.page > 1) params.set('page', String(next.page))
+
+  const qs = params.toString()
+  return qs ? `/admin/products?${qs}` : '/admin/products'
 }
 
 interface AdminProductsClientProps {
   products: AdminProduct[]
   categories: AdminCategory[]
-  initialCategoryId?: string
+  totalCount: number
+  totalProducts: number
+  page: number
+  totalPages: number
+  query: AdminProductsQuery
 }
 
 export function AdminProductsClient({
   products,
   categories,
-  initialCategoryId = 'all',
+  totalCount,
+  totalProducts,
+  page,
+  totalPages,
+  query,
 }: AdminProductsClientProps) {
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | ProductStatus>('all')
-  const [categoryFilter, setCategoryFilter] = useState(initialCategoryId)
-  const [flagFilter, setFlagFilter] = useState<FlagFilter>('all')
-  const [sortBy, setSortBy] = useState<SortOption>('list_sort_order')
+  const router = useRouter()
+  const pathname = usePathname()
+  const [isPending, startTransition] = useTransition()
+  const [searchInput, setSearchInput] = useState(query.q)
+
+  useEffect(() => {
+    setSearchInput(query.q)
+  }, [query.q])
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      const nextQ = searchInput.trim()
+      if (nextQ === query.q) return
+      startTransition(() => {
+        router.push(
+          buildProductsHref(query, {
+            q: nextQ,
+            page: 1,
+          })
+        )
+      })
+    }, 350)
+
+    return () => window.clearTimeout(handle)
+  }, [searchInput, query, router])
 
   const categoryOptions = useMemo(
     () =>
@@ -134,100 +142,50 @@ export function AdminProductsClient({
     [categories]
   )
 
-  const filteredProducts = useMemo(() => {
-    const query = search.trim().toLowerCase()
-    const categoryIds =
-      categoryFilter === 'all'
-        ? null
-        : new Set(getCategoryDescendantIds(categoryFilter, categories))
-
-    const next = products.filter((product) => {
-      if (statusFilter !== 'all' && product.status !== statusFilter) {
-        return false
-      }
-
-      if (flagFilter === 'featured' && !product.is_featured) return false
-      if (flagFilter === 'new' && !product.is_new_arrival) return false
-      if (flagFilter === 'trending' && !product.is_trending) return false
-      if (
-        flagFilter === 'sale' &&
-        !(product.compare_price && product.compare_price > product.price)
-      ) {
-        return false
-      }
-
-      if (categoryIds) {
-        const productCategoryIds = extractCategoryIdsFromProduct(
-          product.product_categories
-        )
-        if (!productCategoryIds.some((id) => categoryIds.has(id))) {
-          return false
-        }
-      }
-
-      if (query) {
-        const haystack = [
-          product.name,
-          product.sku || '',
-          product.slug || '',
-          product.barcode || '',
-        ]
-          .join(' ')
-          .toLowerCase()
-
-        if (!haystack.includes(query)) return false
-      }
-
-      return true
-    })
-
-    return [...next].sort((a, b) => compareProducts(a, b, sortBy))
-  }, [
-    products,
-    categories,
-    search,
-    statusFilter,
-    categoryFilter,
-    flagFilter,
-    sortBy,
-  ])
+  const rangeStart = totalCount === 0 ? 0 : (page - 1) * ADMIN_PRODUCTS_PAGE_SIZE + 1
+  const rangeEnd = Math.min(page * ADMIN_PRODUCTS_PAGE_SIZE, totalCount)
 
   const hasActiveFilters =
-    search.trim() !== '' ||
-    statusFilter !== 'all' ||
-    categoryFilter !== 'all' ||
-    flagFilter !== 'all' ||
-    sortBy !== 'list_sort_order'
+    query.q !== '' ||
+    query.status !== 'all' ||
+    query.category !== 'all' ||
+    query.flag !== 'all' ||
+    query.sort !== 'list_sort_order'
+
+  const navigate = (updates: Partial<AdminProductsQuery>) => {
+    startTransition(() => {
+      router.push(buildProductsHref(query, updates))
+    })
+  }
 
   const clearFilters = () => {
-    setSearch('')
-    setStatusFilter('all')
-    setCategoryFilter('all')
-    setFlagFilter('all')
-    setSortBy('list_sort_order')
-    if (typeof window !== 'undefined' && window.location.search) {
-      window.history.replaceState(null, '', '/admin/products')
-    }
+    setSearchInput('')
+    startTransition(() => {
+      router.push(pathname)
+    })
   }
 
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 ${isPending ? 'opacity-70 transition-opacity' : ''}`}>
       <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <div className="sm:col-span-2 xl:col-span-2">
             <Input
               placeholder="Search by name, SKU, slug, or barcode..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               leftIcon={<Search className="h-4 w-4" />}
             />
           </div>
 
           <select
             className={selectClassName}
-            value={statusFilter}
+            value={query.status}
             onChange={(e) =>
-              setStatusFilter(e.target.value as 'all' | ProductStatus)
+              navigate({
+                status: e.target.value as AdminProductsQuery['status'],
+                page: 1,
+              })
             }
           >
             {STATUS_OPTIONS.map((option) => (
@@ -239,8 +197,13 @@ export function AdminProductsClient({
 
           <select
             className={selectClassName}
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
+            value={query.category}
+            onChange={(e) =>
+              navigate({
+                category: e.target.value,
+                page: 1,
+              })
+            }
           >
             <option value="all">All Categories</option>
             {categoryOptions.map((option) => (
@@ -252,8 +215,13 @@ export function AdminProductsClient({
 
           <select
             className={selectClassName}
-            value={flagFilter}
-            onChange={(e) => setFlagFilter(e.target.value as FlagFilter)}
+            value={query.flag}
+            onChange={(e) =>
+              navigate({
+                flag: e.target.value as AdminProductFlag,
+                page: 1,
+              })
+            }
           >
             {FLAG_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -270,8 +238,13 @@ export function AdminProductsClient({
             </label>
             <select
               className={selectClassName}
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as SortOption)}
+              value={query.sort}
+              onChange={(e) =>
+                navigate({
+                  sort: e.target.value as AdminProductSort,
+                  page: 1,
+                })
+              }
             >
               {SORT_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -285,9 +258,13 @@ export function AdminProductsClient({
             <p className="text-sm text-gray-500">
               Showing{' '}
               <span className="font-medium text-gray-900">
-                {filteredProducts.length}
+                {rangeStart}-{rangeEnd}
               </span>{' '}
-              of {products.length}
+              of{' '}
+              <span className="font-medium text-gray-900">{totalCount}</span>
+              {totalCount !== totalProducts && (
+                <> (filtered from {totalProducts})</>
+              )}
             </p>
             {hasActiveFilters && (
               <button
@@ -335,7 +312,7 @@ export function AdminProductsClient({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredProducts.length === 0 ? (
+              {products.length === 0 ? (
                 <tr>
                   <td
                     colSpan={8}
@@ -345,7 +322,7 @@ export function AdminProductsClient({
                   </td>
                 </tr>
               ) : (
-                filteredProducts.map((product) => (
+                products.map((product) => (
                   <tr
                     key={product.id}
                     className="hover:bg-gray-50 transition-colors"
@@ -468,6 +445,69 @@ export function AdminProductsClient({
             </tbody>
           </table>
         </div>
+
+        {totalCount > 0 && (
+          <div className="flex flex-col gap-3 border-t border-gray-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-gray-500">
+              Page{' '}
+              <span className="font-medium text-gray-900">{page}</span> of{' '}
+              <span className="font-medium text-gray-900">{totalPages}</span>
+              <span className="text-gray-400">
+                {' '}
+                · {ADMIN_PRODUCTS_PAGE_SIZE} per page
+              </span>
+            </p>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => navigate({ page: Math.max(1, page - 1) })}
+                disabled={page <= 1 || isPending}
+                className="inline-flex h-9 items-center gap-1 rounded-lg border border-gray-300 px-3 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Prev
+              </button>
+
+              {getPageNumbers(page, totalPages).map((entry, index) =>
+                entry === 'ellipsis' ? (
+                  <span
+                    key={`ellipsis-${index}`}
+                    className="px-2 text-sm text-gray-400"
+                  >
+                    …
+                  </span>
+                ) : (
+                  <button
+                    key={entry}
+                    type="button"
+                    onClick={() => navigate({ page: entry })}
+                    disabled={isPending}
+                    className={`inline-flex h-9 min-w-9 items-center justify-center rounded-lg border px-2.5 text-sm transition-colors ${
+                      page === entry
+                        ? 'border-purple-600 bg-purple-600 text-white'
+                        : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    {entry}
+                  </button>
+                )
+              )}
+
+              <button
+                type="button"
+                onClick={() =>
+                  navigate({ page: Math.min(totalPages, page + 1) })
+                }
+                disabled={page >= totalPages || isPending}
+                className="inline-flex h-9 items-center gap-1 rounded-lg border border-gray-300 px-3 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
