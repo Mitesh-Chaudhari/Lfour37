@@ -4,8 +4,8 @@ import { ProductBulkUpload } from '@/components/admin/product-bulk-upload'
 import { AdminProductsClient } from '@/components/admin/products-client'
 import {
   getAdminProductsPage,
-  parseAdminProductsQuery,
 } from '@/lib/admin-products-query'
+import { parseAdminProductsQuery } from '@/lib/admin-products'
 import { getCategoryPathLabel } from '@/lib/categories'
 
 interface PageProps {

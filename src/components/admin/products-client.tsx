@@ -10,12 +10,13 @@ import { OptimizedImage } from '@/components/ui/optimized-image'
 import { AdminProductDeleteButton } from '@/components/admin/AdminProductDeleteButton'
 import {
   ADMIN_PRODUCTS_PAGE_SIZE,
+  buildAdminProductsHref,
   type AdminCategory,
   type AdminProduct,
   type AdminProductFlag,
   type AdminProductSort,
   type AdminProductsQuery,
-} from '@/lib/admin-products-query'
+} from '@/lib/admin-products'
 import { getCategoryPathLabel, getProductCategoryPathLabel } from '@/lib/categories'
 import { formatPrice } from '@/lib/utils'
 import type { ProductStatus } from '@/types'
@@ -68,24 +69,6 @@ function getPageNumbers(
   return withEllipsis
 }
 
-function buildProductsHref(
-  query: AdminProductsQuery,
-  updates: Partial<AdminProductsQuery>
-): string {
-  const next: AdminProductsQuery = { ...query, ...updates }
-  const params = new URLSearchParams()
-
-  if (next.q) params.set('q', next.q)
-  if (next.status !== 'all') params.set('status', next.status)
-  if (next.category !== 'all') params.set('category', next.category)
-  if (next.flag !== 'all') params.set('flag', next.flag)
-  if (next.sort !== 'list_sort_order') params.set('sort', next.sort)
-  if (next.page > 1) params.set('page', String(next.page))
-
-  const qs = params.toString()
-  return qs ? `/admin/products?${qs}` : '/admin/products'
-}
-
 interface AdminProductsClientProps {
   products: AdminProduct[]
   categories: AdminCategory[]
@@ -120,7 +103,7 @@ export function AdminProductsClient({
       if (nextQ === query.q) return
       startTransition(() => {
         router.push(
-          buildProductsHref(query, {
+          buildAdminProductsHref(query, {
             q: nextQ,
             page: 1,
           })
@@ -154,7 +137,7 @@ export function AdminProductsClient({
 
   const navigate = (updates: Partial<AdminProductsQuery>) => {
     startTransition(() => {
-      router.push(buildProductsHref(query, updates))
+      router.push(buildAdminProductsHref(query, updates))
     })
   }
 
