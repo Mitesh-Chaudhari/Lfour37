@@ -45,6 +45,8 @@ const ORDERS_SELECT = `
     return_custom_reason,
     return_reason_id,
     seal_tag_image_url,
+    product_front_image_url,
+    product_back_image_url,
     bank_account,
     product_name,
     quantity,

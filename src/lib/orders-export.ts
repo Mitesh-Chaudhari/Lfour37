@@ -44,6 +44,8 @@ export const ORDERS_EXPORT_COLUMNS = [
   'Bank Account',
   'Bank IFSC',
   'Seal Tag Image',
+  'Product Front Image',
+  'Product Back Image',
   'Subtotal',
   'Discount',
   'Tax',
@@ -220,6 +222,8 @@ type ExportOrder = {
     refunded_amount?: number | null
     bank_account?: unknown
     seal_tag_image_url?: string | null
+    product_front_image_url?: string | null
+    product_back_image_url?: string | null
     variant?: { sku?: string | null } | null
     product?: {
       sku?: string | null
@@ -342,6 +346,8 @@ export function ordersToExportRows(orders: ExportOrder[]): OrdersExportRow[] {
         'Bank Account': bank.account_number || '',
         'Bank IFSC': bank.ifsc || '',
         'Seal Tag Image': item?.seal_tag_image_url || '',
+        'Product Front Image': item?.product_front_image_url || '',
+        'Product Back Image': item?.product_back_image_url || '',
         Subtotal: order.subtotal ?? '',
         Discount: order.discount_amount ?? '',
         Tax: order.tax_amount ?? '',

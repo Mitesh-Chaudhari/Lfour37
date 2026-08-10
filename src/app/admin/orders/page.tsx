@@ -34,6 +34,8 @@ async function getOrders() {
         return_reason_id,
         return_requested_at,
         seal_tag_image_url,
+        product_front_image_url,
+        product_back_image_url,
         bank_account,
 
         product_name,

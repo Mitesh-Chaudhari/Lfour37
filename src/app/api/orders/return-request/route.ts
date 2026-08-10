@@ -38,6 +38,8 @@ export async function POST(req: NextRequest) {
             exchange_size,
             exchange_color,
             seal_tag_image_url,
+            product_front_image_url,
+            product_back_image_url,
         } = body
 
         // VALIDATE
@@ -59,13 +61,37 @@ export async function POST(req: NextRequest) {
             typeof seal_tag_image_url === 'string'
                 ? seal_tag_image_url.trim()
                 : ''
+        const frontImageUrl =
+            typeof product_front_image_url === 'string'
+                ? product_front_image_url.trim()
+                : ''
+        const backImageUrl =
+            typeof product_back_image_url === 'string'
+                ? product_back_image_url.trim()
+                : ''
 
-        if (!sealTagUrl || !/^https?:\/\//i.test(sealTagUrl)) {
+        const isHttpUrl = (url: string) => /^https?:\/\//i.test(url)
+
+        if (!sealTagUrl || !isHttpUrl(sealTagUrl)) {
             return NextResponse.json(
                 {
                     error:
                         'Upload a clear photo of the product with the seal tag intact',
                 },
+                { status: 400 }
+            )
+        }
+
+        if (!frontImageUrl || !isHttpUrl(frontImageUrl)) {
+            return NextResponse.json(
+                { error: 'Upload a clear front photo of the product' },
+                { status: 400 }
+            )
+        }
+
+        if (!backImageUrl || !isHttpUrl(backImageUrl)) {
+            return NextResponse.json(
+                { error: 'Upload a clear back photo of the product' },
                 { status: 400 }
             )
         }
@@ -286,6 +312,8 @@ export async function POST(req: NextRequest) {
                     finalExchangeColor,
 
                 seal_tag_image_url: sealTagUrl,
+                product_front_image_url: frontImageUrl,
+                product_back_image_url: backImageUrl,
 
                 return_requested_at:
                     new Date().toISOString(),
@@ -392,6 +420,8 @@ export async function POST(req: NextRequest) {
                     exchange_color: itemDetails.exchange_color,
                     refund_method: itemDetails.refund_method,
                     seal_tag_image_url: itemDetails.seal_tag_image_url,
+                    product_front_image_url: itemDetails.product_front_image_url,
+                    product_back_image_url: itemDetails.product_back_image_url,
                     bank_account: itemDetails.bank_account,
                   },
                   reason: reasonLabel,

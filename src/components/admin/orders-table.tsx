@@ -54,6 +54,8 @@ type AdminOrderItem = OrderItem & {
   exchange_color?: string | null
   return_custom_reason?: string | null
   seal_tag_image_url?: string | null
+  product_front_image_url?: string | null
+  product_back_image_url?: string | null
   bank_account?: {
     account_holder_name?: string | null
     bank_name?: string | null
@@ -1401,24 +1403,75 @@ const markDelivered =
                                     </div>
                                   )}
 
-                                {item.seal_tag_image_url && (
-                                  <div className="mt-2 space-y-1">
+                                {(item.seal_tag_image_url ||
+                                  item.product_front_image_url ||
+                                  item.product_back_image_url) && (
+                                  <div className="mt-2 space-y-2">
                                     <p className="font-medium text-gray-800">
-                                      Seal tag photo
+                                      Return photos
                                     </p>
-                                    <a
-                                      href={item.seal_tag_image_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="block"
-                                    >
-                                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                                      <img
-                                        src={item.seal_tag_image_url}
-                                        alt="Seal tag with product"
-                                        className="h-28 w-auto max-w-full rounded-lg border object-cover"
-                                      />
-                                    </a>
+                                    <div className="flex flex-wrap gap-3">
+                                      {item.seal_tag_image_url && (
+                                        <div className="space-y-1">
+                                          <p className="text-[11px] text-gray-500">
+                                            Seal tag
+                                          </p>
+                                          <a
+                                            href={item.seal_tag_image_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="block"
+                                          >
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img
+                                              src={item.seal_tag_image_url}
+                                              alt="Seal tag with product"
+                                              className="h-28 w-auto max-w-[140px] rounded-lg border object-cover"
+                                            />
+                                          </a>
+                                        </div>
+                                      )}
+                                      {item.product_front_image_url && (
+                                        <div className="space-y-1">
+                                          <p className="text-[11px] text-gray-500">
+                                            Front
+                                          </p>
+                                          <a
+                                            href={item.product_front_image_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="block"
+                                          >
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img
+                                              src={item.product_front_image_url}
+                                              alt="Product front"
+                                              className="h-28 w-auto max-w-[140px] rounded-lg border object-cover"
+                                            />
+                                          </a>
+                                        </div>
+                                      )}
+                                      {item.product_back_image_url && (
+                                        <div className="space-y-1">
+                                          <p className="text-[11px] text-gray-500">
+                                            Back
+                                          </p>
+                                          <a
+                                            href={item.product_back_image_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="block"
+                                          >
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img
+                                              src={item.product_back_image_url}
+                                              alt="Product back"
+                                              className="h-28 w-auto max-w-[140px] rounded-lg border object-cover"
+                                            />
+                                          </a>
+                                        </div>
+                                      )}
+                                    </div>
                                     <p className="text-[10px] text-gray-400">
                                       Click to open full size
                                     </p>

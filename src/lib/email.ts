@@ -521,6 +521,8 @@ export async function sendReturnOrExchangeRequestedOwnerNotificationEmail(
       exchange_color?: string | null
       refund_method?: string | null
       seal_tag_image_url?: string | null
+      product_front_image_url?: string | null
+      product_back_image_url?: string | null
       bank_account?: {
         account_holder_name?: string | null
         bank_name?: string | null
@@ -591,6 +593,18 @@ export async function sendReturnOrExchangeRequestedOwnerNotificationEmail(
         ? `<p><strong>Seal tag photo:</strong> <a href="${item.seal_tag_image_url}">View image</a></p>
            <p><img src="${item.seal_tag_image_url}" alt="Seal tag" style="max-width:280px;border-radius:8px;border:1px solid #eee;" /></p>`
         : '<p><strong>Seal tag photo:</strong> Not provided</p>'
+    }
+    ${
+      item.product_front_image_url
+        ? `<p><strong>Product front photo:</strong> <a href="${item.product_front_image_url}">View image</a></p>
+           <p><img src="${item.product_front_image_url}" alt="Product front" style="max-width:280px;border-radius:8px;border:1px solid #eee;" /></p>`
+        : '<p><strong>Product front photo:</strong> Not provided</p>'
+    }
+    ${
+      item.product_back_image_url
+        ? `<p><strong>Product back photo:</strong> <a href="${item.product_back_image_url}">View image</a></p>
+           <p><img src="${item.product_back_image_url}" alt="Product back" style="max-width:280px;border-radius:8px;border:1px solid #eee;" /></p>`
+        : '<p><strong>Product back photo:</strong> Not provided</p>'
     }
     <p><strong>Payment:</strong> ${order.payment_method?.toUpperCase() || 'N/A'} · ${order.payment_status || 'N/A'}</p>
     <p><strong>Order total:</strong> ${formatEmailInr(order.total)}</p>

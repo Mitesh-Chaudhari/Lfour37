@@ -53,6 +53,8 @@ export default function ReturnModal({
   const [loadingReasons, setLoadingReasons] = useState(true)
   const [loadingBanks, setLoadingBanks] = useState(false)
   const [uploadingSeal, setUploadingSeal] = useState(false)
+  const [uploadingFront, setUploadingFront] = useState(false)
+  const [uploadingBack, setUploadingBack] = useState(false)
   const [reasons, setReasons] = useState<any[]>([])
   const [reasonId, setReasonId] = useState('')
   const [customReason, setCustomReason] = useState('')
@@ -68,6 +70,10 @@ export default function ReturnModal({
   const [exchangeColor, setExchangeColor] = useState('')
   const [sealTagUrl, setSealTagUrl] = useState('')
   const [sealPreview, setSealPreview] = useState('')
+  const [frontImageUrl, setFrontImageUrl] = useState('')
+  const [frontPreview, setFrontPreview] = useState('')
+  const [backImageUrl, setBackImageUrl] = useState('')
+  const [backPreview, setBackPreview] = useState('')
 
   const isCodOrder = item.order_payment_method === 'cod'
   const isExchange = mode === 'exchange'
@@ -324,8 +330,14 @@ export default function ReturnModal({
     }
   }
 
-  const handleSealUpload = async (
-    event: React.ChangeEvent<HTMLInputElement>
+  const handleImageUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+    options: {
+      label: string
+      setPreview: (url: string) => void
+      setUrl: (url: string) => void
+      setUploading: (value: boolean) => void
+    }
   ) => {
     const file = event.target.files?.[0]
     if (!file) return
@@ -343,8 +355,8 @@ export default function ReturnModal({
     }
 
     const previewUrl = URL.createObjectURL(file)
-    setSealPreview(previewUrl)
-    setUploadingSeal(true)
+    options.setPreview(previewUrl)
+    options.setUploading(true)
 
     try {
       const formData = new FormData()
@@ -357,23 +369,47 @@ export default function ReturnModal({
       const data = await res.json()
 
       if (!res.ok || !data.url) {
-        toast.error(data.error || 'Failed to upload seal tag photo')
-        setSealPreview('')
-        setSealTagUrl('')
+        toast.error(data.error || `Failed to upload ${options.label}`)
+        options.setPreview('')
+        options.setUrl('')
         return
       }
 
-      setSealTagUrl(data.url)
-      toast.success('Seal tag photo uploaded')
+      options.setUrl(data.url)
+      toast.success(`${options.label} uploaded`)
     } catch {
-      toast.error('Failed to upload seal tag photo')
-      setSealPreview('')
-      setSealTagUrl('')
+      toast.error(`Failed to upload ${options.label}`)
+      options.setPreview('')
+      options.setUrl('')
     } finally {
-      setUploadingSeal(false)
+      options.setUploading(false)
       event.target.value = ''
     }
   }
+
+  const handleSealUpload = (event: React.ChangeEvent<HTMLInputElement>) =>
+    handleImageUpload(event, {
+      label: 'Seal tag photo',
+      setPreview: setSealPreview,
+      setUrl: setSealTagUrl,
+      setUploading: setUploadingSeal,
+    })
+
+  const handleFrontUpload = (event: React.ChangeEvent<HTMLInputElement>) =>
+    handleImageUpload(event, {
+      label: 'Product front photo',
+      setPreview: setFrontPreview,
+      setUrl: setFrontImageUrl,
+      setUploading: setUploadingFront,
+    })
+
+  const handleBackUpload = (event: React.ChangeEvent<HTMLInputElement>) =>
+    handleImageUpload(event, {
+      label: 'Product back photo',
+      setPreview: setBackPreview,
+      setUrl: setBackImageUrl,
+      setUploading: setUploadingBack,
+    })
 
   const resolveBankPayload = () => {
     if (!needsBankDetails) return null
@@ -422,6 +458,16 @@ export default function ReturnModal({
 
     if (!sealTagUrl) {
       toast.error('Upload a photo of the product with the seal tag')
+      return
+    }
+
+    if (!frontImageUrl) {
+      toast.error('Upload a clear front photo of the product')
+      return
+    }
+
+    if (!backImageUrl) {
+      toast.error('Upload a clear back photo of the product')
       return
     }
 
@@ -476,6 +522,8 @@ export default function ReturnModal({
           return_custom_reason: customReason || null,
           return_type: mode,
           seal_tag_image_url: sealTagUrl,
+          product_front_image_url: frontImageUrl,
+          product_back_image_url: backImageUrl,
           refund_method: !isExchange
             ? isCodOrder
               ? refundMethod
@@ -506,7 +554,7 @@ export default function ReturnModal({
     }
   }
 
-  const busy = loading || uploadingSeal
+  const busy = loading || uploadingSeal || uploadingFront || uploadingBack
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
@@ -515,7 +563,11 @@ export default function ReturnModal({
         message={
           uploadingSeal
             ? 'Uploading seal tag photo...'
-            : 'Submitting your request...'
+            : uploadingFront
+              ? 'Uploading product front photo...'
+              : uploadingBack
+                ? 'Uploading product back photo...'
+                : 'Submitting your request...'
         }
         className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 space-y-5"
       >
@@ -558,7 +610,7 @@ export default function ReturnModal({
         )}
 
         <div className="space-y-2">
-          <label className="text-sm font-medium">
+          <label className="text-md font-medium">
             Seal tag photo <span className="text-red-500">*</span>
           </label>
           <p className="text-xs text-gray-500">
@@ -575,7 +627,7 @@ export default function ReturnModal({
           />
 
           {(sealPreview || sealTagUrl) && (
-            <div className="relative mt-2 h-40 w-full overflow-hidden rounded-xl border bg-gray-50">
+            <div className="relative mt-2 h-40 overflow-hidden rounded-xl border bg-gray-50 inline-block">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={sealPreview || sealTagUrl}
@@ -586,10 +638,66 @@ export default function ReturnModal({
           )}
         </div>
 
+        <div className="space-y-2">
+          <label className="text-md font-medium">
+            Product front photo <span className="text-red-500">*</span>
+          </label>
+          <p className="text-xs text-gray-500">
+            Upload a clear front view of the product.
+          </p>
+
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/avif"
+            onChange={handleFrontUpload}
+            disabled={busy}
+            className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white"
+          />
+
+          {(frontPreview || frontImageUrl) && (
+            <div className="relative mt-2 h-40 overflow-hidden rounded-xl border bg-gray-50 inline-block">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={frontPreview || frontImageUrl}
+                alt="Product front preview"
+                className="h-full w-full object-contain"
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-md font-medium">
+            Product back photo <span className="text-red-500">*</span>
+          </label>
+          <p className="text-xs text-gray-500">
+            Upload a clear back view of the product.
+          </p>
+
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/avif"
+            onChange={handleBackUpload}
+            disabled={busy}
+            className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white"
+          />
+
+          {(backPreview || backImageUrl) && (
+            <div className="relative mt-2 h-40 overflow-hidden rounded-xl border bg-gray-50 inline-block">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={backPreview || backImageUrl}
+                alt="Product back preview"
+                className="h-full w-full object-contain"
+              />
+            </div>
+          )}
+        </div>
+
         {isExchange && (
           <div className="space-y-4 my-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
             <div>
-              <p className="text-sm font-semibold text-gray-900">
+              <p className="text-md font-semibold text-gray-900">
                 {requiresSize && requiresColor
                   ? 'Select exchange size & color'
                   : requiresSize
@@ -794,8 +902,8 @@ export default function ReturnModal({
           <>
             {isCodOrder ? (
               <>
-                <div>
-                  <label className="text-sm font-medium">
+                <div className='mt-4'>
+                  <label className="text-lg font-medium">
                     Refund Payment Method
                   </label>
 
