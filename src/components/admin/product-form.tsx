@@ -1176,6 +1176,7 @@ export function ProductForm({
                       min="0"
                       value={variant.stock}
                       onChange={(e) => updateVariant(i, 'stock', Number(e.target.value))}
+                      onWheel={(e) => e.currentTarget.blur()}
                       className="w-20 px-2 py-1 text-sm border border-gray-300 rounded"
                     />
                   </td>
@@ -1185,6 +1186,7 @@ export function ProductForm({
                       step="0.01"
                       value={variant.price_modifier}
                       onChange={(e) => updateVariant(i, 'price_modifier', Number(e.target.value))}
+                      onWheel={(e) => e.currentTarget.blur()}
                       className="w-20 px-2 py-1 text-sm border border-gray-300 rounded"
                     />
                   </td>
