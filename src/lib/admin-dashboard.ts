@@ -1,22 +1,26 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { channelFromAttribution } from '@/lib/attribution'
+import {
+  endOfBusinessDayIso,
+  formatDateInBusinessTz,
+  shiftBusinessDay,
+  startOfBusinessDayIso,
+} from '@/lib/timezone'
 
-export type DateRange = { from: string; to: string } // YYYY-MM-DD
+export type DateRange = { from: string; to: string } // YYYY-MM-DD (IST)
 
 function startOfDayIso(date: string) {
-  return `${date}T00:00:00.000Z`
+  return startOfBusinessDayIso(date)
 }
 
 function endOfDayIso(date: string) {
-  return `${date}T23:59:59.999Z`
+  return endOfBusinessDayIso(date)
 }
 
-function parseDay(date: string) {
-  return new Date(`${date}T12:00:00.000Z`)
-}
-
-function formatDay(d: Date) {
-  return d.toISOString().slice(0, 10)
+function daysBetweenInclusive(from: string, to: string) {
+  const fromMs = Date.parse(`${from}T12:00:00.000Z`)
+  const toMs = Date.parse(`${to}T12:00:00.000Z`)
+  return Math.max(1, Math.round((toMs - fromMs) / 86400000) + 1)
 }
 
 export function resolveDatePreset(
@@ -25,22 +29,14 @@ export function resolveDatePreset(
   customTo?: string,
   now = new Date()
 ): { range: DateRange; previous: DateRange; label: string } {
-  const today = formatDay(now)
+  const today = formatDateInBusinessTz(now)
 
   if (preset === 'custom' && customFrom && customTo) {
     const from = customFrom
     const to = customTo
-    const days =
-      Math.max(
-        1,
-        Math.round(
-          (parseDay(to).getTime() - parseDay(from).getTime()) / 86400000
-        ) + 1
-      )
-    const prevTo = formatDay(new Date(parseDay(from).getTime() - 86400000))
-    const prevFrom = formatDay(
-      new Date(parseDay(prevTo).getTime() - (days - 1) * 86400000)
-    )
+    const days = daysBetweenInclusive(from, to)
+    const prevTo = shiftBusinessDay(from, -1)
+    const prevFrom = shiftBusinessDay(prevTo, -(days - 1))
     return {
       range: { from, to },
       previous: { from: prevFrom, to: prevTo },
@@ -49,7 +45,7 @@ export function resolveDatePreset(
   }
 
   if (preset === 'today') {
-    const prev = formatDay(new Date(parseDay(today).getTime() - 86400000))
+    const prev = shiftBusinessDay(today, -1)
     return {
       range: { from: today, to: today },
       previous: { from: prev, to: prev },
@@ -58,8 +54,8 @@ export function resolveDatePreset(
   }
 
   if (preset === 'yesterday') {
-    const y = formatDay(new Date(parseDay(today).getTime() - 86400000))
-    const prev = formatDay(new Date(parseDay(y).getTime() - 86400000))
+    const y = shiftBusinessDay(today, -1)
+    const prev = shiftBusinessDay(y, -1)
     return {
       range: { from: y, to: y },
       previous: { from: prev, to: prev },
@@ -68,11 +64,9 @@ export function resolveDatePreset(
   }
 
   if (preset === '7d') {
-    const from = formatDay(new Date(parseDay(today).getTime() - 6 * 86400000))
-    const prevTo = formatDay(new Date(parseDay(from).getTime() - 86400000))
-    const prevFrom = formatDay(
-      new Date(parseDay(prevTo).getTime() - 6 * 86400000)
-    )
+    const from = shiftBusinessDay(today, -6)
+    const prevTo = shiftBusinessDay(from, -1)
+    const prevFrom = shiftBusinessDay(prevTo, -6)
     return {
       range: { from, to: today },
       previous: { from: prevFrom, to: prevTo },
@@ -82,14 +76,9 @@ export function resolveDatePreset(
 
   if (preset === 'this_month') {
     const from = `${today.slice(0, 8)}01`
-    const days =
-      Math.round(
-        (parseDay(today).getTime() - parseDay(from).getTime()) / 86400000
-      ) + 1
-    const prevTo = formatDay(new Date(parseDay(from).getTime() - 86400000))
-    const prevFrom = formatDay(
-      new Date(parseDay(prevTo).getTime() - (days - 1) * 86400000)
-    )
+    const days = daysBetweenInclusive(from, today)
+    const prevTo = shiftBusinessDay(from, -1)
+    const prevFrom = shiftBusinessDay(prevTo, -(days - 1))
     return {
       range: { from, to: today },
       previous: { from: prevFrom, to: prevTo },
@@ -98,11 +87,9 @@ export function resolveDatePreset(
   }
 
   // default 30d
-  const from = formatDay(new Date(parseDay(today).getTime() - 29 * 86400000))
-  const prevTo = formatDay(new Date(parseDay(from).getTime() - 86400000))
-  const prevFrom = formatDay(
-    new Date(parseDay(prevTo).getTime() - 29 * 86400000)
-  )
+  const from = shiftBusinessDay(today, -29)
+  const prevTo = shiftBusinessDay(from, -1)
+  const prevFrom = shiftBusinessDay(prevTo, -29)
   return {
     range: { from, to: today },
     previous: { from: prevFrom, to: prevTo },

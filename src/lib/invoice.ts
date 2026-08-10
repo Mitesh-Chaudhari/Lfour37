@@ -74,8 +74,13 @@ function round6(value: number): number {
 }
 
 export function getFiscalYear(date: Date): string {
-  const year = date.getFullYear()
-  const month = date.getMonth() + 1
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(date)
+  const year = Number(parts.find((p) => p.type === 'year')?.value)
+  const month = Number(parts.find((p) => p.type === 'month')?.value)
 
   if (month >= 4) {
     return `${String(year).slice(2)}-${String(year + 1).slice(2)}`
@@ -93,6 +98,7 @@ export function buildInvoiceNumber(orderNumber: string, createdAt: string): stri
 
 export function formatInvoiceDate(dateString: string): string {
   return new Date(dateString).toLocaleDateString('en-GB', {
+    timeZone: 'Asia/Kolkata',
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',

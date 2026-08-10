@@ -356,7 +356,7 @@ export async function sendNewOrderOwnerNotificationEmail(
 
     <p><strong>Order Number:</strong> ${order.order_number}</p>
     <p><strong>Order ID:</strong> ${order.id}</p>
-    <p><strong>Placed at:</strong> ${new Date(order.created_at).toLocaleString('en-IN')}</p>
+    <p><strong>Placed at:</strong> ${new Date(order.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</p>
     <p><strong>Payment:</strong> ${order.payment_method?.toUpperCase() || 'N/A'} · ${order.payment_status}</p>
     <p><strong>Order status:</strong> ${order.status}</p>
     ${customerEmail ? `<p><strong>Customer email:</strong> ${customerEmail}</p>` : ''}
@@ -453,7 +453,7 @@ export async function sendOrderCancelledOwnerNotificationEmail(
 
     <p><strong>Order Number:</strong> ${order.order_number}</p>
     <p><strong>Order ID:</strong> ${order.id}</p>
-    <p><strong>Cancelled at:</strong> ${new Date().toLocaleString('en-IN')}</p>
+    <p><strong>Cancelled at:</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</p>
     <p><strong>Scope:</strong> ${
       entireOrderCancelled
         ? 'Entire order cancelled'
@@ -574,7 +574,7 @@ export async function sendReturnOrExchangeRequestedOwnerNotificationEmail(
 
     <p><strong>Order Number:</strong> ${order.order_number}</p>
     <p><strong>Order ID:</strong> ${order.id}</p>
-    <p><strong>Requested at:</strong> ${new Date().toLocaleString('en-IN')}</p>
+    <p><strong>Requested at:</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</p>
     <p><strong>Type:</strong> ${label}</p>
     <p><strong>Item:</strong> ${itemLine}</p>
     ${
@@ -757,6 +757,7 @@ export async function sendShipmentStatusEmail({
   }
   const eta = expectedDeliveryDate
     ? new Date(expectedDeliveryDate).toLocaleDateString('en-IN', {
+        timeZone: 'Asia/Kolkata',
         day: 'numeric',
         month: 'short',
         year: 'numeric',

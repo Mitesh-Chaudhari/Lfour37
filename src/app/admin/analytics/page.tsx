@@ -1,12 +1,17 @@
 import { createClient } from '@/lib/supabase/server'
 import { AnalyticsClient } from '@/components/admin/analytics-client'
+import {
+  formatDateInBusinessTz,
+  shiftBusinessDay,
+  startOfBusinessDayIso,
+} from '@/lib/timezone'
 
 export default async function AdminAnalyticsPage() {
   const supabase = await createClient()
 
-  const now = new Date()
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-  const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000)
+  const today = formatDateInBusinessTz(new Date())
+  const from30 = shiftBusinessDay(today, -29)
+  const thirtyDaysAgoIso = startOfBusinessDayIso(from30)
 
   const [
     { data: revenueData },
@@ -19,7 +24,7 @@ export default async function AdminAnalyticsPage() {
     supabase
       .from('orders')
       .select('created_at, total, status')
-      .gte('created_at', thirtyDaysAgo.toISOString())
+      .gte('created_at', thirtyDaysAgoIso)
       .in('status', ['paid', 'processing', 'shipped', 'delivered'])
       .order('created_at'),
 
@@ -28,33 +33,33 @@ export default async function AdminAnalyticsPage() {
       .from('payments')
       .select('payment_method, amount, status')
       .eq('status', 'completed')
-      .gte('created_at', thirtyDaysAgo.toISOString()),
+      .gte('created_at', thirtyDaysAgoIso),
 
     // Top products by revenue
     supabase
       .from('order_items')
       .select('product_name, product_id, quantity, total_price')
-      .gte('created_at', thirtyDaysAgo.toISOString())
+      .gte('created_at', thirtyDaysAgoIso)
       .limit(100),
 
     // Orders by status
     supabase
       .from('orders')
       .select('status')
-      .gte('created_at', thirtyDaysAgo.toISOString()),
+      .gte('created_at', thirtyDaysAgoIso),
 
     // New users per day
     supabase
       .from('users')
       .select('created_at')
-      .gte('created_at', thirtyDaysAgo.toISOString())
+      .gte('created_at', thirtyDaysAgoIso)
       .order('created_at'),
   ])
 
-  // Aggregate daily revenue
+  // Aggregate daily revenue (IST calendar days)
   const dailyRevenue: Record<string, { revenue: number; orders: number }> = {}
   for (const order of revenueData || []) {
-    const date = order.created_at.split('T')[0]
+    const date = formatDateInBusinessTz(order.created_at)
     if (!dailyRevenue[date]) dailyRevenue[date] = { revenue: 0, orders: 0 }
     dailyRevenue[date].revenue += order.total
     dailyRevenue[date].orders += 1
@@ -63,8 +68,7 @@ export default async function AdminAnalyticsPage() {
   // Fill missing days
   const revenueChartData = []
   for (let i = 29; i >= 0; i--) {
-    const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000)
-    const dateStr = d.toISOString().split('T')[0]
+    const dateStr = shiftBusinessDay(today, -i)
     revenueChartData.push({
       date: dateStr,
       revenue: dailyRevenue[dateStr]?.revenue || 0,
@@ -99,7 +103,7 @@ export default async function AdminAnalyticsPage() {
   // New users per day
   const usersByDay: Record<string, number> = {}
   for (const u of newUsersData || []) {
-    const date = u.created_at.split('T')[0]
+    const date = formatDateInBusinessTz(u.created_at)
     usersByDay[date] = (usersByDay[date] || 0) + 1
   }
   const userChartData = revenueChartData.map((d) => ({

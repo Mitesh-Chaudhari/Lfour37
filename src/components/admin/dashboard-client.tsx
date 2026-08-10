@@ -12,6 +12,7 @@ import {
   YAxis,
 } from 'recharts'
 import { formatPrice } from '@/lib/utils'
+import { formatDateInBusinessTz } from '@/lib/timezone'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import toast from 'react-hot-toast'
@@ -296,7 +297,7 @@ export function DashboardClient() {
   const [spendForm, setSpendForm] = useState({
     channel: 'meta',
     amount: '',
-    spend_date: new Date().toISOString().slice(0, 10),
+    spend_date: formatDateInBusinessTz(new Date()),
     campaign_name: '',
   })
   const [savingSpend, setSavingSpend] = useState(false)

@@ -5,6 +5,10 @@ import {
   ordersToExportRows,
 } from '@/lib/orders-export'
 import logger from '@/lib/logger'
+import {
+  endOfBusinessDayIso,
+  startOfBusinessDayIso,
+} from '@/lib/timezone'
 
 export const dynamic = 'force-dynamic'
 
@@ -80,10 +84,10 @@ const ORDERS_SELECT = `
 
 function parseDayBoundary(value: string, endOfDay: boolean): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null
-  const suffix = endOfDay ? 'T23:59:59.999+05:30' : 'T00:00:00.000+05:30'
-  const date = new Date(`${value}${suffix}`)
-  if (Number.isNaN(date.getTime())) return null
-  return date.toISOString()
+  const iso = endOfDay
+    ? endOfBusinessDayIso(value)
+    : startOfBusinessDayIso(value)
+  return Number.isNaN(Date.parse(iso)) ? null : iso
 }
 
 async function requireAdmin() {

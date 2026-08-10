@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { BUSINESS_TIMEZONE, formatDateInBusinessTz } from '@/lib/timezone'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -15,7 +16,8 @@ export function formatPrice(amount: number, currency: string = 'INR'): string {
 }
 
 export function formatDate(dateString: string, options?: Intl.DateTimeFormatOptions): string {
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: BUSINESS_TIMEZONE,
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -25,9 +27,11 @@ export function formatDate(dateString: string, options?: Intl.DateTimeFormatOpti
 
 export function formatRelativeDate(dateString: string): string {
   const date = new Date(dateString)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  const today = formatDateInBusinessTz(new Date())
+  const target = formatDateInBusinessTz(date)
+  const todayMs = Date.parse(`${today}T12:00:00.000Z`)
+  const targetMs = Date.parse(`${target}T12:00:00.000Z`)
+  const diffDays = Math.round((todayMs - targetMs) / (1000 * 60 * 60 * 24))
 
   if (diffDays === 0) return 'Today'
   if (diffDays === 1) return 'Yesterday'
