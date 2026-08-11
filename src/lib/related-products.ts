@@ -65,6 +65,14 @@ function candidateCategoryIds(product: RelatedCandidate): string[] {
     .filter((id): id is string => Boolean(id))
 }
 
+function isProductInStock(product: RelatedCandidate): boolean {
+  const variants = product.variants || []
+  if (!variants.length) return false
+  return variants.some(
+    (variant) => variant.is_active !== false && (variant.stock ?? 0) > 0
+  )
+}
+
 function scoreRelatedProduct(options: {
   candidate: RelatedCandidate
   deepestCategoryId: string | null
@@ -230,6 +238,7 @@ export async function getRelatedProducts(options: {
   const byId = new Map<string, RelatedCandidate>()
   for (const product of [...primary, ...fallback]) {
     if (product.id === productId) continue
+    if (!isProductInStock(product)) continue
     if (!byId.has(product.id)) byId.set(product.id, product)
   }
 
@@ -264,11 +273,12 @@ export async function getRelatedProducts(options: {
       return listing as ListingProduct
     })
 
-  // If type filtering left us short, refill from leaf-category matches only.
+  // If type filtering left us short, refill from in-stock leaf-category matches only.
   if (ranked.length < Math.min(4, limit) && deepestCategoryId) {
     const existing = new Set(ranked.map((p) => p.id))
     for (const candidate of primary) {
       if (existing.has(candidate.id) || candidate.id === productId) continue
+      if (!isProductInStock(candidate)) continue
       const { total_sold: _sold, categories: _cats, ...listing } = candidate
       ranked.push(listing as ListingProduct)
       existing.add(candidate.id)
