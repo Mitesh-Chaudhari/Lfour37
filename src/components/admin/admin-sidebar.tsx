@@ -66,6 +66,16 @@ const NAV_ITEMS: Array<{
     icon: SquareX,
     label: 'Order Cancel Reasons Manage',
   },
+  {
+    href: '/admin/return-reasons',
+    icon: TicketSlash,
+    label: 'Return Reasons',
+  },
+  {
+    href: '/admin/exchange-reasons',
+    icon: TicketSlash,
+    label: 'Exchange Reasons',
+  },
   { href: '/admin/pages', icon: TicketSlash, label: 'Content Pages' },
   { href: '/admin/blogs', icon: Newspaper, label: 'Blog' },
   { href: '/admin/users', icon: Users, label: 'Users' },

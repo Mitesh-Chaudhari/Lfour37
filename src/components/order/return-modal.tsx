@@ -211,8 +211,10 @@ export default function ReturnModal({
     !isSameAsDeliveredSelection
 
   useEffect(() => {
-    loadReasons()
-  }, [])
+    setReasonId('')
+    setCustomReason('')
+    void loadReasons()
+  }, [isExchange])
 
   useEffect(() => {
     setRefundMethod(isCodOrder ? 'bank' : 'source')
@@ -290,6 +292,8 @@ export default function ReturnModal({
         .from('return_reasons')
         .select('*')
         .eq('is_active', true)
+        .eq('kind', isExchange ? 'exchange' : 'return')
+        .order('created_at', { ascending: true })
 
       setReasons(data || [])
     } finally {

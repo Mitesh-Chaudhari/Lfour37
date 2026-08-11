@@ -1,45 +1,58 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import toast from 'react-hot-toast'
 
-type CancelReason = {
+export type RequestReasonKind = 'return' | 'exchange'
+
+type RequestReason = {
   id: string
   label: string
+  kind: RequestReasonKind
   is_active?: boolean
 }
 
-export default function CancelReasonsManager() {
-  const [reasons, setReasons] = useState<CancelReason[]>([])
+interface RequestReasonsManagerProps {
+  kind: RequestReasonKind
+  title: string
+}
+
+export default function RequestReasonsManager({
+  kind,
+  title,
+}: RequestReasonsManagerProps) {
+  const [reasons, setReasons] = useState<RequestReason[]>([])
   const [newReason, setNewReason] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingLabel, setEditingLabel] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const fetchReasons = async () => {
-    const res = await fetch('/api/admin/cancel-reasons')
+  const fetchReasons = useCallback(async () => {
+    const res = await fetch(
+      `/api/admin/return-reasons?kind=${kind}&includeInactive=false`
+    )
     const data = await res.json()
     setReasons(Array.isArray(data) ? data : [])
-  }
+  }, [kind])
 
   useEffect(() => {
-    fetchReasons()
-  }, [])
+    void fetchReasons()
+  }, [fetchReasons])
 
   const addReason = async () => {
     const label = newReason.trim()
     if (!label) {
-      toast.error('Enter a cancel reason')
+      toast.error(`Enter a ${kind} reason`)
       return
     }
 
     setSaving(true)
     try {
-      const res = await fetch('/api/admin/cancel-reasons', {
+      const res = await fetch('/api/admin/return-reasons', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label }),
+        body: JSON.stringify({ label, kind }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -54,7 +67,7 @@ export default function CancelReasonsManager() {
     }
   }
 
-  const startEdit = (reason: CancelReason) => {
+  const startEdit = (reason: RequestReason) => {
     setEditingId(reason.id)
     setEditingLabel(reason.label)
   }
@@ -73,7 +86,7 @@ export default function CancelReasonsManager() {
 
     setSaving(true)
     try {
-      const res = await fetch(`/api/admin/cancel-reasons/${id}`, {
+      const res = await fetch(`/api/admin/return-reasons/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ label }),
@@ -99,7 +112,7 @@ export default function CancelReasonsManager() {
   const deleteReason = async (id: string) => {
     setSaving(true)
     try {
-      const res = await fetch(`/api/admin/cancel-reasons/${id}`, {
+      const res = await fetch(`/api/admin/return-reasons/${id}`, {
         method: 'DELETE',
       })
       if (!res.ok) {
@@ -115,8 +128,8 @@ export default function CancelReasonsManager() {
   }
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-semibold">Cancel Reasons</h2>
+    <div className="space-y-4 rounded-2xl border bg-white p-6">
+      <h2 className="text-lg font-semibold">{title}</h2>
 
       <div className="flex gap-2">
         <input
@@ -125,8 +138,8 @@ export default function CancelReasonsManager() {
           onKeyDown={(e) => {
             if (e.key === 'Enter') void addReason()
           }}
-          className="border px-3 py-2 rounded w-full"
-          placeholder="Add new reason"
+          className="w-full rounded border px-3 py-2"
+          placeholder={`Add new ${kind} reason`}
           disabled={saving}
         />
         <Button onClick={addReason} disabled={saving}>
@@ -134,13 +147,17 @@ export default function CancelReasonsManager() {
         </Button>
       </div>
 
+      {reasons.length === 0 && (
+        <p className="text-sm text-gray-500">No {kind} reasons yet.</p>
+      )}
+
       {reasons.map((r) => {
         const isEditing = editingId === r.id
 
         return (
           <div
             key={r.id}
-            className="flex flex-col gap-2 border p-2 rounded sm:flex-row sm:items-center sm:justify-between"
+            className="flex flex-col gap-2 rounded border p-2 sm:flex-row sm:items-center sm:justify-between"
           >
             {isEditing ? (
               <input
@@ -150,7 +167,7 @@ export default function CancelReasonsManager() {
                   if (e.key === 'Enter') void saveEdit(r.id)
                   if (e.key === 'Escape') cancelEdit()
                 }}
-                className="border px-3 py-2 rounded w-full"
+                className="w-full rounded border px-3 py-2"
                 autoFocus
                 disabled={saving}
               />
@@ -158,19 +175,19 @@ export default function CancelReasonsManager() {
               <span>{r.label}</span>
             )}
 
-            <div className="flex gap-3 shrink-0">
+            <div className="flex shrink-0 gap-3">
               {isEditing ? (
                 <>
                   <button
                     onClick={() => void saveEdit(r.id)}
-                    className="text-green-600 text-sm font-medium"
+                    className="text-sm font-medium text-green-600"
                     disabled={saving}
                   >
                     Save
                   </button>
                   <button
                     onClick={cancelEdit}
-                    className="text-gray-500 text-sm"
+                    className="text-sm text-gray-500"
                     disabled={saving}
                   >
                     Cancel
@@ -179,7 +196,7 @@ export default function CancelReasonsManager() {
               ) : (
                 <button
                   onClick={() => startEdit(r)}
-                  className="text-blue-600 text-sm"
+                  className="text-sm text-blue-600"
                   disabled={saving}
                 >
                   Edit
@@ -187,7 +204,7 @@ export default function CancelReasonsManager() {
               )}
               <button
                 onClick={() => void deleteReason(r.id)}
-                className="text-red-500 text-sm"
+                className="text-sm text-red-500"
                 disabled={saving}
               >
                 Delete
