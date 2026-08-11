@@ -1,11 +1,11 @@
 import { cache } from 'react'
 import { createPublicClient } from '@/lib/supabase/server'
-import { LISTING_PRODUCT_SELECT } from '@/lib/catalog-queries'
 import { notFound } from 'next/navigation'
 import { ProductGallery } from '@/components/product/product-gallery'
 import { ProductInfo } from '@/components/product/product-info'
 import { ProductReviews } from '@/components/product/product-reviews'
 import { ProductSection } from '@/components/home/product-section'
+import { RecentlyViewedSection } from '@/components/product/recently-viewed-section'
 import { SizeGuideList } from '@/components/size-guide/size-guide-section'
 import { getSizeGuidesForCategories } from '@/lib/size-guides'
 import {
@@ -13,8 +13,13 @@ import {
   getCategoryPath,
   getDeepestCategoryId,
   extractCategoryIdsFromProduct,
+  getProductCategorySlug,
 } from '@/lib/categories'
 import { enrichProductsWithBestSeller, getBestSellerProductIds } from '@/lib/products'
+import {
+  getRelatedProducts,
+  relatedProductsViewAllHref,
+} from '@/lib/related-products'
 import { MetaViewContentTracker } from '@/components/meta-pixel/event-trackers'
 import { GaViewItemTracker } from '@/components/google-analytics/event-trackers'
 import type { Metadata } from 'next'
@@ -60,25 +65,6 @@ const getProduct = cache(async (slug: string) => {
     reviews: reviews || [],
   }
 })
-
-async function getRelatedProducts(categoryIds: string[], currentProductId: string) {
-  if (categoryIds.length === 0) return []
-
-  const supabase = createPublicClient()
-
-  const { data } = await supabase
-    .from('products')
-    .select(`
-      ${LISTING_PRODUCT_SELECT},
-      categories:product_categories(category:categories(id, name, slug, parent_id))
-    `)
-    .eq('status', 'active')
-    .in('product_categories.category_id', categoryIds)
-    .neq('id', currentProductId)
-    .limit(4)
-
-  return data || []
-}
 
 async function getSizeOrder() {
   const supabase = createPublicClient()
@@ -131,15 +117,24 @@ export default async function ProductDetailPage({ params }: PageProps) {
   if (!product) notFound()
 
   const categoryIds = extractCategoryIdsFromProduct(product.categories)
+  const supabase = createPublicClient()
 
-  const [relatedProductsRaw, sizeOrder, sizeGuides, allCategories, bestSellerIds] =
+  const [sizeOrder, sizeGuides, allCategories, bestSellerIds] =
     await Promise.all([
-      getRelatedProducts(categoryIds, product.id),
       getSizeOrder(),
       getSizeGuidesForCategories(categoryIds),
       getAllCategories(),
       getBestSellerProductIds(),
     ])
+
+  const relatedProductsRaw = await getRelatedProducts({
+    supabase,
+    productId: product.id,
+    productName: product.name,
+    productPrice: product.price,
+    productCategoryIds: categoryIds,
+    allCategories,
+  })
 
   const resolvedDeepestCategoryId = getDeepestCategoryId(categoryIds, allCategories)
   const categoryBreadcrumb = resolvedDeepestCategoryId
@@ -154,6 +149,11 @@ export default async function ProductDetailPage({ params }: PageProps) {
   const relatedProducts = enrichProductsWithBestSeller(
     relatedProductsRaw,
     bestSellerIds
+  )
+
+  const deepestCategorySlug = getProductCategorySlug(
+    product.categories,
+    allCategories
   )
 
   // JSON-LD structured data
@@ -254,9 +254,12 @@ export default async function ProductDetailPage({ params }: PageProps) {
             <ProductSection
               title="You May Also Like"
               products={relatedProducts as ListingProduct[]}
+              viewAllHref={relatedProductsViewAllHref(deepestCategorySlug)}
             />
           </div>
         )}
+
+        <RecentlyViewedSection currentProductId={product.id} />
       </div>
     </>
   )
