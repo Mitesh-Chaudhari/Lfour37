@@ -5,6 +5,7 @@ import logger from '@/lib/logger'
 import { z } from 'zod'
 import { resolveHsnFromCategories, mappingsArrayToRecord } from '@/lib/hsn'
 import { calculatePrepaidDiscount } from '@/lib/prepaid-discount'
+import { quotePartialCodCharges } from '@/lib/delhivery-charges'
 
 const attributionSchema = z
   .object({
@@ -162,7 +163,31 @@ export async function POST(request: NextRequest) {
     const discountAmount = Number((couponDiscount + prepaidDiscount).toFixed(2))
     const afterDiscount = subtotal - discountAmount
     const taxAmount = 0
-    const total = Number((afterDiscount + taxAmount + shippingMethod.price).toFixed(2))
+    let shippingAmount = Number(shippingMethod.price) || 0
+    let codAdvanceAmount: number | null = null
+    let codCollectAmount: number | null = null
+
+    if (data.payment_method === 'cod') {
+      const pin = data.shipping_address.postal_code.replace(/\D/g, '')
+      const itemCount = data.items.reduce((sum, item) => sum + item.quantity, 0)
+      try {
+        const charges = await quotePartialCodCharges(pin, itemCount)
+        shippingAmount = charges.total
+        codAdvanceAmount = charges.total
+        codCollectAmount = Number(afterDiscount.toFixed(2))
+      } catch (error) {
+        logger.error('Partial COD charge lookup failed', { error, pin })
+        return NextResponse.json(
+          {
+            error:
+              'Could not calculate COD shipping charges for this PIN. Please pay online, or try again.',
+          },
+          { status: 400 }
+        )
+      }
+    }
+
+    const total = Number((afterDiscount + taxAmount + shippingAmount).toFixed(2))
 
     // Get product details for order items
     const productIds = [...new Set(data.items.map((i) => i.product_id))]
@@ -217,7 +242,7 @@ export async function POST(request: NextRequest) {
         subtotal: Number(subtotal.toFixed(2)),
         discount_amount: discountAmount,
         tax_amount: taxAmount,
-        shipping_amount: shippingMethod.price,
+        shipping_amount: shippingAmount,
         total,
         coupon_id: couponId,
         coupon_code: data.coupon_code || null,
@@ -225,6 +250,8 @@ export async function POST(request: NextRequest) {
         shipping_address: data.shipping_address,
         payment_method: data.payment_method,
         payment_status: 'pending',
+        cod_advance_amount: codAdvanceAmount,
+        cod_collect_amount: codCollectAmount,
         utm_source: attr.utm_source || null,
         utm_medium: attr.utm_medium || null,
         utm_campaign: attr.utm_campaign || null,

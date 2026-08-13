@@ -1,4 +1,15 @@
 import logger from '@/lib/logger'
+import {
+  formatDelhiveryCarrierStatus,
+  isDelhiveryRtoStatus,
+  normalizeCarrierStatus,
+} from '@/lib/delhivery-status'
+
+export {
+  formatDelhiveryCarrierStatus,
+  isDelhiveryRtoStatus,
+  normalizeCarrierStatus,
+} from '@/lib/delhivery-status'
 
 const DEFAULT_BASE_URL = 'https://track.delhivery.com'
 
@@ -8,6 +19,8 @@ export type DelhiveryOrder = {
   total: number
   payment_status: string
   payment_method?: string
+  shipping_amount?: number | null
+  cod_collect_amount?: number | null
   shipping_address: {
     full_name: string
     phone: string
@@ -315,6 +328,15 @@ export async function createShipment({
   const address = order.shipping_address
   const { pin, phone } = assertShipAddress(address)
   const isCod = order.payment_method === 'cod'
+  const collectAmount = isCod
+    ? Number(
+        order.cod_collect_amount ??
+          Math.max(
+            0,
+            Number(order.total || 0) - Number(order.shipping_amount || 0)
+          )
+      )
+    : 0
 
   // Use Delhivery pin-master city/state (not India Post autofill names)
   const location = await resolveDelhiveryPinLocation(pin, {
@@ -339,8 +361,8 @@ export async function createShipment({
     order: order.order_number,
     payment_mode: isCod ? 'COD' : 'Prepaid',
     order_date: today(),
-    total_amount: String(order.total),
-    cod_amount: isCod ? String(order.total) : '0',
+    total_amount: String(isCod ? collectAmount || order.total : order.total),
+    cod_amount: isCod ? String(collectAmount || order.total) : '0',
     quantity: String(totalQuantity(items)),
     products_desc: shipmentDescription(items),
     weight: (
@@ -543,10 +565,6 @@ export function normalizeTrackingResponse(
   }
 }
 
-function normalizeCarrierStatus(status: string): string {
-  return status.toLowerCase().trim()
-}
-
 /** Waiting for courier — not yet collected / not in transit */
 export function isDelhiveryPrePickupStatus(status: string): boolean {
   const normalized = normalizeCarrierStatus(status)
@@ -612,13 +630,10 @@ export function mapDelhiveryStatusToOrderStatus(
 ): 'processing' | 'shipped' | 'delivered' | 'cancelled' | null {
   const normalized = normalizeCarrierStatus(status)
 
-  // Cancel / RTO from Delhivery portal or network — check before "delivered"
+  // Cancel / RTO (including StatusType RT with plain "In Transit" text)
   if (
     normalized.includes('cancel') ||
-    normalized.includes('rto delivered') ||
-    normalized.includes('rto') ||
-    normalized.includes('returned to origin') ||
-    normalized.includes('return to origin')
+    isDelhiveryRtoStatus(status, statusType, instructions)
   ) {
     return 'cancelled'
   }
@@ -650,12 +665,13 @@ export function getTrackingMilestone(
 ): string {
   const normalized = normalizeCarrierStatus(status)
 
-  if (
-    normalized.includes('cancel') ||
-    normalized.includes('rto') ||
-    normalized.includes('return to origin')
-  ) {
+  if (normalized.includes('cancel')) {
     return 'cancelled'
+  }
+
+  // COD refused / RTO in progress or completed
+  if (isDelhiveryRtoStatus(status, statusType, instructions)) {
+    return 'return_to_origin'
   }
 
   // Must check OFD before generic "dispatched" / in-transit handling
@@ -699,8 +715,7 @@ export function isDelhiveryStatusCancellable(
     return false
   }
   if (
-    normalized.includes('rto') ||
-    normalized.includes('return to origin') ||
+    isDelhiveryRtoStatus(status, statusType, instructions) ||
     normalized.includes('cancel')
   ) {
     return false

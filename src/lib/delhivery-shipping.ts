@@ -4,9 +4,11 @@ import {
   createExchangeForwardShipment,
   createReversePickup,
   createShipment,
+  formatDelhiveryCarrierStatus,
   getReversePickupMilestone,
   getTrackingMilestone,
   isDelhiveryOutForDelivery,
+  isDelhiveryRtoStatus,
   isDelhiveryStatusCancellable,
   mapDelhiveryReverseStatus,
   mapDelhiveryStatusToOrderStatus,
@@ -129,7 +131,7 @@ async function notifyCustomerOfShipmentMilestone(
       })
       await supabase
         .from('delhivery_shipments')
-        .update({ last_notified_milestone: 'cancelled' })
+        .update({ last_notified_milestone: milestone })
         .eq('id', shipment.id)
       return
     }
@@ -499,6 +501,16 @@ export async function syncDelhiveryShipment(
     tracking.statusType,
     tracking.instructions
   )
+  const displayStatus = formatDelhiveryCarrierStatus(
+    tracking.currentStatus,
+    tracking.statusType,
+    tracking.instructions
+  )
+  const isRto = isDelhiveryRtoStatus(
+    tracking.currentStatus,
+    tracking.statusType,
+    tracking.instructions
+  )
 
   if (tracking.events.length) {
     const rows = tracking.events.map((event) => ({
@@ -525,7 +537,7 @@ export async function syncDelhiveryShipment(
   const { error: shipmentError } = await supabase
     .from('delhivery_shipments')
     .update({
-      status: tracking.currentStatus,
+      status: displayStatus,
       status_code: tracking.statusCode,
       status_type: tracking.statusType,
       instructions: tracking.instructions,
@@ -588,6 +600,18 @@ export async function syncDelhiveryShipment(
         orderUpdate.cancelled_at = new Date().toISOString()
       }
 
+      // COD refused / RTO: keep a clear note for admin
+      if (isRto && mappedOrderStatus === 'cancelled') {
+        const rtoNote = `Delhivery RTO: ${displayStatus}`
+        const existingNotes =
+          typeof order.notes === 'string' ? order.notes.trim() : ''
+        if (!existingNotes.toLowerCase().includes('delhivery rto')) {
+          orderUpdate.notes = existingNotes
+            ? `${existingNotes}\n${rtoNote}`
+            : rtoNote
+        }
+      }
+
       await supabase.from('orders').update(orderUpdate).eq('id', order.id)
 
       if (mappedOrderStatus === 'delivered') {
@@ -615,7 +639,7 @@ export async function syncDelhiveryShipment(
       },
       {
         milestone,
-        carrierStatus: tracking.currentStatus,
+        carrierStatus: displayStatus,
         trackingNumber: tracking.awb,
         expectedDeliveryDate: tracking.expectedDeliveryDate,
         instructions: tracking.instructions,
@@ -626,8 +650,9 @@ export async function syncDelhiveryShipment(
   logger.info('Delhivery shipment synced', {
     orderId: shipment.order_id,
     awb: shipment.awb,
-    status: tracking.currentStatus,
+    status: displayStatus,
     statusType: tracking.statusType,
+    isRto,
     milestone,
   })
 
@@ -646,7 +671,7 @@ export async function syncDelhiveryShipment(
   return {
     tracking,
     orderStatus: updatedOrder?.status || order?.status || 'processing',
-    carrierStatus: tracking.currentStatus,
+    carrierStatus: displayStatus,
     awb: tracking.awb,
     lastSyncedAt:
       updatedShipment?.last_synced_at || new Date().toISOString(),

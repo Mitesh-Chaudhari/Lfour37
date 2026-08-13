@@ -37,6 +37,12 @@ import {
   PREPAID_DISCOUNT_LABEL,
 } from '@/lib/prepaid-discount'
 
+type PartialCodCharges = {
+  forward: number
+  reverse: number
+  total: number
+}
+
 interface CheckoutFormProps {
   addresses: Address[]
   shippingMethods: ShippingMethod[]
@@ -100,6 +106,9 @@ export function CheckoutForm({
   const [accountReclaimed, setAccountReclaimed] = useState(false)
   const [guestAddresses, setGuestAddresses] = useState<Address[]>([])
   const [emailLocked, setEmailLocked] = useState(false)
+  const [codCharges, setCodCharges] = useState<PartialCodCharges | null>(null)
+  const [codChargesLoading, setCodChargesLoading] = useState(false)
+  const [codChargesError, setCodChargesError] = useState<string | null>(null)
 
   const subtotal = getSubtotal()
   const [localDiscount, setLocalDiscount] = useState(discountAmount)
@@ -134,7 +143,8 @@ export function CheckoutForm({
     }
   }, [freeShippingMethod?.id, setShipping, setValue])
 
-  const shippingAmount = 0
+  const shippingAmount =
+    paymentMethod === 'cod' ? Number(codCharges?.total || 0) : 0
   const guestEmail = watch('email')
   const guestPhone = watch('phone')
   const isValidPhone = /^[0-9]{10}$/.test(guestPhone || '')
@@ -169,6 +179,58 @@ export function CheckoutForm({
     (pinStatus === 'idle' || pinStatus === 'loading')
 
   const codUnavailable = pinData?.codAvailable === false
+  const itemCount = items.reduce((sum, item) => sum + item.quantity, 0)
+
+  useEffect(() => {
+    const pin = (postalCode || '').replace(/\D/g, '')
+    if (!/^\d{6}$/.test(pin) || pinStatus === 'unserviceable' || pinStatus === 'loading') {
+      setCodCharges(null)
+      setCodChargesError(null)
+      return
+    }
+    if (codUnavailable) {
+      setCodCharges(null)
+      setCodChargesError('Cash on Delivery is not available for this PIN code')
+      return
+    }
+
+    let cancelled = false
+    const timer = window.setTimeout(async () => {
+      setCodChargesLoading(true)
+      setCodChargesError(null)
+      try {
+        const res = await fetch(
+          `/api/checkout/cod-charges?pin=${pin}&items=${itemCount}`
+        )
+        const data = await res.json()
+        if (cancelled) return
+        if (!res.ok) {
+          setCodCharges(null)
+          setCodChargesError(
+            data.error || 'Could not calculate COD shipping charges'
+          )
+          return
+        }
+        setCodCharges({
+          forward: Number(data.forward || 0),
+          reverse: Number(data.reverse || 0),
+          total: Number(data.total || 0),
+        })
+      } catch {
+        if (!cancelled) {
+          setCodCharges(null)
+          setCodChargesError('Could not calculate COD shipping charges')
+        }
+      } finally {
+        if (!cancelled) setCodChargesLoading(false)
+      }
+    }, 300)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [postalCode, pinStatus, codUnavailable, itemCount])
 
   // Fill form from selected saved address, or profile when entering a new address
   useEffect(() => {
@@ -341,7 +403,15 @@ export function CheckoutForm({
   // What the shopper would save by switching from COD to prepaid
   const potentialPrepaidSavings = calculatePrepaidDiscount(afterCoupon, 'razorpay')
   const taxAmount = 0
-  const total = Math.max(0, afterCoupon - prepaidDiscount) + taxAmount + shippingAmount
+  const productTotal = Math.max(0, afterCoupon - prepaidDiscount) + taxAmount
+  const total = productTotal + shippingAmount
+  const payNowAmount = paymentMethod === 'cod' ? shippingAmount : total
+  const payAtDeliveryAmount = paymentMethod === 'cod' ? productTotal : 0
+  const partialCodReady =
+    paymentMethod !== 'cod' ||
+    (!codUnavailable &&
+      !codChargesLoading &&
+      Number(codCharges?.total || 0) > 0)
 
   const sendOtp = async () => {
     // Existing account not yet reclaimed → OTP to on-file phone/email
@@ -686,6 +756,14 @@ export function CheckoutForm({
       return
     }
 
+    if (paymentMethod === 'cod' && !partialCodReady) {
+      toast.error(
+        codChargesError ||
+          'COD shipping charges are still loading. Please wait and try again.'
+      )
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const sessionReady = await ensureGuestSession(data)
@@ -733,56 +811,23 @@ export function CheckoutForm({
       const { order_id } = await orderRes.json()
       setOrderId(order_id)
 
-      if (paymentMethod === 'cod') {
-        const confirmRes = await fetch('/api/payments/cod/confirm', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ order_id }),
-        })
-        const confirmData = await confirmRes.json()
+      const paymentRes = await fetch('/api/payments/razorpay/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id }),
+      })
+      const paymentData = await paymentRes.json()
 
-        if (!confirmRes.ok) {
-          toast.error(confirmData.error || 'Failed to place COD order')
-          return
-        }
-
-        if (confirmData.shipment && !confirmData.shipment.ok) {
-          toast.error(
-            confirmData.shipment.error ||
-              'Order placed, but shipment could not be created yet.'
-          )
-        } else {
-          toast.success('Order placed! Pay when your package arrives.')
-        }
-
-        // Success page fires the GA4 + Meta Pixel purchase events
-        setOrderPlaced(true)
-        clearCart()
-        router.push(`/checkout/success?order_id=${order_id}`)
+      if (!paymentRes.ok || !paymentData.id) {
+        toast.error(paymentData.error || 'Failed to initialize payment')
         return
       }
 
-      if (paymentMethod === 'razorpay') {
-        const paymentRes = await fetch('/api/payments/razorpay/create-order', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ order_id }),
-        })
-
-        const paymentData = await paymentRes.json()
-
-        if (!paymentRes.ok || !paymentData.id) {
-          toast.error(paymentData.error || 'Failed to initialize payment')
-          return
-        }
-
-        setClientSecret({
-          id: paymentData.id,
-          amount: paymentData.amount,
-          currency: paymentData.currency,
-        })
-      }
-
+      setClientSecret({
+        id: paymentData.id,
+        amount: paymentData.amount,
+        currency: paymentData.currency,
+      })
       setStep('payment')
     } catch {
       toast.error('Something went wrong. Please try again.')
@@ -809,7 +854,7 @@ export function CheckoutForm({
       busy={isSubmitting}
       message={
         paymentMethod === 'cod'
-          ? 'Placing your order...'
+          ? 'Preparing Partial COD payment...'
           : 'Preparing payment...'
       }
       className="grid grid-cols-1 lg:grid-cols-3 gap-8"
@@ -1252,7 +1297,7 @@ export function CheckoutForm({
                     setValue('payment_method', 'cod')
                   }}
                   className={cn(
-                    'flex items-center justify-center gap-2 p-4 rounded-xl border-2 transition-all',
+                    'flex items-center justify-center gap-2 p-4 rounded-xl border-2 transition-all text-left',
                     paymentMethod === 'cod'
                       ? 'border-purple-600 bg-purple-50'
                       : 'border-gray-200 hover:border-purple-300',
@@ -1262,31 +1307,60 @@ export function CheckoutForm({
                 >
                   <Banknote
                     className={cn(
-                      'h-5 w-5',
+                      'h-5 w-5 shrink-0',
                       paymentMethod === 'cod'
                         ? 'text-purple-600'
                         : 'text-gray-500'
                     )}
                   />
-                  <div className="text-left">
+                  <div className="min-w-0 flex-1">
                     <p className="font-medium text-sm text-gray-900">
-                      Cash on Delivery
+                      Partial COD
                     </p>
                     <p className="text-xs text-gray-500">
                       {codUnavailable
                         ? 'Not available for this PIN code'
-                        : 'Pay when your order arrives'}
+                        : codChargesLoading
+                          ? 'Calculating delivery charges...'
+                          : shippingAmount > 0
+                            ? `Pay ${formatPrice(shippingAmount)} now, ${formatPrice(payAtDeliveryAmount)} at delivery`
+                            : 'Pay delivery charges now, balance on delivery'}
                     </p>
+                    {paymentMethod === 'cod' && shippingAmount > 0 && (
+                      <p className="mt-1 text-[11px] font-medium text-amber-700">
+                        Inc. {formatPrice(shippingAmount)} COD charges
+                      </p>
+                    )}
                   </div>
+                  {paymentMethod === 'cod' && shippingAmount > 0 && (
+                    <span className="shrink-0 text-sm font-semibold text-gray-900">
+                      {formatPrice(shippingAmount)}
+                    </span>
+                  )}
                 </button>
               </div>
+              {paymentMethod === 'cod' && shippingAmount > 0 && (
+                <div className="mt-3 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-3 text-xs text-gray-600 space-y-2">
+                  <p className="font-medium text-gray-800">
+                    Amount to pay now {formatPrice(payNowAmount)}
+                  </p>
+                  <p>
+                    Pay now ({formatPrice(payNowAmount)}) — covers forward
+                    shipping.
+                  </p>
+                  <p>
+                    Pay balance at delivery ({formatPrice(payAtDeliveryAmount)}
+                    ).
+                  </p>
+                </div>
+              )}
+              {paymentMethod === 'cod' && codChargesError && !codChargesLoading && (
+                <p className="mt-3 text-xs text-red-600">{codChargesError}</p>
+              )}
               {paymentMethod === 'cod' && potentialPrepaidSavings > 0 && (
                 <p className="mt-3 text-xs text-gray-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                  Pay online instead and save
-                  {/* <span className="font-semibold text-gray-900">
-                    {formatPrice(potentialPrepaidSavings)}
-                  </span>{' '} */}
-                  {' '} extra 5% prepaid discount.
+                  Pay the full amount online instead and save extra 5% prepaid
+                  discount.
                 </p>
               )}
               <input
@@ -1303,24 +1377,31 @@ export function CheckoutForm({
               className="w-full"
               loading={isSubmitting}
               disabled={
-                isGuest &&
-                (!isValidPhone ||
-                  !phoneVerified ||
-                  (emailExists && !accountReclaimed))
+                !partialCodReady ||
+                (isGuest &&
+                  (!isValidPhone ||
+                    !phoneVerified ||
+                    (emailExists && !accountReclaimed)))
               }
             >
-              {paymentMethod === 'cod' ? 'Place Order' : 'Continue to Payment'}
+              Continue to Payment
             </Button>
           </form>
         ) : (
           <div className="space-y-6">
             <div className="bg-white rounded-xl border border-gray-200 p-6">
-              {paymentMethod === 'razorpay' && clientSecret && orderId && (
+              {clientSecret && orderId && (
                 <RazorpayPaymentForm
                   orderId={orderId}
                   razorpayOrder={clientSecret}
-                  amount={total}
+                  amount={payNowAmount}
                 />
+              )}
+              {paymentMethod === 'cod' && (
+                <p className="mt-3 text-xs text-gray-500">
+                  Paying {formatPrice(payNowAmount)} now. Remaining{' '}
+                  {formatPrice(payAtDeliveryAmount)} is collected on delivery.
+                </p>
               )}
             </div>
             <button
@@ -1428,7 +1509,9 @@ export function CheckoutForm({
               </div>
             )}
             <div className="flex justify-between">
-              <span className="text-gray-600">Shipping</span>
+              <span className="text-gray-600">
+                {paymentMethod === 'cod' ? 'COD shipping charges' : 'Shipping'}
+              </span>
               <span>
                 {shippingAmount === 0 ? (
                   <span className="text-green-600">Free</span>
@@ -1437,6 +1520,18 @@ export function CheckoutForm({
                 )}
               </span>
             </div>
+            {paymentMethod === 'cod' && shippingAmount > 0 && (
+              <>
+                <div className="flex justify-between text-purple-700">
+                  <span>Pay now</span>
+                  <span>{formatPrice(payNowAmount)}</span>
+                </div>
+                <div className="flex justify-between text-gray-700">
+                  <span>Pay at delivery</span>
+                  <span>{formatPrice(payAtDeliveryAmount)}</span>
+                </div>
+              </>
+            )}
             <div className="flex justify-between font-bold text-base border-t pt-2">
               <span>Total</span>
               <span>{formatPrice(total)}</span>

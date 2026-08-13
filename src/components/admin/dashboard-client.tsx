@@ -73,6 +73,8 @@ type DashboardData = {
     returned: number
     refunded: number
     rtoExtra: number
+    rtoRetained?: number
+    rtoProductLoss?: number
     netOrderRevenue: number
     discountsNote?: string
     realisedRevenue: number
@@ -201,6 +203,7 @@ type DashboardData = {
       shipped: string
       cancelled: string
       delivered: string
+      rto?: string
     }
   }
   lowStock: Array<{
@@ -407,7 +410,7 @@ export function DashboardClient() {
                 {data.alerts.delayedShipments} shipments delayed &gt; 3 days
               </AlertLink>
               <AlertLink
-                href={data.alerts.links.shipped}
+                href={data.alerts.links.rto || '/admin/orders?status=rto'}
                 className="text-orange-700"
               >
                 {data.alerts.rtoShipments} RTO shipments
@@ -517,6 +520,7 @@ export function DashboardClient() {
             <Kpi
               label="Realised / Delivered Revenue"
               value={formatPrice(data.kpis.realisedRevenue)}
+              hint="Delivered totals + Partial COD shipping kept on RTO"
             />
             <Kpi label="New" value={String(data.kpis.newCustomers)} />
             <Kpi label="Repeat" value={String(data.kpis.repeatCustomers)} />
@@ -594,9 +598,15 @@ export function DashboardClient() {
                   <dd>−{formatPrice(data.orderedVsRealised.refunded)}</dd>
                 </div>
                 <div className="flex justify-between text-red-700">
-                  <dt>RTO (extra)</dt>
+                  <dt>RTO product (not yet cancelled)</dt>
                   <dd>−{formatPrice(data.orderedVsRealised.rtoExtra)}</dd>
                 </div>
+                {(data.orderedVsRealised.rtoRetained || 0) > 0 && (
+                  <div className="flex justify-between text-emerald-700">
+                    <dt>RTO shipping retained</dt>
+                    <dd>+{formatPrice(data.orderedVsRealised.rtoRetained || 0)}</dd>
+                  </div>
+                )}
                 <div className="flex justify-between border-t pt-2 font-semibold text-gray-900">
                   <dt>Net order revenue</dt>
                   <dd>{formatPrice(data.orderedVsRealised.netOrderRevenue)}</dd>
@@ -1138,7 +1148,7 @@ export function DashboardClient() {
                     {data.orderFunnel.rto}
                   </p>
                   <p className="text-xs text-orange-600 mt-1">
-                    {pct(data.orderFunnel.rtoRate)} of shipped
+                    {pct(data.orderFunnel.rtoRate)} of delivery attempts
                   </p>
                 </div>
                 <div className="rounded-lg bg-amber-50 p-3">

@@ -116,9 +116,43 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
               <span>{formatPrice(order.tax_amount)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Shipping</span>
+              <span className="text-gray-600">
+                {order.payment_method === 'cod' && Number(order.shipping_amount) > 0
+                  ? 'COD shipping charges'
+                  : 'Shipping'}
+              </span>
               <span>{formatPrice(order.shipping_amount)}</span>
             </div>
+            {order.payment_method === 'cod' &&
+              Number(order.cod_advance_amount || order.shipping_amount) > 0 && (
+                <>
+                  <div className="flex justify-between text-purple-700">
+                    <span>Paid now</span>
+                    <span>
+                      {formatPrice(
+                        Number(
+                          order.cod_advance_amount || order.shipping_amount || 0
+                        )
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Pay at delivery</span>
+                    <span>
+                      {formatPrice(
+                        Number(
+                          order.cod_collect_amount ||
+                            Math.max(
+                              0,
+                              Number(order.total) -
+                                Number(order.shipping_amount || 0)
+                            )
+                        )
+                      )}
+                    </span>
+                  </div>
+                </>
+              )}
             <div className="flex justify-between font-bold text-base border-t pt-2">
               <span>Total</span>
               <span>{formatPrice(order.total)}</span>

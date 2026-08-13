@@ -178,6 +178,8 @@ export interface Order {
   cancelled_at: string | null
   created_at: string
   updated_at: string
+  cod_advance_amount?: number | null
+  cod_collect_amount?: number | null
   items?: OrderItem[]
   payment?: Payment
   user?: User

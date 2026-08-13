@@ -6,6 +6,7 @@ import {
   shiftBusinessDay,
   startOfBusinessDayIso,
 } from '@/lib/timezone'
+import { isDelhiveryRtoStatus } from '@/lib/delhivery-status'
 
 export type DateRange = { from: string; to: string } // YYYY-MM-DD (IST)
 
@@ -101,9 +102,12 @@ function isExcludedStatus(status?: string | null) {
   return ['cancelled', 'refunded', 'returned'].includes(status || '')
 }
 
-function isRtoShipment(status?: string | null, instructions?: string | null) {
-  const text = `${status || ''} ${instructions || ''}`.toLowerCase()
-  return text.includes('rto') || text.includes('return to origin')
+function isRtoShipment(
+  status?: string | null,
+  instructions?: string | null,
+  statusType?: string | null
+) {
+  return isDelhiveryRtoStatus(status || '', statusType, instructions)
 }
 
 /** Supabase may return a 1:1 embed as an object instead of an array. */
@@ -114,6 +118,7 @@ function asArray<T>(value: T | T[] | null | undefined): T[] {
 
 type ShipmentRow = {
   status?: string | null
+  status_type?: string | null
   awb?: string | null
   instructions?: string | null
   created_at?: string | null
@@ -129,6 +134,8 @@ type OrderRow = {
   subtotal: number
   discount_amount: number
   shipping_amount: number
+  cod_advance_amount?: number | null
+  cod_collect_amount?: number | null
   created_at: string
   shipped_at?: string | null
   delivered_at?: string | null
@@ -171,6 +178,7 @@ export async function buildAdminDashboard(
   const orderSelect = `
     id, user_id, status, payment_method, payment_status,
     total, subtotal, discount_amount, shipping_amount,
+    cod_advance_amount, cod_collect_amount,
     created_at, shipped_at, delivered_at, cancelled_at, tracking_number,
     shipping_address,
     utm_source, utm_campaign, meta_campaign_id, gclid, fbclid,
@@ -179,7 +187,7 @@ export async function buildAdminDashboard(
       variant_size, variant_color, status, return_status,
       product:products(cost_price, name)
     ),
-    delhivery_shipments(status, awb, instructions, created_at)
+    delhivery_shipments(status, status_type, awb, instructions, created_at)
   `
 
   const [
@@ -242,7 +250,7 @@ export async function buildAdminDashboard(
       .order('created_at', { ascending: true }),
     supabase
       .from('delhivery_shipments')
-      .select('id, order_id, status, awb, created_at')
+      .select('id, order_id, status, status_type, instructions, awb, created_at')
       .lt('created_at', new Date(Date.now() - 3 * 86400000).toISOString())
       .limit(100),
   ])
@@ -272,7 +280,7 @@ export async function buildAdminDashboard(
   }
 
   const SCOPE_HINT =
-    'Same date range for all KPIs. Valid orders = not cancelled / refunded / returned.'
+    'Same date range for all KPIs. Valid orders exclude cancelled / refunded / returned / RTO. Realised includes Partial COD shipping retained on RTO.'
 
   // --- Shared order sets (consistent scope) ---
   const placedOrders = orders
@@ -286,26 +294,45 @@ export async function buildAdminDashboard(
     ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)
   )
 
-  // Valid / ordered scope (exclude terminal losses) — used for revenue & items
-  const validOrders = orders.filter((o) => !isExcludedStatus(o.status))
-
   const isRtoOrder = (o: OrderRow) =>
     asArray(o.delhivery_shipments).some((sh) =>
-      isRtoShipment(sh.status, sh.instructions)
+      isRtoShipment(sh.status, sh.instructions, sh.status_type)
     )
 
   const rtoOrders = orders.filter(isRtoOrder)
+
+  // Valid / ordered scope: exclude cancellations, returns, refunds, and RTO
+  const validOrders = orders.filter(
+    (o) => !isExcludedStatus(o.status) && !isRtoOrder(o)
+  )
+
+  const productValue = (o: OrderRow) => {
+    const collect = Number(o.cod_collect_amount)
+    if (Number.isFinite(collect) && collect > 0) return collect
+    if (o.payment_method === 'cod') {
+      return Math.max(0, Number(o.total || 0) - Number(o.shipping_amount || 0))
+    }
+    return Number(o.total || 0)
+  }
+
+  const rtoRetainedAdvance = (o: OrderRow) => {
+    const advance = Number(o.cod_advance_amount)
+    if (Number.isFinite(advance) && advance > 0) return advance
+    if (o.payment_method === 'cod') return Number(o.shipping_amount || 0)
+    return 0
+  }
 
   // Funnel stages — each stage is a subset of the previous where possible
   const packedOrders = confirmedOrders.filter(
     (o) =>
       asArray(o.delhivery_shipments).length > 0 || Boolean(o.tracking_number)
   )
-  const shippedOrders = confirmedOrders.filter((o) =>
-    ['shipped', 'delivered'].includes(o.status)
+  const shippedOrders = confirmedOrders.filter(
+    (o) => ['shipped', 'delivered'].includes(o.status) && !isRtoOrder(o)
   )
   const ofdOrders = shippedOrders.filter((o) =>
     asArray(o.delhivery_shipments).some((sh) => {
+      if (isRtoShipment(sh.status, sh.instructions, sh.status_type)) return false
       const t = `${sh.status || ''} ${sh.instructions || ''}`.toLowerCase()
       return (
         t.includes('out for delivery') ||
@@ -340,15 +367,18 @@ export async function buildAdminDashboard(
 
   const grossProductValue = sumSubtotal(placedOrders)
   const discounts = sumDiscount(placedOrders)
-  const cancelledValue = sumTotal(cancelledOrders)
+  const cancelledValue = cancelledOrders.reduce((s, o) => {
+    if (isRtoOrder(o)) return s + productValue(o)
+    return s + Number(o.total || 0)
+  }, 0)
   const returnedValue = sumTotal(returnedOrders)
   const refundedValue = sumTotal(refundedOrders)
-  // RTO counted in cancelled usually; only add RTO totals not already cancelled/returned
-  const rtoExtraValue = sumTotal(
-    rtoOrders.filter(
-      (o) => o.status !== 'cancelled' && o.status !== 'returned'
-    )
-  )
+  const rtoProductLoss = rtoOrders.reduce((s, o) => s + productValue(o), 0)
+  const rtoRetained = rtoOrders.reduce((s, o) => s + rtoRetainedAdvance(o), 0)
+  // RTO product already in cancelledValue; only add remaining RTO still showing as shipped
+  const rtoExtraValue = rtoOrders
+    .filter((o) => o.status !== 'cancelled' && o.status !== 'returned')
+    .reduce((s, o) => s + productValue(o), 0)
 
   // Reconciles: Gross product − discounts − cancelled − returned − refunded − extra RTO
   const netOrderRevenue =
@@ -361,7 +391,7 @@ export async function buildAdminDashboard(
 
   const orderedRevenue = sumTotal(validOrders)
   const shippedRevenue = sumTotal(shippedOrders)
-  const realisedRevenue = sumTotal(deliveredOrders)
+  const realisedRevenue = sumTotal(deliveredOrders) + rtoRetained
 
   const prevValid = prevOrders.filter((o) => !isExcludedStatus(o.status))
   const prevOrderedRevenue = prevValid.reduce(
@@ -514,8 +544,11 @@ export async function buildAdminDashboard(
     sessions > 0 ? (orderCountValid / sessions) * 100 : null
 
   const cancellationRate = placed > 0 ? (cancelled / placed) * 100 : 0
-  const rtoRate = shipped > 0 ? (rtoCount / Math.max(shipped, 1)) * 100 : 0
-  const deliveryRate = shipped > 0 ? (delivered / shipped) * 100 : 0
+  const deliveryOutcomes = delivered + rtoCount
+  const rtoRate =
+    deliveryOutcomes > 0 ? (rtoCount / deliveryOutcomes) * 100 : 0
+  const deliveryRate =
+    deliveryOutcomes > 0 ? (delivered / deliveryOutcomes) * 100 : 0
 
   // COD vs prepaid — placed counts match COD+Prepaid = Placed
   const byPay = (method: 'cod' | 'prepaid') => {
@@ -535,7 +568,9 @@ export async function buildAdminDashboard(
       ['shipped', 'delivered'].includes(o.status)
     )
     const subsetRto = subset.filter(isRtoOrder)
-    const subsetInTransit = subset.filter((o) => o.status === 'shipped')
+    const subsetInTransit = subset.filter(
+      (o) => o.status === 'shipped' && !isRtoOrder(o)
+    )
     const cancelledBeforeShip = subset.filter(
       (o) =>
         o.status === 'cancelled' &&
@@ -754,9 +789,11 @@ export async function buildAdminDashboard(
     uniqueCustomers > 0 ? (repeatCustomers / uniqueCustomers) * 100 : 0
 
   const packedNotShipped = packedOrders.filter(
-    (o) => !['shipped', 'delivered'].includes(o.status)
+    (o) => !['shipped', 'delivered'].includes(o.status) && !isRtoOrder(o)
   ).length
-  const inTransit = orders.filter((o) => o.status === 'shipped').length
+  const inTransit = orders.filter(
+    (o) => o.status === 'shipped' && !isRtoOrder(o)
+  ).length
   const returnsNeedingAction = orders.filter((o) =>
     (o.items || []).some(
       (i) =>
@@ -777,18 +814,20 @@ export async function buildAdminDashboard(
       ) > 24
   ).length
   const shippedOver5d = orders.filter(
-    (o) => o.status === 'shipped' && hoursSince(o.shipped_at || o.created_at) > 120
+    (o) =>
+      o.status === 'shipped' &&
+      !isRtoOrder(o) &&
+      hoursSince(o.shipped_at || o.created_at) > 120
   ).length
   const ofdNotDelivered = ofdOrders.filter((o) => o.status !== 'delivered').length
 
   const delayedShipments = (delayedShipmentsRes.data || []).filter((sh) => {
-    const t = `${sh.status || ''}`.toLowerCase()
-    return (
-      !t.includes('delivered') &&
-      !t.includes('rto') &&
-      !t.includes('cancel') &&
-      !t.includes('return to origin')
-    )
+    return !isDelhiveryRtoStatus(
+      sh.status || '',
+      sh.status_type,
+      sh.instructions
+    ) && !`${sh.status || ''}`.toLowerCase().includes('delivered')
+      && !`${sh.status || ''}`.toLowerCase().includes('cancel')
   }).length
 
   const reconciliationCheck =
@@ -841,6 +880,8 @@ export async function buildAdminDashboard(
       returned: returnedValue,
       refunded: refundedValue,
       rtoExtra: rtoExtraValue,
+      rtoRetained,
+      rtoProductLoss,
       netOrderRevenue,
       reconciliationCheck,
       discountsNote:
@@ -955,6 +996,7 @@ export async function buildAdminDashboard(
         shipped: '/admin/orders?status=shipped',
         cancelled: '/admin/orders?status=cancelled',
         delivered: '/admin/orders?status=delivered',
+        rto: '/admin/orders?status=rto',
       },
     },
     lowStock: lowStockRes.data || [],

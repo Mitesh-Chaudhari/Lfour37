@@ -70,6 +70,8 @@ async function getOrders() {
         awb,
         status,
         status_code,
+        status_type,
+        instructions,
         expected_delivery_date,
         last_synced_at,
         error_message,

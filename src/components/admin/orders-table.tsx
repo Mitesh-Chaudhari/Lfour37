@@ -17,8 +17,9 @@ import {
   resolveItemPurchasePrice,
   type PurchasePriceProductInput,
 } from '@/lib/purchase-price'
+import { isDelhiveryRtoStatus } from '@/lib/delhivery-status'
 
-const STATUS_OPTIONS: { value: OrderStatus; label: string }[] = [
+const STATUS_OPTIONS: { value: OrderStatus | 'rto'; label: string }[] = [
   { value: 'pending', label: 'Pending' },
   { value: 'paid', label: 'Paid' },
   { value: 'processing', label: 'Processing' },
@@ -26,6 +27,7 @@ const STATUS_OPTIONS: { value: OrderStatus; label: string }[] = [
   { value: 'delivered', label: 'Delivered' },
   { value: 'cancelled', label: 'Cancelled' },
   { value: 'refunded', label: 'Refunded' },
+  { value: 'rto', label: 'RTO (Delhivery)' },
 ]
 
 const STATUS_BADGE: Record<OrderStatus, 'success' | 'warning' | 'info' | 'default' | 'destructive'> = {
@@ -172,6 +174,8 @@ type DelhiveryShipmentInfo = {
   awb?: string | null
   status?: string | null
   status_code?: string | null
+  status_type?: string | null
+  instructions?: string | null
   expected_delivery_date?: string | null
   last_synced_at?: string | null
   error_message?: string | null
@@ -390,7 +394,20 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
   }, [initialOrders, refreshDelhiveryTracking])
 
   const filtered = orders.filter((o) => {
-    if (selectedStatus !== 'all' && o.status !== selectedStatus) return false
+    if (selectedStatus === 'rto') {
+      const shipment = getDelhiveryShipment(o)
+      if (
+        !isDelhiveryRtoStatus(
+          shipment?.status || '',
+          shipment?.status_type,
+          shipment?.instructions
+        )
+      ) {
+        return false
+      }
+    } else if (selectedStatus !== 'all' && o.status !== selectedStatus) {
+      return false
+    }
     if (search && !o.order_number.toLowerCase().includes(search.toLowerCase()) &&
       !o.user?.email?.toLowerCase().includes(search.toLowerCase())) return false
     return true
@@ -1128,8 +1145,29 @@ const markDelivered =
                   </td>
                   <td className="px-4 py-3">
                     <Badge variant={order.payment_status === 'completed' ? 'success' : 'warning'}>
-                      {order.payment_method} / {order.payment_status}
+                      {order.payment_method === 'cod' &&
+                      Number(order.cod_advance_amount || order.shipping_amount) > 0
+                        ? 'partial COD'
+                        : order.payment_method}{' '}
+                      / {order.payment_status}
                     </Badge>
+                    {order.payment_method === 'cod' &&
+                      Number(order.cod_advance_amount || 0) > 0 && (
+                        <p className="mt-1 text-[11px] text-gray-500 max-w-[180px]">
+                          {formatPrice(Number(order.cod_advance_amount))} paid ·{' '}
+                          {formatPrice(
+                            Number(
+                              order.cod_collect_amount ||
+                                Math.max(
+                                  0,
+                                  Number(order.total) -
+                                    Number(order.cod_advance_amount || 0)
+                                )
+                            )
+                          )}{' '}
+                          due on delivery
+                        </p>
+                      )}
                   </td>
                   <td className="px-4 py-3">
                     <Badge variant={STATUS_BADGE[order.status]}>
@@ -1146,12 +1184,26 @@ const markDelivered =
                         (shipment?.status === 'creation_failed' ||
                           shipment?.status === 'creating' ||
                           hasError)
+                      const isRto = isDelhiveryRtoStatus(
+                        shipment?.status || '',
+                        shipment?.status_type,
+                        shipment?.instructions
+                      )
 
                       if (!hasAwb && !failedWithoutAwb) return null
 
                       return (
                         <div className="mt-2 space-y-1 text-xs text-gray-500">
-                          <p className="font-medium text-gray-700">
+                          {isRto && (
+                            <Badge variant="destructive" className="mb-1">
+                              RTO — customer refused / returning
+                            </Badge>
+                          )}
+                          <p
+                            className={`font-medium ${
+                              isRto ? 'text-red-700' : 'text-gray-700'
+                            }`}
+                          >
                             Delhivery:{' '}
                             {shipment?.status ||
                               (hasAwb ? 'Awaiting sync' : 'Not created')}
@@ -1161,7 +1213,7 @@ const markDelivered =
                               AWB: {shipment?.awb || order.tracking_number}
                             </p>
                           )}
-                          {shipment?.expected_delivery_date && (
+                          {shipment?.expected_delivery_date && !isRto && (
                             <p>
                               ETA:{' '}
                               {formatDate(shipment.expected_delivery_date)}
@@ -1607,7 +1659,9 @@ const markDelivered =
                       >
                         {STATUS_OPTIONS.filter(
                           (s) =>
-                            s.value !== 'shipped' && s.value !== 'delivered'
+                            s.value !== 'shipped' &&
+                            s.value !== 'delivered' &&
+                            s.value !== 'rto'
                         ).map((s) => (
                           <option key={s.value} value={s.value}>
                             {s.label}

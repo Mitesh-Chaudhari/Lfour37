@@ -28,7 +28,9 @@ export async function POST(request: NextRequest) {
 
     const { data: order } = await supabase
       .from('orders')
-      .select('id, total, payment_status')
+      .select(
+        'id, total, payment_status, payment_method, cod_advance_amount, shipping_amount'
+      )
       .eq('id', order_id)
       .eq('user_id', user.id)
       .single()
@@ -38,6 +40,18 @@ export async function POST(request: NextRequest) {
     }
 
     const admin = createAdminClient()
+
+    const chargeAmount =
+      order.payment_method === 'cod'
+        ? Number(order.cod_advance_amount ?? order.shipping_amount ?? 0)
+        : Number(order.total)
+
+    if (!Number.isFinite(chargeAmount) || chargeAmount < 1) {
+      return NextResponse.json(
+        { error: 'Invalid payment amount for this order' },
+        { status: 400 }
+      )
+    }
 
     const { data: existingPayment } = await admin
       .from('payments')
@@ -59,13 +73,13 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const razorpayOrder = await createRazorpayOrder(order.total, order_id)
+    const razorpayOrder = await createRazorpayOrder(chargeAmount, order_id)
 
     const { error: paymentError } = await admin.from('payments').insert({
       order_id,
       payment_method: 'razorpay',
       status: 'pending',
-      amount: order.total,
+      amount: chargeAmount,
       currency: 'INR',
       razorpay_order_id: razorpayOrder.id,
     })

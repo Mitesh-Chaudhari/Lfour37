@@ -141,6 +141,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, shipment })
     }
 
+    if (
+      order.payment_method === 'cod' &&
+      (order.status === 'processing' || order.status === 'paid')
+    ) {
+      const shipment = await ensureDelhiveryShipmentForPaidOrder(order_id)
+      return NextResponse.json({ success: true, shipment })
+    }
+
     const admin = createAdminClient()
 
     const { data: payment, error: paymentLookupError } = await admin
@@ -172,17 +180,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (Number(payment.amount) !== Number(order.total)) {
+    const expectedAmount =
+      order.payment_method === 'cod'
+        ? Number(order.cod_advance_amount ?? order.shipping_amount ?? 0)
+        : Number(order.total)
+
+    if (Math.round(Number(payment.amount) * 100) !== Math.round(expectedAmount * 100)) {
       return NextResponse.json(
         { error: 'Payment amount does not match this order' },
         { status: 400 }
       )
     }
 
+    const isPartialCod = order.payment_method === 'cod'
+    const nextStatus = isPartialCod ? 'processing' : 'paid'
+    const nextPaymentStatus = isPartialCod ? 'pending' : 'completed'
+
     await Promise.all([
       admin
         .from('orders')
-        .update({ status: 'paid', payment_status: 'completed' })
+        .update({ status: nextStatus, payment_status: nextPaymentStatus })
         .eq('id', order_id),
       admin
         .from('payments')
@@ -194,6 +211,29 @@ export async function POST(request: NextRequest) {
         .eq('id', payment.id),
     ])
 
+    if (isPartialCod) {
+      const collectAmount = Number(
+        order.cod_collect_amount ??
+          Math.max(0, Number(order.total) - expectedAmount)
+      )
+      const { data: existingCod } = await admin
+        .from('payments')
+        .select('id')
+        .eq('order_id', order_id)
+        .eq('payment_method', 'cod')
+        .maybeSingle()
+
+      if (!existingCod) {
+        await admin.from('payments').insert({
+          order_id,
+          payment_method: 'cod',
+          status: 'pending',
+          amount: collectAmount,
+          currency: 'INR',
+        })
+      }
+    }
+
     await admin.from('order_tracking').insert({
       order_id,
       status: 'placed',
@@ -203,8 +243,8 @@ export async function POST(request: NextRequest) {
     const orderUser = Array.isArray(order.user) ? order.user[0] : order.user
     const confirmedOrder = {
       ...order,
-      status: 'paid',
-      payment_status: 'completed',
+      status: nextStatus,
+      payment_status: nextPaymentStatus,
     }
 
     // Confirmation before Delhivery so "shipped/pickup" cannot arrive first.

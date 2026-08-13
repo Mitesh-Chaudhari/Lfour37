@@ -47,6 +47,24 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const advance = Number(order.cod_advance_amount || 0)
+    if (advance > 0) {
+      const { data: prepaid } = await createAdminClient()
+        .from('payments')
+        .select('id, status')
+        .eq('order_id', order_id)
+        .eq('payment_method', 'razorpay')
+        .eq('status', 'completed')
+        .maybeSingle()
+
+      if (!prepaid) {
+        return NextResponse.json(
+          { error: 'Pay the COD shipping charges online before placing this order' },
+          { status: 400 }
+        )
+      }
+    }
+
     // Already confirmed — only ensure shipment, do not re-send confirmation.
     if (order.status === 'processing' || order.status === 'paid') {
       const shipment = await ensureDelhiveryShipmentForPaidOrder(order_id)
