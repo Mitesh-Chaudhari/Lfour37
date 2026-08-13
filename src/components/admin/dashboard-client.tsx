@@ -150,6 +150,13 @@ type DashboardData = {
     roas: number | null
     cpa: number | null
   }>
+  marketingSpend: Array<{
+    id: string
+    channel: string
+    amount: number
+    spend_date: string
+    campaign_name: string | null
+  }>
   topProducts: Array<{
     name: string
     units: number
@@ -229,6 +236,18 @@ type ChartMetric = 'revenue' | 'orders' | 'aov' | 'units_sold' | 'profit'
 function pct(n: number | null | undefined, digits = 1) {
   if (n == null || Number.isNaN(n)) return '—'
   return `${n.toFixed(digits)}%`
+}
+
+function formatDisplayDate(yyyyMmDd: string): string {
+  if (!yyyyMmDd) return '—'
+  const [y, m, d] = yyyyMmDd.split('-').map(Number)
+  if (!y || !m || !d) return yyyyMmDd
+  return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
 }
 
 function Card({
@@ -340,6 +359,23 @@ export function DashboardClient() {
     }))
   }, [data])
 
+  const spendEntries = useMemo(() => {
+    const rows = [...(data?.marketingSpend || [])]
+    rows.sort((a, b) => b.spend_date.localeCompare(a.spend_date))
+    return rows
+  }, [data?.marketingSpend])
+
+  const spendCoverage = useMemo(() => {
+    if (!spendEntries.length) return null
+    const dates = spendEntries.map((row) => row.spend_date).sort()
+    return {
+      from: dates[0],
+      to: dates[dates.length - 1],
+      count: spendEntries.length,
+      total: spendEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    }
+  }, [spendEntries])
+
   const addSpend = async () => {
     const amount = Number(spendForm.amount)
     if (!amount || amount < 0) {
@@ -367,6 +403,21 @@ export function DashboardClient() {
       toast.error(err instanceof Error ? err.message : 'Failed to save spend')
     } finally {
       setSavingSpend(false)
+    }
+  }
+
+  const deleteSpend = async (id: string) => {
+    if (!confirm('Remove this marketing spend entry?')) return
+    try {
+      const res = await fetch(`/api/admin/marketing-spend?id=${id}`, {
+        method: 'DELETE',
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed')
+      toast.success('Spend entry removed')
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to remove spend')
     }
   }
 
@@ -1162,6 +1213,35 @@ export function DashboardClient() {
           </div>
 
           <Card title="Marketing Attribution">
+            <div className="mb-4 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-600 space-y-1">
+              <p>
+                <span className="font-medium text-gray-800">Report period:</span>{' '}
+                {formatDisplayDate(data.range.from)} →{' '}
+                {formatDisplayDate(data.range.to)}
+              </p>
+              {spendCoverage ? (
+                <p>
+                  <span className="font-medium text-gray-800">
+                    Spend entries added:
+                  </span>{' '}
+                  {formatDisplayDate(spendCoverage.from)} →{' '}
+                  {formatDisplayDate(spendCoverage.to)}
+                  {' · '}
+                  {spendCoverage.count}{' '}
+                  {spendCoverage.count === 1 ? 'entry' : 'entries'}
+                  {' · '}
+                  {formatPrice(spendCoverage.total)} total
+                </p>
+              ) : (
+                <p>
+                  <span className="font-medium text-gray-800">
+                    Spend entries added:
+                  </span>{' '}
+                  None in this report period yet
+                </p>
+              )}
+            </div>
+
             <div className="overflow-x-auto mb-4">
               <table className="w-full text-sm">
                 <thead>
@@ -1203,9 +1283,54 @@ export function DashboardClient() {
               </table>
             </div>
 
+            {spendEntries.length > 0 && (
+              <div className="mb-4 overflow-x-auto rounded-xl border border-gray-100">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-gray-500 border-b bg-gray-50">
+                      <th className="px-3 py-2">Spend date</th>
+                      <th className="px-3 py-2">Channel</th>
+                      <th className="px-3 py-2">Amount</th>
+                      <th className="px-3 py-2">Campaign</th>
+                      <th className="px-3 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {spendEntries.map((row) => (
+                      <tr key={row.id} className="border-b border-gray-50">
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {formatDisplayDate(row.spend_date)}
+                        </td>
+                        <td className="px-3 py-2 capitalize">{row.channel}</td>
+                        <td className="px-3 py-2">
+                          {formatPrice(Number(row.amount || 0))}
+                        </td>
+                        <td className="px-3 py-2 text-gray-500">
+                          {row.campaign_name || '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <button
+                            type="button"
+                            className="text-xs text-red-600 hover:underline"
+                            onClick={() => deleteSpend(row.id)}
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
             <div className="flex flex-col gap-2 rounded-xl border border-dashed border-gray-200 p-3 sm:flex-row sm:flex-wrap sm:items-end">
               <p className="w-full text-sm font-medium text-gray-800 sm:mb-0">
                 Add marketing spend
+              </p>
+              <p className="w-full text-xs text-gray-500 -mt-1">
+                Each entry is for one day. Totals above use all entries within
+                the report period.
               </p>
               <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
                 <div className="w-full sm:w-auto">
@@ -1235,7 +1360,7 @@ export function DashboardClient() {
                   />
                 </div>
                 <div className="w-full sm:w-auto">
-                  <label className="text-xs text-gray-500">Date</label>
+                  <label className="text-xs text-gray-500">Spend date</label>
                   <Input
                     type="date"
                     value={spendForm.spend_date}
