@@ -4,7 +4,13 @@ import { useState } from 'react'
 import CancelModal from './cancel-modal'
 import { Button } from '../ui/button'
 
-export default function OrderItemActions({ item }: any) {
+export default function OrderItemActions({
+    item,
+    paymentMethod,
+}: {
+    item: any
+    paymentMethod?: string | null
+}) {
     const [open, setOpen] = useState(false)
 
     if (
@@ -27,6 +33,7 @@ export default function OrderItemActions({ item }: any) {
             {open && (
                 <CancelModal
                     itemId={item.id}
+                    paymentMethod={paymentMethod}
                     onClose={() => setOpen(false)}
                 />
             )}

@@ -157,6 +157,13 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
               <span>Total</span>
               <span>{formatPrice(order.total)}</span>
             </div>
+            {order.payment_method === 'cod' &&
+              Number(order.cod_advance_amount || order.shipping_amount) > 0 && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+                  Shipping charges paid for this COD order are not refundable if
+                  the order is cancelled.
+                </p>
+              )}
           </div>
 
           {/* Shipping address */}

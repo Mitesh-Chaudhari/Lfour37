@@ -6,7 +6,15 @@ import { BlockingContainer } from '@/components/ui/blocking-container'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 
-export default function CancelModal({ itemId, onClose }: any) {
+export default function CancelModal({
+  itemId,
+  paymentMethod,
+  onClose,
+}: {
+  itemId: string
+  paymentMethod?: string | null
+  onClose: () => void
+}) {
   const [reasonId, setReasonId] = useState('')
   const [customReason, setCustomReason] = useState('')
   const [reasons, setReasons] = useState<any[]>([])
@@ -76,6 +84,13 @@ export default function CancelModal({ itemId, onClose }: any) {
         className="bg-white p-6 rounded-xl w-[400px] space-y-4"
       >
         <h2 className="font-semibold text-lg">Cancel Item</h2>
+
+        {paymentMethod === 'cod' && (
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            Shipping charges paid for COD orders are not refundable if the order
+            is cancelled.
+          </p>
+        )}
 
         <select
           className="w-full border p-2 rounded disabled:bg-gray-50 mb-5"

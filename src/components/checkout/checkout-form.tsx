@@ -1270,7 +1270,7 @@ export function CheckoutForm({
                   )}
                 >
                   <span className="absolute -top-2.5 right-3 bg-black text-[#c39c41] text-[10px] font-bold tracking-wide px-2 py-0.5 rounded-full">
-                    EXTRA 5% OFF
+                    Free Delivery + EXTRA 5% OFF
                   </span>
                   <CreditCard
                     className={cn(
@@ -1352,6 +1352,10 @@ export function CheckoutForm({
                     Pay balance at delivery ({formatPrice(payAtDeliveryAmount)}
                     ).
                   </p>
+                  <p className="text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                    Shipping charges paid for COD orders are not refundable if
+                    the order is cancelled.
+                  </p>
                 </div>
               )}
               {paymentMethod === 'cod' && codChargesError && !codChargesLoading && (
@@ -1359,7 +1363,7 @@ export function CheckoutForm({
               )}
               {paymentMethod === 'cod' && potentialPrepaidSavings > 0 && (
                 <p className="mt-3 text-xs text-gray-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                  Pay the full amount online instead and save extra 5% prepaid
+                  Pay the full amount online instead and get free delibery and save extra 5% prepaid
                   discount.
                 </p>
               )}
@@ -1398,9 +1402,15 @@ export function CheckoutForm({
                 />
               )}
               {paymentMethod === 'cod' && (
-                <p className="mt-3 text-xs text-gray-500">
-                  Paying {formatPrice(payNowAmount)} now. Remaining{' '}
-                  {formatPrice(payAtDeliveryAmount)} is collected on delivery.
+                <p className="mt-3 text-xs text-gray-500 space-y-1">
+                  <span className="block">
+                    Paying {formatPrice(payNowAmount)} now. Remaining{' '}
+                    {formatPrice(payAtDeliveryAmount)} is collected on delivery.
+                  </span>
+                  <span className="block text-amber-700">
+                    Shipping charges are not refundable if the order is
+                    cancelled.
+                  </span>
                 </p>
               )}
             </div>

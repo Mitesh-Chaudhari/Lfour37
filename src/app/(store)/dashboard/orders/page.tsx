@@ -331,7 +331,10 @@ export default async function OrdersPage() {
 
                               {/* CANCEL */}
                               {showCancelAction && (
-                                <OrderItemActions item={item} />
+                                <OrderItemActions
+                                  item={item}
+                                  paymentMethod={order.payment_method}
+                                />
                               )}
 
                               {/* RETURN / EXCHANGE */}
