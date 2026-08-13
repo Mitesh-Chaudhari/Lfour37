@@ -172,6 +172,7 @@ export interface Order {
   payment_method: PaymentMethod
   payment_status: PaymentStatus
   notes: string | null
+  cancel_reason: string | null
   tracking_number: string | null
   shipped_at: string | null
   delivered_at: string | null

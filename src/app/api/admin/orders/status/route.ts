@@ -22,7 +22,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const { order_id, status, tracking_number } = await req.json()
+    const { order_id, status, tracking_number, cancel_reason } = await req.json()
     if (!order_id || !status) return NextResponse.json({ error: 'order_id and status required' }, { status: 400 })
 
     const validStatuses: OrderStatus[] = ['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded']
@@ -30,12 +30,27 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
     }
 
+    const normalizedCancelReason =
+      typeof cancel_reason === 'string' ? cancel_reason.trim() : ''
+
+    if (status === 'cancelled' && !normalizedCancelReason) {
+      return NextResponse.json(
+        { error: 'Cancel reason is required' },
+        { status: 400 }
+      )
+    }
+
     // Build update payload
     const updatePayload: Record<string, unknown> = { status }
     if (tracking_number) updatePayload.tracking_number = tracking_number
     if (status === 'shipped') updatePayload.shipped_at = new Date().toISOString()
     if (status === 'delivered') updatePayload.delivered_at = new Date().toISOString()
-    if (status === 'cancelled') updatePayload.cancelled_at = new Date().toISOString()
+    if (status === 'cancelled') {
+      updatePayload.cancelled_at = new Date().toISOString()
+      updatePayload.cancel_reason = normalizedCancelReason
+    } else {
+      updatePayload.cancel_reason = null
+    }
 
     const { data: updatedOrder, error } = await supabase
       .from('orders')

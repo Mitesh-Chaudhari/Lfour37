@@ -19,6 +19,16 @@ import {
 } from '@/lib/purchase-price'
 import { isDelhiveryRtoStatus } from '@/lib/delhivery-status'
 
+const ADMIN_CANCEL_REASON_OPTIONS = [
+  'Test order',
+  'Shipping issue',
+  'Bad address',
+  'Customer not reachable',
+  'Other',
+] as const
+
+type AdminCancelReasonOption = (typeof ADMIN_CANCEL_REASON_OPTIONS)[number]
+
 const STATUS_OPTIONS: { value: OrderStatus | 'rto'; label: string }[] = [
   { value: 'pending', label: 'Pending' },
   { value: 'paid', label: 'Paid' },
@@ -280,6 +290,12 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
   const [exportFrom, setExportFrom] = useState('')
   const [exportTo, setExportTo] = useState('')
   const [exporting, setExporting] = useState(false)
+  const [cancelModalOrder, setCancelModalOrder] = useState<AdminOrder | null>(
+    null
+  )
+  const [cancelReasonOption, setCancelReasonOption] =
+    useState<AdminCancelReasonOption | ''>('')
+  const [cancelCustomReason, setCancelCustomReason] = useState('')
   const autoSyncedRef = useRef(false)
 
   useEffect(() => {
@@ -455,26 +471,85 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
     }
   }
 
-  const updateStatus = async (orderId: string, status: OrderStatus) => {
+  const updateStatus = async (
+    orderId: string,
+    status: OrderStatus,
+    cancelReason?: string
+  ) => {
     setUpdatingId(orderId)
     try {
       const res = await fetch('/api/admin/orders/status', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: orderId, status }),
+        body: JSON.stringify({
+          order_id: orderId,
+          status,
+          ...(status === 'cancelled' ? { cancel_reason: cancelReason } : {}),
+        }),
       })
       const data = await res.json()
       if (!res.ok) {
         toast.error(data.error || 'Failed to update status')
-        return
+        return false
       }
-      setOrders(orders.map((o) => o.id === orderId ? { ...o, status } : o))
+      setOrders(
+        orders.map((o) =>
+          o.id === orderId
+            ? {
+                ...o,
+                status,
+                cancel_reason:
+                  status === 'cancelled' ? cancelReason || null : null,
+                cancelled_at:
+                  status === 'cancelled'
+                    ? o.cancelled_at || new Date().toISOString()
+                    : o.cancelled_at,
+              }
+            : o
+        )
+      )
       toast.success('Order status updated')
+      return true
     } catch {
       toast.error('Error updating order')
+      return false
     } finally {
       setUpdatingId(null)
     }
+  }
+
+  const openCancelModal = (order: AdminOrder) => {
+    setCancelModalOrder(order)
+    setCancelReasonOption('')
+    setCancelCustomReason('')
+  }
+
+  const closeCancelModal = () => {
+    setCancelModalOrder(null)
+    setCancelReasonOption('')
+    setCancelCustomReason('')
+  }
+
+  const confirmAdminCancel = async () => {
+    if (!cancelModalOrder) return
+
+    if (!cancelReasonOption) {
+      toast.error('Select a cancel reason')
+      return
+    }
+
+    if (cancelReasonOption === 'Other' && !cancelCustomReason.trim()) {
+      toast.error('Enter a custom cancel reason')
+      return
+    }
+
+    const reason =
+      cancelReasonOption === 'Other'
+        ? cancelCustomReason.trim()
+        : cancelReasonOption
+
+    const ok = await updateStatus(cancelModalOrder.id, 'cancelled', reason)
+    if (ok) closeCancelModal()
   }
 
   const handleRefund = async (order: AdminOrder) => {
@@ -1645,29 +1720,47 @@ const markDelivered =
                         <p className="text-[11px] text-gray-500">
                           Updated from Delhivery
                         </p>
+                        {order.status === 'cancelled' && order.cancel_reason && (
+                          <p className="text-[11px] text-red-700 max-w-[180px]">
+                            Reason: {order.cancel_reason}
+                          </p>
+                        )}
                       </div>
                     ) : (
-                      <select
-                        value={order.status}
-                        onChange={(e) =>
-                          updateStatus(order.id, e.target.value as OrderStatus)
-                        }
-                        disabled={
-                          updatingId === order.id || order.status === 'refunded'
-                        }
-                        className="text-xs border border-gray-300 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50"
-                      >
-                        {STATUS_OPTIONS.filter(
-                          (s) =>
-                            s.value !== 'shipped' &&
-                            s.value !== 'delivered' &&
-                            s.value !== 'rto'
-                        ).map((s) => (
-                          <option key={s.value} value={s.value}>
-                            {s.label}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="space-y-1">
+                        <select
+                          value={order.status}
+                          onChange={(e) => {
+                            const next = e.target.value as OrderStatus
+                            if (next === 'cancelled') {
+                              openCancelModal(order)
+                              return
+                            }
+                            updateStatus(order.id, next)
+                          }}
+                          disabled={
+                            updatingId === order.id ||
+                            order.status === 'refunded'
+                          }
+                          className="text-xs border border-gray-300 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50"
+                        >
+                          {STATUS_OPTIONS.filter(
+                            (s) =>
+                              s.value !== 'shipped' &&
+                              s.value !== 'delivered' &&
+                              s.value !== 'rto'
+                          ).map((s) => (
+                            <option key={s.value} value={s.value}>
+                              {s.label}
+                            </option>
+                          ))}
+                        </select>
+                        {order.status === 'cancelled' && order.cancel_reason && (
+                          <p className="text-[11px] text-red-700 max-w-[180px]">
+                            Reason: {order.cancel_reason}
+                          </p>
+                        )}
+                      </div>
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">
@@ -1741,6 +1834,68 @@ const markDelivered =
           <div className="py-12 text-center text-gray-400">No orders found</div>
         )}
       </div>
+
+      {cancelModalOrder && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl w-full max-w-md p-6 space-y-4 shadow-xl">
+            <div>
+              <h2 className="font-semibold text-lg">Cancel Order</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Select a reason for cancelling{' '}
+                <span className="font-medium text-gray-700">
+                  {cancelModalOrder.order_number}
+                </span>
+                .
+              </p>
+            </div>
+
+            <select
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              value={cancelReasonOption}
+              onChange={(e) =>
+                setCancelReasonOption(
+                  e.target.value as AdminCancelReasonOption | ''
+                )
+              }
+              disabled={updatingId === cancelModalOrder.id}
+            >
+              <option value="">Select reason</option>
+              {ADMIN_CANCEL_REASON_OPTIONS.map((reason) => (
+                <option key={reason} value={reason}>
+                  {reason}
+                </option>
+              ))}
+            </select>
+
+            {cancelReasonOption === 'Other' && (
+              <textarea
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[90px]"
+                placeholder="Enter custom reason..."
+                value={cancelCustomReason}
+                onChange={(e) => setCancelCustomReason(e.target.value)}
+                disabled={updatingId === cancelModalOrder.id}
+              />
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button
+                variant="outline"
+                onClick={closeCancelModal}
+                disabled={updatingId === cancelModalOrder.id}
+              >
+                Close
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmAdminCancel}
+                loading={updatingId === cancelModalOrder.id}
+              >
+                Confirm Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
