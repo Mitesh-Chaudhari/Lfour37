@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/abandoned-carts",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/cancel-unpaid-orders",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
