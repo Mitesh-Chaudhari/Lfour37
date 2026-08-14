@@ -60,6 +60,7 @@ async function getOrders() {
         id,
         status,
         payment_method,
+        amount,
         razorpay_payment_id,
         stripe_payment_intent_id,
         refunded_amount

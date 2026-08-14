@@ -263,14 +263,51 @@ function canProcessItemRefund(
   return order.payment_status === 'completed'
 }
 
-type AdminOrder = Omit<Order, 'items' | 'delhivery_shipment'> & {
+type AdminPayment = {
+  id?: string
+  status?: string | null
+  payment_method?: string | null
+  amount?: number | null
+  razorpay_payment_id?: string | null
+  stripe_payment_intent_id?: string | null
+  refunded_amount?: number | null
+}
+
+type AdminOrder = Omit<Order, 'items' | 'delhivery_shipment' | 'payment'> & {
   items?: AdminOrderItem[]
+  payment?: AdminPayment | AdminPayment[] | null
   user?: { full_name: string | null; email: string; phone?: string | null }
   delhivery_shipment?: DelhiveryShipmentInfo | DelhiveryShipmentInfo[] | null
   delhivery_reverse_pickups?:
     | DelhiveryReversePickupInfo
     | DelhiveryReversePickupInfo[]
     | null
+}
+
+function getOrderPayments(order: AdminOrder): AdminPayment[] {
+  if (!order.payment) return []
+  return Array.isArray(order.payment) ? order.payment : [order.payment]
+}
+
+/** Completed Razorpay row used for Partial COD shipping advance. */
+function getCompletedCodAdvancePayment(order: AdminOrder): AdminPayment | null {
+  return (
+    getOrderPayments(order).find(
+      (payment) =>
+        payment.payment_method === 'razorpay' &&
+        payment.status === 'completed'
+    ) || null
+  )
+}
+
+function getPartialCodCollectAmount(order: AdminOrder): number {
+  return Number(
+    order.cod_collect_amount ||
+      Math.max(
+        0,
+        Number(order.total) - Number(order.cod_advance_amount || 0)
+      )
+  )
 }
 
 interface AdminOrdersTableProps {
@@ -1219,30 +1256,58 @@ const markDelivered =
                     })()}
                   </td>
                   <td className="px-4 py-3">
-                    <Badge variant={order.payment_status === 'completed' ? 'success' : 'warning'}>
-                      {order.payment_method === 'cod' &&
-                      Number(order.cod_advance_amount || order.shipping_amount) > 0
-                        ? 'partial COD'
-                        : order.payment_method}{' '}
-                      / {order.payment_status}
-                    </Badge>
-                    {order.payment_method === 'cod' &&
-                      Number(order.cod_advance_amount || 0) > 0 && (
-                        <p className="mt-1 text-[11px] text-gray-500 max-w-[180px]">
-                          {formatPrice(Number(order.cod_advance_amount))} paid ·{' '}
-                          {formatPrice(
-                            Number(
-                              order.cod_collect_amount ||
-                                Math.max(
-                                  0,
-                                  Number(order.total) -
-                                    Number(order.cod_advance_amount || 0)
-                                )
-                            )
-                          )}{' '}
-                          due on delivery
-                        </p>
-                      )}
+                    {(() => {
+                      const advanceExpected = Number(
+                        order.cod_advance_amount || order.shipping_amount || 0
+                      )
+                      const isPartialCod =
+                        order.payment_method === 'cod' && advanceExpected > 0
+                      const advancePayment = isPartialCod
+                        ? getCompletedCodAdvancePayment(order)
+                        : null
+                      const advancePaid = Boolean(advancePayment)
+                      const paidAmount = Number(
+                        advancePayment?.amount ?? order.cod_advance_amount ?? 0
+                      )
+                      const dueAmount = getPartialCodCollectAmount(order)
+
+                      return (
+                        <>
+                          <Badge
+                            variant={
+                              order.payment_status === 'completed' ||
+                              (isPartialCod && advancePaid)
+                                ? 'success'
+                                : 'warning'
+                            }
+                          >
+                            {isPartialCod
+                              ? 'partial COD'
+                              : order.payment_method}{' '}
+                            /{' '}
+                            {isPartialCod && advancePaid
+                              ? 'advance paid'
+                              : order.payment_status}
+                          </Badge>
+                          {isPartialCod && (
+                            <p className="mt-1 text-[11px] text-gray-500 max-w-[200px]">
+                              {advancePaid ? (
+                                <>
+                                  {formatPrice(paidAmount)} paid ·{' '}
+                                  {formatPrice(dueAmount)} due on delivery
+                                </>
+                              ) : (
+                                <>
+                                  Advance {formatPrice(advanceExpected)} not
+                                  paid yet · {formatPrice(dueAmount)} due on
+                                  delivery
+                                </>
+                              )}
+                            </p>
+                          )}
+                        </>
+                      )
+                    })()}
                   </td>
                   <td className="px-4 py-3">
                     <Badge variant={STATUS_BADGE[order.status]}>
