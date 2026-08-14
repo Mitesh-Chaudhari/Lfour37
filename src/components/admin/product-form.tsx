@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Upload, X, Plus, Trash2 } from 'lucide-react'
+import { Upload, X, Plus, Trash2, GripVertical } from 'lucide-react'
 import { productSchema, ProductFormData } from '@/lib/validations/checkout'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,7 @@ import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { resolveHsnFromCategories } from '@/lib/hsn'
 import { resolvePurchasePriceFromCategories } from '@/lib/purchase-price'
+import { normalizeProductImages } from '@/lib/product-images'
 import { buildCategoryTree, getDeepestSelectedCategoryIds } from '@/lib/categories'
 import {
   buildKeyHighlightsForForm,
@@ -230,7 +231,11 @@ export function ProductForm({
   const supabase = createClient()
   const isEditing = !!initialData
 
-  const [images, setImages] = useState<ProductImage[]>(initialData?.images || [])
+  const [images, setImages] = useState<ProductImage[]>(() =>
+    normalizeProductImages(initialData?.images || [])
+  )
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [tags, setTags] = useState<string[]>(initialData?.tags || [])
@@ -411,7 +416,7 @@ export function ProductForm({
         alt: productName,
       }))
 
-      setImages([...images, ...newImages])
+      setImages([...images, ...newImages].map((img, i) => ({ ...img, position: i })))
       toast.success(`${files.length} image(s) uploaded`)
     } catch {
       toast.error('Failed to upload images')
@@ -420,8 +425,22 @@ export function ProductForm({
     }
   }
 
+  const withImagePositions = (list: ProductImage[]) =>
+    list.map((img, i) => ({ ...img, position: i }))
+
   const removeImage = (index: number) => {
-    setImages(images.filter((_, i) => i !== index))
+    setImages((current) => withImagePositions(current.filter((_, i) => i !== index)))
+  }
+
+  const reorderImages = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0) return
+    setImages((current) => {
+      if (from >= current.length || to >= current.length) return current
+      const next = [...current]
+      const [moved] = next.splice(from, 1)
+      next.splice(to, 0, moved)
+      return withImagePositions(next)
+    })
   }
 
   const addTag = () => {
@@ -600,7 +619,7 @@ export function ProductForm({
         is_new_arrival: data.is_new_arrival || false,
         is_trending: data.is_trending || false,
         list_sort_order: listSortOrder,
-        images: images,
+        images: withImagePositions(images),
         tags: tags,
         key_highlights: keyHighlights
           .map((item) => ({
@@ -912,11 +931,49 @@ export function ProductForm({
         <h2 className="text-lg font-semibold mb-4">Product Images</h2>
         <div className="flex flex-wrap gap-3 mb-4">
           {images.map((img, i) => (
-            <div key={i} className="relative h-24 w-20 rounded-lg overflow-hidden bg-gray-100 group">
-              <OptimizedImage src={img.url} alt="" fill variant="galleryThumb" className="object-cover" />
+            <div
+              key={`${img.url}-${i}`}
+              draggable
+              onDragStart={(e) => {
+                setDragIndex(i)
+                e.dataTransfer.effectAllowed = 'move'
+                e.dataTransfer.setData('text/plain', String(i))
+              }}
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+                if (dragOverIndex !== i) setDragOverIndex(i)
+              }}
+              onDragLeave={() => {
+                if (dragOverIndex === i) setDragOverIndex(null)
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                const from = dragIndex ?? Number(e.dataTransfer.getData('text/plain'))
+                reorderImages(from, i)
+                setDragIndex(null)
+                setDragOverIndex(null)
+              }}
+              onDragEnd={() => {
+                setDragIndex(null)
+                setDragOverIndex(null)
+              }}
+              className={`relative h-24 w-20 rounded-lg overflow-hidden bg-gray-100 group cursor-grab active:cursor-grabbing ${
+                dragIndex === i ? 'opacity-50' : ''
+              } ${
+                dragOverIndex === i && dragIndex !== i
+                  ? 'ring-2 ring-purple-500'
+                  : ''
+              }`}
+            >
+              <OptimizedImage src={img.url} alt="" fill variant="galleryThumb" className="object-cover pointer-events-none" />
+              <span className="absolute top-1 left-1 h-5 w-5 rounded bg-black/50 text-white flex items-center justify-center pointer-events-none">
+                <GripVertical className="h-3 w-3" />
+              </span>
               <button
                 type="button"
                 onClick={() => removeImage(i)}
+                onMouseDown={(e) => e.stopPropagation()}
                 className="absolute top-1 right-1 h-5 w-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 <X className="h-3 w-3" />
@@ -940,7 +997,9 @@ export function ProductForm({
             )}
           </label>
         </div>
-        <p className="text-xs text-gray-500">Supports JPG, PNG, WebP. Max 10MB each.</p>
+        <p className="text-xs text-gray-500">
+          Drag photos to change order. First image is Main. Supports JPG, PNG, WebP. Max 10MB each.
+        </p>
       </div>
 
       {/* Categories */}
