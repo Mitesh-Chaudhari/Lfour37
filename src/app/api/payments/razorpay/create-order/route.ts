@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createClient } from '@/lib/supabase/server'
-import { createRazorpayOrder } from '@/lib/razorpay'
+import { createRazorpayOrder, fetchRazorpayOrder } from '@/lib/razorpay'
+import {
+  canResumePendingPayment,
+  getOnlineChargeAmount,
+  isUnpaidPendingCheckoutOrder,
+} from '@/lib/pending-payment'
 import logger from '@/lib/logger'
 import { z } from 'zod'
 
@@ -8,10 +13,21 @@ const schema = z.object({
   order_id: z.string().uuid(),
 })
 
+type PaymentRow = {
+  id: string
+  payment_method: string | null
+  status: string | null
+  amount: number | null
+  razorpay_order_id: string | null
+  created_at?: string | null
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -29,7 +45,24 @@ export async function POST(request: NextRequest) {
     const { data: order } = await supabase
       .from('orders')
       .select(
-        'id, total, payment_status, payment_method, cod_advance_amount, shipping_amount'
+        `
+        id,
+        total,
+        status,
+        payment_status,
+        payment_method,
+        created_at,
+        cod_advance_amount,
+        shipping_amount,
+        payment:payments(
+          id,
+          payment_method,
+          status,
+          amount,
+          razorpay_order_id,
+          created_at
+        )
+      `
       )
       .eq('id', order_id)
       .eq('user_id', user.id)
@@ -39,12 +72,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     }
 
-    const admin = createAdminClient()
+    const payments: PaymentRow[] = Array.isArray(order.payment)
+      ? (order.payment as PaymentRow[])
+      : order.payment
+        ? [order.payment as PaymentRow]
+        : []
 
-    const chargeAmount =
-      order.payment_method === 'cod'
-        ? Number(order.cod_advance_amount ?? order.shipping_amount ?? 0)
-        : Number(order.total)
+    if (!isUnpaidPendingCheckoutOrder(order, payments)) {
+      return NextResponse.json(
+        { error: 'This order is not awaiting online payment' },
+        { status: 400 }
+      )
+    }
+
+    if (!canResumePendingPayment(order, payments)) {
+      return NextResponse.json(
+        {
+          error:
+            'Payment window expired. This order was cancelled because payment was not completed within 30 minutes.',
+          expired: true,
+        },
+        { status: 400 }
+      )
+    }
+
+    const admin = createAdminClient()
+    const chargeAmount = getOnlineChargeAmount(order)
 
     if (!Number.isFinite(chargeAmount) || chargeAmount < 1) {
       return NextResponse.json(
@@ -53,24 +106,56 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { data: existingPayment } = await admin
-      .from('payments')
-      .select('razorpay_order_id, amount')
-      .eq('order_id', order_id)
-      .eq('payment_method', 'razorpay')
-      .eq('status', 'pending')
-      .not('razorpay_order_id', 'is', null)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    const pendingRazorpay = [...payments]
+      .filter(
+        (payment) =>
+          payment.payment_method === 'razorpay' &&
+          payment.status === 'pending' &&
+          payment.razorpay_order_id
+      )
+      .sort((a, b) =>
+        String(b.created_at || '').localeCompare(String(a.created_at || ''))
+      )[0]
 
-    if (existingPayment?.razorpay_order_id) {
-      return NextResponse.json({
-        id: existingPayment.razorpay_order_id,
-        amount: Math.round(Number(existingPayment.amount) * 100),
-        currency: 'INR',
-        key: process.env.RAZORPAY_KEY_ID,
-      })
+    if (pendingRazorpay?.razorpay_order_id) {
+      try {
+        const razorpayOrder = await fetchRazorpayOrder(
+          pendingRazorpay.razorpay_order_id
+        )
+        const status = String(razorpayOrder.status || '')
+
+        if (status === 'paid') {
+          return NextResponse.json({
+            already_paid: true,
+            id: pendingRazorpay.razorpay_order_id,
+            amount: Math.round(chargeAmount * 100),
+            currency: 'INR',
+            key: process.env.RAZORPAY_KEY_ID,
+          })
+        }
+
+        if (status === 'created' || status === 'attempted') {
+          return NextResponse.json({
+            id: pendingRazorpay.razorpay_order_id,
+            amount: Math.round(
+              Number(pendingRazorpay.amount ?? chargeAmount) * 100
+            ),
+            currency: 'INR',
+            key: process.env.RAZORPAY_KEY_ID,
+          })
+        }
+      } catch (error) {
+        logger.warn('Existing Razorpay order unusable; creating a new one', {
+          error,
+          orderId: order_id,
+          razorpayOrderId: pendingRazorpay.razorpay_order_id,
+        })
+      }
+
+      await admin
+        .from('payments')
+        .update({ status: 'failed' })
+        .eq('id', pendingRazorpay.id)
     }
 
     const razorpayOrder = await createRazorpayOrder(chargeAmount, order_id)
@@ -112,6 +197,9 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     logger.error('Razorpay create-order failed', { error })
-    return NextResponse.json({ error: 'Failed to create order' }, { status: 500 })
+    return NextResponse.json(
+      { error: 'Failed to create order' },
+      { status: 500 }
+    )
   }
 }

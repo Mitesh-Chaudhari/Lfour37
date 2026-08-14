@@ -196,20 +196,43 @@ export async function POST(request: NextRequest) {
     const nextStatus = isPartialCod ? 'processing' : 'paid'
     const nextPaymentStatus = isPartialCod ? 'pending' : 'completed'
 
-    await Promise.all([
-      admin
-        .from('orders')
-        .update({ status: nextStatus, payment_status: nextPaymentStatus })
-        .eq('id', order_id),
-      admin
-        .from('payments')
-        .update({
-          status: 'completed',
-          razorpay_payment_id,
-          razorpay_order_id: verifiedRazorpayOrderId,
-        })
-        .eq('id', payment.id),
-    ])
+    const { data: updatedOrder, error: orderUpdateError } = await admin
+      .from('orders')
+      .update({ status: nextStatus, payment_status: nextPaymentStatus })
+      .eq('id', order_id)
+      .eq('status', 'pending')
+      .select('id')
+      .maybeSingle()
+
+    if (orderUpdateError) {
+      logger.error('Failed to update order after Razorpay verify', {
+        orderUpdateError,
+        orderId: order_id,
+      })
+      return NextResponse.json(
+        { error: 'Failed to update order status' },
+        { status: 500 }
+      )
+    }
+
+    if (!updatedOrder) {
+      return NextResponse.json(
+        {
+          error:
+            'This order can no longer be paid (it may have expired or already been updated). Contact support if money was deducted.',
+        },
+        { status: 409 }
+      )
+    }
+
+    await admin
+      .from('payments')
+      .update({
+        status: 'completed',
+        razorpay_payment_id,
+        razorpay_order_id: verifiedRazorpayOrderId,
+      })
+      .eq('id', payment.id)
 
     if (isPartialCod) {
       const collectAmount = Number(

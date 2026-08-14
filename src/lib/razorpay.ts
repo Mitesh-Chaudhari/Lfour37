@@ -13,6 +13,10 @@ export async function createRazorpayOrder(amount: number, receipt: string) {
   })
 }
 
+export async function fetchRazorpayOrder(orderId: string) {
+  return razorpay.orders.fetch(orderId)
+}
+
 export async function createRazorpayRefund(
   paymentId: string,
   amountInRupees: number,

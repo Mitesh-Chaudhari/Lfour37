@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Package, FileDown } from 'lucide-react'
@@ -9,6 +9,7 @@ import { OptimizedImage } from '@/components/ui/optimized-image'
 import OrderItemActions from '@/components/order/order-item-actions'
 import ReturnItemActions from '@/components/order/return-item-action'
 import { OrderItemStatusBadge } from '@/components/order/order-item-status-badge'
+import CompletePaymentButton from '@/components/order/complete-payment-button'
 import { isWithinReturnWindow } from '@/lib/returns'
 import {
   canCancelOrderItem,
@@ -17,6 +18,11 @@ import {
   isItemCancelled,
 } from '@/lib/order-status'
 import { canDownloadInvoice } from '@/lib/invoice-access'
+import { cancelExpiredUnpaidOrders } from '@/lib/cancel-unpaid-orders'
+import {
+  canResumePendingPayment,
+  getPendingPaymentExpiresAt,
+} from '@/lib/pending-payment'
 
 const STATUS_CONFIG: Record<
   OrderStatus,
@@ -97,6 +103,16 @@ export default async function OrdersPage() {
 
   if (!user) redirect('/login?redirectTo=/dashboard/orders')
 
+  // Expire overdue unpaid checkouts for this user so Complete payment disappears.
+  try {
+    await cancelExpiredUnpaidOrders(createAdminClient(), {
+      userId: user.id,
+      limit: 50,
+    })
+  } catch {
+    // Non-blocking; cron also handles cleanup.
+  }
+
   const { data: orders } = await supabase
     .from('orders')
     .select(`
@@ -132,6 +148,12 @@ export default async function OrdersPage() {
             sku
           )
         )
+      ),
+      payment:payments(
+        id,
+        payment_method,
+        status,
+        amount
       ),
       shipping_method:shipping_methods(name, estimated_days_min, estimated_days_max)
       ,
@@ -192,6 +214,16 @@ export default async function OrdersPage() {
                 )
                 .slice(0, 4)
               const withinReturnWindow = isWithinReturnWindow(order.delivered_at)
+              const payments = Array.isArray(order.payment)
+                ? order.payment
+                : order.payment
+                  ? [order.payment]
+                  : []
+              const showCompletePayment = canResumePendingPayment(
+                order,
+                payments
+              )
+              const paymentExpiresAt = getPendingPaymentExpiresAt(order)
               return (
                 <div key={order.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                   {/* Header */}
@@ -231,6 +263,20 @@ export default async function OrdersPage() {
                       ) : null}
                     </div>
                   </div>
+
+                  {showCompletePayment && paymentExpiresAt && (
+                    <div className="px-4 pt-3">
+                      <CompletePaymentButton
+                        orderId={order.id}
+                        orderNumber={order.order_number}
+                        paymentMethod={order.payment_method}
+                        total={Number(order.total)}
+                        shippingAmount={order.shipping_amount}
+                        codAdvanceAmount={order.cod_advance_amount}
+                        expiresAt={paymentExpiresAt.toISOString()}
+                      />
+                    </div>
+                  )}
                   {/* Items */}
                   <div className="p-4">
                     {order.items?.map((item: {
