@@ -1,11 +1,21 @@
 import { Suspense } from 'react'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { AdminOrdersTable } from '@/components/admin/orders-table'
 import { areAllOrderItemsCancelled } from '@/lib/order-status'
+import { cancelExpiredUnpaidOrders } from '@/lib/cancel-unpaid-orders'
 import logger from '@/lib/logger'
 
 async function getOrders() {
   const supabase = await createClient()
+
+  // Keep admin list in sync even if Vercel cron is delayed/unavailable.
+  try {
+    await cancelExpiredUnpaidOrders(createAdminClient(), { limit: 100 })
+  } catch (error) {
+    logger.warn('Failed to auto-cancel unpaid pending orders on admin load', {
+      error,
+    })
+  }
 
   const [{ data }, { data: returnReasons }] = await Promise.all([
     supabase
