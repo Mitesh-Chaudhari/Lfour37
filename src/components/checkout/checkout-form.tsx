@@ -1270,11 +1270,11 @@ export function CheckoutForm({
                         ? 'Not available for this PIN code'
                         : `Pay ${formatPrice(productTotal)} on delivery`}
                     </p>
-                    {!codUnavailable && (
+                    {/* {!codUnavailable && (
                       <p className="mt-1 text-[11px] font-medium text-green-700">
                         Free delivery · No advance payment
                       </p>
-                    )}
+                    )} */}
                   </div>
                 </button>
               </div>
