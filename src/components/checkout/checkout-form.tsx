@@ -1323,12 +1323,20 @@ export function CheckoutForm({
                         : codChargesLoading
                           ? 'Calculating delivery charges...'
                           : shippingAmount > 0
-                            ? `Pay ${formatPrice(shippingAmount)} now, ${formatPrice(payAtDeliveryAmount)} at delivery`
-                            : 'Pay delivery charges now, balance on delivery'}
+                            ? `Pay ${formatPrice(shippingAmount)} now to confirm your order`
+                            : 'Pay delivery charges now to confirm your order'}
                     </p>
+                    {paymentMethod === 'cod' &&
+                      !codUnavailable &&
+                      !codChargesLoading &&
+                      shippingAmount > 0 && (
+                        <p className="mt-0.5 text-xs text-gray-600">
+                          {formatPrice(payAtDeliveryAmount)} on delivery
+                        </p>
+                      )}
                     {paymentMethod === 'cod' && shippingAmount > 0 && (
-                      <p className="mt-1 text-[11px] font-medium text-amber-700">
-                        Inc. {formatPrice(shippingAmount)} COD charges
+                      <p className="mt-1 text-[11px] text-gray-500">
+                        {formatPrice(shippingAmount)} covers delivery charges.
                       </p>
                     )}
                   </div>
@@ -1340,21 +1348,16 @@ export function CheckoutForm({
                 </button>
               </div>
               {paymentMethod === 'cod' && shippingAmount > 0 && (
-                <div className="mt-3 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-3 text-xs text-gray-600 space-y-2">
+                <div className="mt-3 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-3 text-xs text-gray-600 space-y-1.5">
                   <p className="font-medium text-gray-800">
-                    Amount to pay now {formatPrice(payNowAmount)}
+                    Pay {formatPrice(payNowAmount)} now to confirm your order
                   </p>
-                  <p>
-                    Pay now ({formatPrice(payNowAmount)}) — covers forward
-                    shipping.
+                  <p>{formatPrice(payAtDeliveryAmount)} on delivery</p>
+                  <p className="text-gray-500">
+                    {formatPrice(payNowAmount)} covers delivery charges.
                   </p>
-                  <p>
-                    Pay balance at delivery ({formatPrice(payAtDeliveryAmount)}
-                    ).
-                  </p>
-                  <p className="text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
-                    Shipping charges paid for COD orders are not refundable if
-                    the order is cancelled.
+                  <p className="text-[11px] text-gray-500 pt-0.5">
+                    Delivery charges are non-refundable after dispatch.
                   </p>
                 </div>
               )}
@@ -1404,12 +1407,11 @@ export function CheckoutForm({
               {paymentMethod === 'cod' && (
                 <p className="mt-3 text-xs text-gray-500 space-y-1">
                   <span className="block">
-                    Paying {formatPrice(payNowAmount)} now. Remaining{' '}
-                    {formatPrice(payAtDeliveryAmount)} is collected on delivery.
+                    Paying {formatPrice(payNowAmount)} now to confirm your
+                    order. {formatPrice(payAtDeliveryAmount)} on delivery.
                   </span>
-                  <span className="block text-amber-700">
-                    Shipping charges are not refundable if the order is
-                    cancelled.
+                  <span className="block text-gray-500">
+                    Delivery charges are non-refundable after dispatch.
                   </span>
                 </p>
               )}
