@@ -207,7 +207,7 @@ export function CheckoutForm({
         if (!res.ok) {
           setCodCharges(null)
           setCodChargesError(
-            data.error || 'Could not calculate COD shipping charges'
+            data.error || 'Could not load the Partial COD delivery charge'
           )
           return
         }
@@ -219,7 +219,7 @@ export function CheckoutForm({
       } catch {
         if (!cancelled) {
           setCodCharges(null)
-          setCodChargesError('Could not calculate COD shipping charges')
+          setCodChargesError('Could not load the Partial COD delivery charge')
         }
       } finally {
         if (!cancelled) setCodChargesLoading(false)
@@ -759,7 +759,7 @@ export function CheckoutForm({
     if (paymentMethod === 'cod' && !partialCodReady) {
       toast.error(
         codChargesError ||
-          'COD shipping charges are still loading. Please wait and try again.'
+          'The Partial COD delivery charge is still loading. Please wait and try again.'
       )
       return
     }
@@ -1321,7 +1321,7 @@ export function CheckoutForm({
                       {codUnavailable
                         ? 'Not available for this PIN code'
                         : codChargesLoading
-                          ? 'Calculating delivery charges...'
+                          ? 'Loading delivery charge...'
                           : shippingAmount > 0
                             ? `Pay ${formatPrice(shippingAmount)} now to confirm your order`
                             : 'Pay delivery charges now to confirm your order'}
@@ -1522,7 +1522,7 @@ export function CheckoutForm({
             )}
             <div className="flex justify-between">
               <span className="text-gray-600">
-                {paymentMethod === 'cod' ? 'COD shipping charges' : 'Shipping'}
+                {paymentMethod === 'cod' ? 'Delivery charges' : 'Shipping'}
               </span>
               <span>
                 {shippingAmount === 0 ? (

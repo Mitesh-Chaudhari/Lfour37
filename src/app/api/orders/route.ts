@@ -176,11 +176,11 @@ export async function POST(request: NextRequest) {
         codAdvanceAmount = charges.total
         codCollectAmount = Number(afterDiscount.toFixed(2))
       } catch (error) {
-        logger.error('Partial COD charge lookup failed', { error, pin })
+        logger.error('Partial COD delivery charge failed', { error, pin })
         return NextResponse.json(
           {
             error:
-              'Could not calculate COD shipping charges for this PIN. Please pay online, or try again.',
+              'Could not apply the Partial COD delivery charge. Please try again.',
           },
           { status: 400 }
         )

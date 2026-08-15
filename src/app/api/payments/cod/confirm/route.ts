@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
 
       if (!prepaid) {
         return NextResponse.json(
-          { error: 'Pay the COD shipping charges online before placing this order' },
+          { error: 'Pay the delivery charge online before confirming this order' },
           { status: 400 }
         )
       }

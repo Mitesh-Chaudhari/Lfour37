@@ -22,13 +22,13 @@ export async function GET(req: NextRequest) {
     )
     return NextResponse.json(charges)
   } catch (error) {
-    logger.warn('Partial COD charge lookup failed', { error, pin })
+    logger.warn('Partial COD delivery charge failed', { error, pin })
     return NextResponse.json(
       {
         error:
           error instanceof Error
             ? error.message
-            : 'Could not calculate COD shipping charges',
+            : 'Could not apply the Partial COD delivery charge',
       },
       { status: 502 }
     )

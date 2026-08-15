@@ -118,7 +118,7 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
             <div className="flex justify-between">
               <span className="text-gray-600">
                 {order.payment_method === 'cod' && Number(order.shipping_amount) > 0
-                  ? 'COD shipping charges'
+                  ? 'Delivery charges'
                   : 'Shipping'}
               </span>
               <span>{formatPrice(order.shipping_amount)}</span>
