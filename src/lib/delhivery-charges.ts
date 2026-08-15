@@ -1,5 +1,5 @@
-/** Flat delivery charge prepaid to confirm a Partial COD order. */
-export const FLAT_PARTIAL_COD_DELIVERY_CHARGE = 49
+/** Kept for compatibility with older checkout clients; COD delivery is free. */
+export const FLAT_PARTIAL_COD_DELIVERY_CHARGE = 0
 
 export type PartialCodCharges = {
   originPin: string
@@ -18,7 +18,7 @@ export function delhiveryChargeWeightGrams(itemCount = 1): number {
 }
 
 /**
- * Return the fixed Partial COD delivery charge.
+ * Return zero for older clients that still request a Partial COD quote.
  * PIN serviceability/COD availability is validated separately.
  */
 export async function quotePartialCodCharges(
@@ -30,7 +30,7 @@ export async function quotePartialCodCharges(
     throw new Error('Invalid destination PIN')
   }
 
-  const mode: 'S' = 'S'
+  const mode = 'S' as const
   const weightGrams = delhiveryChargeWeightGrams(itemCount)
 
   return {

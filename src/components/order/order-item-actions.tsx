@@ -6,10 +6,8 @@ import { Button } from '../ui/button'
 
 export default function OrderItemActions({
     item,
-    paymentMethod,
 }: {
     item: any
-    paymentMethod?: string | null
 }) {
     const [open, setOpen] = useState(false)
 
@@ -33,7 +31,6 @@ export default function OrderItemActions({
             {open && (
                 <CancelModal
                     itemId={item.id}
-                    paymentMethod={paymentMethod}
                     onClose={() => setOpen(false)}
                 />
             )}

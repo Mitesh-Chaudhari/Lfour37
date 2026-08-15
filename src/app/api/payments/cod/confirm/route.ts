@@ -77,10 +77,21 @@ export async function POST(request: NextRequest) {
 
     const admin = createAdminClient()
 
-    await admin
+    const { error: orderUpdateError } = await admin
       .from('orders')
       .update({ status: 'processing', payment_status: 'pending' })
       .eq('id', order_id)
+
+    if (orderUpdateError) {
+      logger.error('Failed to confirm COD order status', {
+        orderUpdateError,
+        orderId: order_id,
+      })
+      return NextResponse.json(
+        { error: 'Failed to confirm COD order' },
+        { status: 500 }
+      )
+    }
 
     const { data: existingPayment } = await admin
       .from('payments')
@@ -148,8 +159,17 @@ export async function POST(request: NextRequest) {
       markAbandonedCartRecovered(admin, user.id),
     ])
 
-    // 2) Then create/sync Delhivery shipment (pickup/shipped messages happen later via sync).
-    const shipment = await ensureDelhiveryShipmentForPaidOrder(order_id)
+    // 2) Shipment creation is best-effort. A carrier/API issue must not make a
+    // confirmed COD order look failed to the customer.
+    let shipment = null
+    try {
+      shipment = await ensureDelhiveryShipmentForPaidOrder(order_id)
+    } catch (shipmentError) {
+      logger.error('COD confirmed but Delhivery shipment creation failed', {
+        shipmentError,
+        orderId: order_id,
+      })
+    }
 
     return NextResponse.json({ success: true, shipment })
   } catch (error) {

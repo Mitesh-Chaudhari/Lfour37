@@ -5,7 +5,6 @@ import logger from '@/lib/logger'
 import { z } from 'zod'
 import { resolveHsnFromCategories, mappingsArrayToRecord } from '@/lib/hsn'
 import { calculatePrepaidDiscount } from '@/lib/prepaid-discount'
-import { quotePartialCodCharges } from '@/lib/delhivery-charges'
 
 const attributionSchema = z
   .object({
@@ -168,23 +167,11 @@ export async function POST(request: NextRequest) {
     let codCollectAmount: number | null = null
 
     if (data.payment_method === 'cod') {
-      const pin = data.shipping_address.postal_code.replace(/\D/g, '')
-      const itemCount = data.items.reduce((sum, item) => sum + item.quantity, 0)
-      try {
-        const charges = await quotePartialCodCharges(pin, itemCount)
-        shippingAmount = charges.total
-        codAdvanceAmount = charges.total
-        codCollectAmount = Number(afterDiscount.toFixed(2))
-      } catch (error) {
-        logger.error('Partial COD delivery charge failed', { error, pin })
-        return NextResponse.json(
-          {
-            error:
-              'Could not apply the Partial COD delivery charge. Please try again.',
-          },
-          { status: 400 }
-        )
-      }
+      // COD is free: no online advance and the full product total is collected
+      // at delivery. PIN/COD serviceability is validated separately.
+      shippingAmount = 0
+      codAdvanceAmount = 0
+      codCollectAmount = Number(afterDiscount.toFixed(2))
     }
 
     const total = Number((afterDiscount + taxAmount + shippingAmount).toFixed(2))
