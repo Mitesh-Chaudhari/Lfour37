@@ -1,12 +1,14 @@
 import logger from '@/lib/logger'
 import {
   formatDelhiveryCarrierStatus,
+  isDelhiveryRtoDelivered,
   isDelhiveryRtoStatus,
   normalizeCarrierStatus,
 } from '@/lib/delhivery-status'
 
 export {
   formatDelhiveryCarrierStatus,
+  isDelhiveryRtoDelivered,
   isDelhiveryRtoStatus,
   normalizeCarrierStatus,
 } from '@/lib/delhivery-status'
@@ -626,16 +628,27 @@ export function isDelhiveryOutForDelivery(
 export function mapDelhiveryStatusToOrderStatus(
   status: string,
   statusType?: string | null,
-  instructions?: string | null
+  instructions?: string | null,
+  statusCode?: string | null
 ): 'processing' | 'shipped' | 'delivered' | 'cancelled' | null {
   const normalized = normalizeCarrierStatus(status)
+  const isRto = isDelhiveryRtoStatus(status, statusType, instructions)
 
-  // Cancel / RTO (including StatusType RT with plain "In Transit" text)
+  // Carrier-side cancel is still an immediate order cancel.
+  if (normalized.includes('cancel') && !isRto) {
+    return 'cancelled'
+  }
+
+  // RTO in transit keeps the order shipped so stock stays reserved.
+  // Stock restores only when the parcel is back at the warehouse.
   if (
-    normalized.includes('cancel') ||
-    isDelhiveryRtoStatus(status, statusType, instructions)
+    isDelhiveryRtoDelivered(status, statusType, instructions, statusCode)
   ) {
     return 'cancelled'
+  }
+
+  if (isRto) {
+    return 'shipped'
   }
 
   if (normalized.includes('delivered') && !normalized.includes('undelivered')) {
@@ -661,16 +674,20 @@ export function mapDelhiveryStatusToOrderStatus(
 export function getTrackingMilestone(
   status: string,
   statusType?: string | null,
-  instructions?: string | null
+  instructions?: string | null,
+  statusCode?: string | null
 ): string {
   const normalized = normalizeCarrierStatus(status)
 
-  if (normalized.includes('cancel')) {
+  if (normalized.includes('cancel') && !isDelhiveryRtoStatus(status, statusType, instructions)) {
     return 'cancelled'
   }
 
-  // COD refused / RTO in progress or completed
+  // COD refused / returning to warehouse — stock is still reserved
   if (isDelhiveryRtoStatus(status, statusType, instructions)) {
+    if (isDelhiveryRtoDelivered(status, statusType, instructions, statusCode)) {
+      return 'rto_delivered'
+    }
     return 'return_to_origin'
   }
 

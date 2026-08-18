@@ -28,15 +28,25 @@ export function isDelhiveryRtoStatus(
 export function isDelhiveryRtoDelivered(
   status: string,
   statusType?: string | null,
-  instructions?: string | null
+  instructions?: string | null,
+  statusCode?: string | null
 ): boolean {
   if (!isDelhiveryRtoStatus(status, statusType, instructions)) return false
+
+  const code = (statusCode || '').toUpperCase()
+  if (code === 'RD' || code === 'DTO') return true
+
   const text = `${status || ''} ${instructions || ''}`.toLowerCase()
   return (
     text.includes('rto delivered') ||
     text.includes('delivered to origin') ||
+    text.includes('returned to seller') ||
+    text.includes('received at origin') ||
+    text.includes('received at warehouse') ||
+    text.includes('reached origin') ||
     text.includes('dto') ||
-    (text.includes('delivered') && text.includes('rto'))
+    (text.includes('delivered') &&
+      (text.includes('rto') || text.includes('origin')))
   )
 }
 

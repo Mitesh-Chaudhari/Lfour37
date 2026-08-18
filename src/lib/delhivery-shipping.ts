@@ -120,8 +120,8 @@ async function notifyCustomerOfShipmentMilestone(
       items: order.items,
     }
 
-    // Portal cancel / RTO → proper cancellation email + WhatsApp
-    if (milestone === 'cancelled' || milestone === 'return_to_origin') {
+    // Portal cancel / parcel back at warehouse → cancellation email + WhatsApp
+    if (milestone === 'cancelled' || milestone === 'rto_delivered') {
       if (orderUser?.email) {
         await sendOrderStatusEmail(order, orderUser.email, 'cancelled')
       }
@@ -499,7 +499,8 @@ export async function syncDelhiveryShipment(
   const milestone = getTrackingMilestone(
     tracking.currentStatus,
     tracking.statusType,
-    tracking.instructions
+    tracking.instructions,
+    tracking.statusCode
   )
   const displayStatus = formatDelhiveryCarrierStatus(
     tracking.currentStatus,
@@ -554,7 +555,8 @@ export async function syncDelhiveryShipment(
   const mappedOrderStatus = mapDelhiveryStatusToOrderStatus(
     tracking.currentStatus,
     tracking.statusType,
-    tracking.instructions
+    tracking.instructions,
+    tracking.statusCode
   )
 
   const { data: order } = await supabase
@@ -600,15 +602,26 @@ export async function syncDelhiveryShipment(
         orderUpdate.cancelled_at = new Date().toISOString()
       }
 
-      // COD refused / RTO: keep a clear note for admin
-      if (isRto && mappedOrderStatus === 'cancelled') {
-        const rtoNote = `Delhivery RTO: ${displayStatus}`
+      // COD refused / RTO: keep a clear note for admin.
+      // Stock restores only when status becomes cancelled (RTO delivered).
+      if (isRto) {
+        const rtoNote =
+          mappedOrderStatus === 'cancelled'
+            ? `Delhivery RTO delivered to warehouse: ${displayStatus}`
+            : `Delhivery RTO in transit: ${displayStatus}`
         const existingNotes =
           typeof order.notes === 'string' ? order.notes.trim() : ''
-        if (!existingNotes.toLowerCase().includes('delhivery rto')) {
+        if (
+          mappedOrderStatus === 'cancelled' ||
+          !existingNotes.toLowerCase().includes('delhivery rto')
+        ) {
           orderUpdate.notes = existingNotes
             ? `${existingNotes}\n${rtoNote}`
             : rtoNote
+        }
+        if (mappedOrderStatus === 'cancelled') {
+          orderUpdate.cancel_reason =
+            'Order auto cancelled after RTO delivered to warehouse'
         }
       }
 
