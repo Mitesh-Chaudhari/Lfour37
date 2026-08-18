@@ -48,6 +48,9 @@ export type DelhiverySyncSummary = {
   awb: string
   lastSyncedAt: string
   expectedDeliveryDate?: string | null
+  isRto: boolean
+  statusType: string | null
+  milestone: string
 }
 
 export type AdminDelhiverySyncResult = {
@@ -58,6 +61,9 @@ export type AdminDelhiverySyncResult = {
   carrierStatus?: string
   lastSyncedAt?: string
   expectedDeliveryDate?: string | null
+  isRto?: boolean
+  statusType?: string | null
+  milestone?: string
   error?: string
 }
 
@@ -689,6 +695,9 @@ export async function syncDelhiveryShipment(
     lastSyncedAt:
       updatedShipment?.last_synced_at || new Date().toISOString(),
     expectedDeliveryDate: updatedShipment?.expected_delivery_date,
+    isRto,
+    statusType: tracking.statusType,
+    milestone,
   }
 }
 
@@ -743,6 +752,9 @@ export async function syncDelhiveryShipmentsForAdmin(options?: {
         carrierStatus: summary.carrierStatus,
         lastSyncedAt: summary.lastSyncedAt,
         expectedDeliveryDate: summary.expectedDeliveryDate,
+        isRto: summary.isRto,
+        statusType: summary.statusType,
+        milestone: summary.milestone,
       })
     } catch (syncError) {
       await supabase
