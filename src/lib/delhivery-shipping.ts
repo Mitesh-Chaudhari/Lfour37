@@ -33,6 +33,8 @@ import {
 import logger from '@/lib/logger'
 import { markCodCollectedOnDelivery } from '@/lib/cod-payment'
 
+const ACTIVE_CARRIER: 'dtdc' = 'dtdc'
+
 type ShipmentRow = {
   id: string
   order_id: string
@@ -335,6 +337,7 @@ export async function createDelhiveryShipmentForOrder(
       .insert({
         order_id: orderId,
         status: 'creating',
+        carrier: ACTIVE_CARRIER,
       })
       .select('id')
       .single()
@@ -379,6 +382,7 @@ export async function createDelhiveryShipmentForOrder(
       .update({
         awb: created.awb,
         status: created.status,
+        carrier: ACTIVE_CARRIER,
         create_response: response,
         error_message: null,
         last_synced_at: new Date().toISOString(),
@@ -516,7 +520,8 @@ export async function syncDelhiveryShipment(
   const isRto = isDelhiveryRtoStatus(
     tracking.currentStatus,
     tracking.statusType,
-    tracking.instructions
+    tracking.instructions,
+    tracking.statusCode
   )
 
   if (tracking.events.length) {
@@ -808,7 +813,7 @@ export async function cancelDelhiveryShipmentForOrder(
   const supabase = createAdminClient()
   const { data: shipment } = await supabase
     .from('delhivery_shipments')
-    .select('id, awb, status, cancellation_requested_at, last_notified_milestone')
+    .select('id, awb, status, carrier, cancellation_requested_at, last_notified_milestone')
     .eq('order_id', orderId)
     .maybeSingle()
 
@@ -829,12 +834,15 @@ export async function cancelDelhiveryShipmentForOrder(
     last_notified_milestone: shipment.last_notified_milestone,
   } as ShipmentRow
 
+  const carrierLabel =
+    shipment.carrier === 'dtdc' ? 'DTDC' : 'Delhivery'
+
   if (isDelhiveryOutForDelivery(carrierStatus)) {
     return {
       ok: false,
       awb: shipment.awb,
       error:
-        'Shipment is out for delivery. Ask the customer to refuse delivery; Delhivery will process it as RTO.',
+        `Shipment is out for delivery. Ask the customer to refuse delivery; ${carrierLabel} will process it as RTO.`,
     }
   }
 
@@ -857,7 +865,7 @@ export async function cancelDelhiveryShipmentForOrder(
       return {
         ok: false,
         awb: shipment.awb,
-        error: `Shipment cannot be cancelled in its current Delhivery state (${latestStatus}).`,
+        error: `Shipment cannot be cancelled in its current ${carrierLabel} state (${latestStatus}).`,
       }
     }
   }
@@ -974,6 +982,7 @@ export async function createDelhiveryReversePickupForItem(
         order_item_id: orderItemId,
         pickup_type: pickupType,
         status: 'creating',
+        carrier: ACTIVE_CARRIER,
       })
       .select('id')
       .single()
@@ -1055,6 +1064,7 @@ export async function createDelhiveryReversePickupForItem(
           .update({
             awb: reverseCreated.awb,
             status: reverseCreated.status,
+            carrier: ACTIVE_CARRIER,
             create_response: reverseResponse,
             error_message: `Reverse pickup created but exchange forward failed: ${exchangeMessage}`,
             last_synced_at: new Date().toISOString(),
@@ -1075,6 +1085,7 @@ export async function createDelhiveryReversePickupForItem(
         awb: reverseCreated.awb,
         exchange_forward_awb: exchangeForwardAwb || null,
         status: reverseCreated.status,
+        carrier: ACTIVE_CARRIER,
         create_response: reverseResponse,
         exchange_create_response: exchangeCreateResponse,
         error_message: null,

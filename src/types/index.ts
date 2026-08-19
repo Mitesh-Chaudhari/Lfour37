@@ -192,6 +192,7 @@ export interface DelhiveryShipment {
   id: string
   order_id: string
   awb: string | null
+  carrier?: string | null
   status: string
   status_code: string | null
   status_type: string | null

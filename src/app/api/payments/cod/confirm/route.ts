@@ -171,6 +171,15 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // 3) Fire COD → Prepaid conversion offer (fire-and-forget; non-blocking).
+    fetch(`${process.env.NEXT_PUBLIC_APP_URL || ''}/api/payments/cod-to-prepaid/initiate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_id }),
+    }).catch((err) =>
+      logger.error('COD prepaid offer initiation failed (non-fatal)', { err, orderId: order_id })
+    )
+
     return NextResponse.json({ success: true, shipment })
   } catch (error) {
     logger.error('COD confirmation failed', { error })

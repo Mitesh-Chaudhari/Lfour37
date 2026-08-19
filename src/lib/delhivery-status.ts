@@ -11,10 +11,22 @@ export function normalizeCarrierStatus(status: string): string {
 export function isDelhiveryRtoStatus(
   status: string,
   statusType?: string | null,
-  instructions?: string | null
+  instructions?: string | null,
+  statusCode?: string | null
 ): boolean {
   const type = (statusType || '').toUpperCase()
   if (type === 'RT') return true
+
+  const code = (statusCode || '').toUpperCase()
+  if (
+    code === 'RTO' ||
+    code.startsWith('RTO') ||
+    code === 'IRTO' ||
+    code === 'SETRTO' ||
+    code === 'RTODLV'
+  ) {
+    return true
+  }
 
   const text = `${status || ''} ${instructions || ''}`.toLowerCase()
   return (
@@ -31,10 +43,10 @@ export function isDelhiveryRtoDelivered(
   instructions?: string | null,
   statusCode?: string | null
 ): boolean {
-  if (!isDelhiveryRtoStatus(status, statusType, instructions)) return false
+  if (!isDelhiveryRtoStatus(status, statusType, instructions, statusCode)) return false
 
   const code = (statusCode || '').toUpperCase()
-  if (code === 'RD' || code === 'DTO') return true
+  if (code === 'RD' || code === 'DTO' || code === 'RTODLV') return true
 
   const text = `${status || ''} ${instructions || ''}`.toLowerCase()
   return (

@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/cancel-unpaid-orders",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/cod-prepaid-reminders",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

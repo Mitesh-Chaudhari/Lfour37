@@ -11,6 +11,7 @@ import ReturnItemActions from '@/components/order/return-item-action'
 import { OrderItemStatusBadge } from '@/components/order/order-item-status-badge'
 import CompletePaymentButton from '@/components/order/complete-payment-button'
 import { isWithinReturnWindow } from '@/lib/returns'
+import { getShipmentCarrierLabel } from '@/lib/shipment-carrier'
 import {
   canCancelOrderItem,
   canReturnOrExchangeOrderItem,
@@ -160,6 +161,7 @@ export default async function OrdersPage() {
       delhivery_shipment:delhivery_shipments(
         id,
         awb,
+        carrier,
         status,
         instructions,
         expected_delivery_date,
@@ -405,7 +407,7 @@ export default async function OrdersPage() {
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
                           <p className="text-xs font-semibold uppercase tracking-wide text-purple-600">
-                            Delhivery tracking
+                            {getShipmentCarrierLabel(shipment)} tracking
                           </p>
                           <p className="mt-1 font-medium text-gray-900">
                             {shipment?.status || statusConfig.label}

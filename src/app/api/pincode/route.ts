@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveDelhiveryPinLocation } from '@/lib/dtdc'
 
-const DELHIVERY_DEFAULT_BASE_URL = 'https://track.delhivery.com'
 const LOOKUP_TIMEOUT_MS = 6000
 
 /** Delhivery's pincode data uses 2-letter state codes */
@@ -47,7 +47,7 @@ const STATE_CODE_NAMES: Record<string, string> = {
   WB: 'West Bengal',
 }
 
-interface DelhiveryLookup {
+interface CarrierPinLookup {
   city: string | null
   state: string | null
   serviceable: boolean
@@ -71,76 +71,43 @@ function cleanLocationName(value: string): string {
   return value.replace(/\([A-Z]{2}\)\s*$/i, '').trim()
 }
 
-/** Delhivery pincode serviceability — authoritative since Delhivery ships our orders */
-async function lookupDelhivery(pin: string): Promise<DelhiveryLookup | null> {
-  const token = process.env.DELHIVERY_API_TOKEN
-  if (!token) return null
-
-  const baseUrl = (
-    process.env.DELHIVERY_BASE_URL ||
-    process.env.DELHIVERY_BASE_PRODUCTION_URL ||
-    DELHIVERY_DEFAULT_BASE_URL
-  ).replace(/\/$/, '')
+/** DTDC origin→destination pincode serviceability */
+async function lookupDtdc(pin: string): Promise<CarrierPinLookup | null> {
+  if (!process.env.DTDC_API_KEY || !process.env.DELHIVERY_RETURN_PIN) {
+    return null
+  }
 
   try {
-    const res = await fetch(
-      `${baseUrl}/c/api/pin-codes/json/?filter_codes=${pin}`,
-      {
-        headers: {
-          Authorization: `Token ${token}`,
-          Accept: 'application/json',
-        },
-        next: { revalidate: 86400 },
-        signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
-      }
-    )
+    const location = await Promise.race([
+      resolveDelhiveryPinLocation(pin),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), LOOKUP_TIMEOUT_MS)
+      ),
+    ])
 
-    if (!res.ok) return null
+    return {
+      city: location.city || null,
+      state: location.state || null,
+      serviceable: true,
+      codAvailable: location.codAvailable,
+      remarks: location.remarks,
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const blocked =
+      message.includes('not serviceable') ||
+      message.includes('does not support Cash on Delivery')
 
-    const body = await res.json()
-    const postalCode = body?.delivery_codes?.[0]?.postal_code
-
-    if (!postalCode) {
+    if (blocked) {
       return {
         city: null,
         state: null,
         serviceable: false,
-        codAvailable: null,
-        remarks: null,
+        codAvailable: message.includes('Cash on Delivery') ? false : null,
+        remarks: message,
       }
     }
 
-    const rawCity: string | undefined =
-      postalCode.city || postalCode.district || undefined
-    const stateCode: string | undefined = postalCode.state_code || undefined
-    const remarks: string | null = postalCode.remarks?.trim() || null
-    const embargoed = Boolean(
-      remarks && /embargo|non[- ]?serviceable|^nsz$/i.test(remarks)
-    )
-    const codAvailable =
-      typeof postalCode.cod === 'string'
-        ? postalCode.cod.toUpperCase() === 'Y'
-        : null
-    const prepaidAvailable =
-      typeof postalCode.pre_paid === 'string'
-        ? postalCode.pre_paid.toUpperCase() === 'Y'
-        : null
-
-    // Embargo = temporarily unserviceable (same as Delhivery One portal).
-    // Normal pins have empty remarks and are unaffected.
-    const serviceable =
-      !embargoed && Boolean(codAvailable || prepaidAvailable)
-
-    return {
-      city: rawCity ? cleanLocationName(toTitleCase(rawCity)) : null,
-      state: stateCode
-        ? (STATE_CODE_NAMES[stateCode.toUpperCase()] ?? null)
-        : null,
-      serviceable,
-      codAvailable,
-      remarks,
-    }
-  } catch {
     return null
   }
 }
@@ -183,19 +150,17 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const [delhivery, indiaPost] = await Promise.all([
-    lookupDelhivery(code),
+  const [carrier, indiaPost] = await Promise.all([
+    lookupDtdc(code),
     lookupIndiaPost(code),
   ])
 
   return NextResponse.json({
-    // Prefer Delhivery's city/state so checkout autofill matches what create.json expects
-    city: delhivery?.city ?? indiaPost?.city ?? null,
-    state: indiaPost?.state ?? delhivery?.state ?? null,
+    city: carrier?.city ?? indiaPost?.city ?? null,
+    state: indiaPost?.state ?? carrier?.state ?? null,
     country: 'India',
-    // null = serviceability unknown (Delhivery unreachable/not configured)
-    serviceable: delhivery ? delhivery.serviceable : null,
-    codAvailable: delhivery?.codAvailable ?? null,
-    remarks: delhivery?.remarks ?? null,
+    serviceable: carrier ? carrier.serviceable : null,
+    codAvailable: carrier?.codAvailable ?? null,
+    remarks: carrier?.remarks ?? null,
   })
 }

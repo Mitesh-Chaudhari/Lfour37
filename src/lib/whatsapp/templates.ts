@@ -19,6 +19,10 @@ export const VEBLIKA_TEMPLATE_CONFIG = {
     includeUrlButton: true,
     includeImageHeader: true,
   },
+  cod_prepaid_offer: { language: 'en', includeUrlButton: true },
+  cod_prepaid_reminder_1: { language: 'en', includeUrlButton: true },
+  cod_prepaid_reminder_2: { language: 'en', includeUrlButton: true },
+  cod_prepaid_confirmed: { language: 'en' },
 } as const
 
 export type VeblikaTemplateName = keyof typeof VEBLIKA_TEMPLATE_CONFIG
@@ -200,7 +204,7 @@ export function buildOrderConfirmationParams(
 
 export function getDelhiveryTrackingUrl(awb: string): string {
   const cleaned = sanitizeWhatsAppParam(awb, 'N/A')
-  return `https://www.delhivery.com/track/package/${encodeURIComponent(cleaned)}`
+  return `https://www.dtdc.in/tracking/tracking_results.asp?Ttype=awb_no&strCnno=${encodeURIComponent(cleaned)}`
 }
 
 /** AWB for dynamic "Track your order" button ({{1}} in Delhivery package URL). */

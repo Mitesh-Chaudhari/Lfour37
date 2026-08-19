@@ -79,6 +79,7 @@ async function getOrders() {
       delhivery_shipment:delhivery_shipments(
         id,
         awb,
+        carrier,
         status,
         status_code,
         status_type,
@@ -178,7 +179,7 @@ export default async function AdminOrdersPage() {
         <h1 className="text-3xl font-bold text-gray-900">Orders</h1>
         <p className="text-gray-500 mt-1">
           {orders.length} orders · Forward shipped/delivered, cancellations, and
-          return/exchange pickups sync from Delhivery
+          return/exchange pickups sync from Delhivery or DTDC
         </p>
       </div>
       <Suspense fallback={<p className="text-sm text-gray-400">Loading orders…</p>}>

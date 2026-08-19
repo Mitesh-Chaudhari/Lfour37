@@ -18,6 +18,9 @@ import {
   type PurchasePriceProductInput,
 } from '@/lib/purchase-price'
 import { isDelhiveryRtoStatus } from '@/lib/delhivery-status'
+import {
+  getShipmentCarrierLabel,
+} from '@/lib/shipment-carrier'
 
 const ADMIN_CANCEL_REASON_OPTIONS = [
   'Test order',
@@ -37,7 +40,7 @@ const STATUS_OPTIONS: { value: OrderStatus | 'rto'; label: string }[] = [
   { value: 'delivered', label: 'Delivered' },
   { value: 'cancelled', label: 'Cancelled' },
   { value: 'refunded', label: 'Refunded' },
-  { value: 'rto', label: 'RTO (Delhivery)' },
+  { value: 'rto', label: 'RTO' },
 ]
 
 const STATUS_BADGE: Record<OrderStatus, 'success' | 'warning' | 'info' | 'default' | 'destructive'> = {
@@ -182,6 +185,7 @@ function getShippingAddressLines(order: AdminOrder): string[] {
 type DelhiveryShipmentInfo = {
   id?: string
   awb?: string | null
+  carrier?: string | null
   status?: string | null
   status_code?: string | null
   status_type?: string | null
@@ -212,6 +216,10 @@ type AdminDelhiverySyncPayload = {
   lastSyncedAt?: string
   expectedDeliveryDate?: string | null
   error?: string
+}
+
+function getOrderCarrierLabel(order: AdminOrder): string {
+  return getShipmentCarrierLabel(getDelhiveryShipment(order))
 }
 
 function getDelhiveryShipment(order: AdminOrder): DelhiveryShipmentInfo | null {
@@ -385,7 +393,7 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
     async (orderIds: string[], options?: { silent?: boolean }) => {
       if (!orderIds.length) {
         if (!options?.silent) {
-          toast('No Delhivery shipments to sync')
+          toast('No courier shipments to sync')
         }
         return
       }
@@ -400,7 +408,7 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
         const data = await res.json()
 
         if (!res.ok) {
-          toast.error(data.error || 'Failed to sync Delhivery tracking')
+          toast.error(data.error || 'Failed to sync courier tracking')
           return
         }
 
@@ -417,7 +425,7 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
         }
       } catch {
         if (!options?.silent) {
-          toast.error('Failed to sync Delhivery tracking')
+          toast.error('Failed to sync courier tracking')
         }
       } finally {
         setSyncingTracking(false)
@@ -862,8 +870,12 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
       } else if (data.refund) {
         toast.success('Cancellation approved and refund initiated')
       } else if (data.delhivery && !data.delhivery.ok && !data.delhivery.skipped) {
+        const order = orders.find((entry) =>
+          entry.items?.some((item) => item.id === itemId)
+        )
+        const carrierLabel = order ? getOrderCarrierLabel(order) : 'courier'
         toast.success(
-          'Cancellation approved. Order marked cancelled — Delhivery cancel needs follow-up.'
+          `Cancellation approved. Order marked cancelled — ${carrierLabel} cancel needs follow-up.`
         )
       } else {
         toast.success('Cancellation approved')
@@ -971,7 +983,8 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
       const data = await res.json()
 
       if (!res.ok) {
-        const errorMessage = data.error || 'Delhivery action failed'
+        const carrierLabel = getOrderCarrierLabel(order)
+        const errorMessage = data.error || `${carrierLabel} action failed`
         setOrders((current) =>
           current.map((item) =>
             item.id === order.id
@@ -1013,6 +1026,7 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
                 delhivery_shipment: {
                   ...(shipment || {}),
                   awb,
+                  carrier: 'dtdc',
                   status: carrierStatus,
                   last_synced_at:
                     data.shipment?.last_synced_at ||
@@ -1034,7 +1048,7 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
           : `Tracking synced${orderStatus ? ` → ${orderStatus}` : ''}`
       )
     } catch {
-      toast.error('Delhivery action failed')
+      toast.error(`${getOrderCarrierLabel(order)} action failed`)
     } finally {
       setUpdatingId(null)
     }
@@ -1147,7 +1161,7 @@ const markDelivered =
             <RefreshCw
               className={`h-4 w-4 mr-2 ${syncingTracking ? 'animate-spin' : ''}`}
             />
-            Sync Delhivery
+            Sync tracking
           </Button>
         </div>
 
@@ -1332,6 +1346,8 @@ const markDelivered =
 
                       if (!hasAwb && !failedWithoutAwb) return null
 
+                      const carrierLabel = getShipmentCarrierLabel(shipment)
+
                       return (
                         <div className="mt-2 space-y-1 text-xs text-gray-500">
                           {isRto && (
@@ -1344,7 +1360,7 @@ const markDelivered =
                               isRto ? 'text-red-700' : 'text-gray-700'
                             }`}
                           >
-                            Delhivery:{' '}
+                            {carrierLabel}:{' '}
                             {shipment?.status ||
                               (hasAwb ? 'Awaiting sync' : 'Not created')}
                           </p>
@@ -1783,7 +1799,7 @@ const markDelivered =
                           {order.status}
                         </Badge>
                         <p className="text-[11px] text-gray-500">
-                          Updated from Delhivery
+                          Updated from {getOrderCarrierLabel(order)}
                         </p>
                         {order.status === 'cancelled' && order.cancel_reason && (
                           <p className="text-[11px] text-red-700 max-w-[180px]">
