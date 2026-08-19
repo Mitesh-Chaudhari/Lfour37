@@ -21,6 +21,7 @@ import {
   type ShipmentWhatsAppMilestone,
 } from '@/lib/whatsapp/templates'
 import logger from '@/lib/logger'
+import type { ShipmentCarrier } from '@/lib/shipment-carrier'
 
 type OrderItem = {
   product_name: string
@@ -116,6 +117,7 @@ export async function notifyOrderShipmentMilestone({
   milestone,
   trackingNumber,
   items,
+  carrier,
 }: {
   order: Pick<
     OrderForWhatsApp,
@@ -124,6 +126,7 @@ export async function notifyOrderShipmentMilestone({
   milestone: ShipmentWhatsAppMilestone
   trackingNumber?: string | null
   items?: OrderItem[]
+  carrier?: ShipmentCarrier | null
 }) {
   const phone = getOrderPhone(order as OrderForWhatsApp)
   if (!phone || !isWhatsAppConfigured()) return
@@ -140,7 +143,8 @@ export async function notifyOrderShipmentMilestone({
       variables: buildOrderShipmentMilestoneParams(
         order.order_number,
         formatOrderItems(items),
-        awb
+        awb,
+        carrier
       ),
       urlButtonParam: getDelhiveryTrackingUrlButtonParam(awb),
     })
@@ -270,6 +274,7 @@ export async function notifyReversePickupMilestone({
   milestone,
   trackingNumber,
   pickupType,
+  carrier,
 }: {
   order: Pick<
     OrderForWhatsApp,
@@ -279,6 +284,7 @@ export async function notifyReversePickupMilestone({
   milestone: ReversePickupWhatsAppMilestone
   trackingNumber?: string | null
   pickupType?: 'return' | 'exchange'
+  carrier?: ShipmentCarrier | null
 }) {
   const phone = getOrderPhone(order as OrderForWhatsApp)
   if (!phone || !isWhatsAppConfigured()) return
@@ -299,12 +305,14 @@ export async function notifyReversePickupMilestone({
           ? buildExchangePickupPickedUpParams(
               order.order_number,
               itemLabel,
-              awb
+              awb,
+              carrier
             )
           : buildReturnPickupPickedUpParams(
               order.order_number,
               itemLabel,
-              awb
+              awb,
+              carrier
             )
 
       await sendWhatsAppTemplate({

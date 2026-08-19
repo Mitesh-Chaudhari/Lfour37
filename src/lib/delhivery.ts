@@ -1,5 +1,10 @@
 /**
  * Carrier integration entrypoint.
- * DTDC is the active courier backend; legacy Delhivery names are kept for compatibility.
+ * New bookings use DTDC; legacy Delhivery AWBs keep Delhivery tracking.
  */
 export * from '@/lib/dtdc'
+export {
+  trackShipment,
+  trackShipmentByCarrier,
+} from '@/lib/carrier-tracking'
+export { trackDelhiveryShipment } from '@/lib/delhivery-legacy-tracking'

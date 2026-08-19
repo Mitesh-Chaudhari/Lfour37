@@ -32,14 +32,23 @@ import {
 } from '@/lib/whatsapp/templates'
 import logger from '@/lib/logger'
 import { markCodCollectedOnDelivery } from '@/lib/cod-payment'
+import {
+  resolveShipmentCarrier,
+  type ShipmentCarrier,
+} from '@/lib/shipment-carrier'
 
 const ACTIVE_CARRIER: 'dtdc' = 'dtdc'
+
+function rowCarrier(carrier?: string | null): ShipmentCarrier {
+  return resolveShipmentCarrier({ carrier })
+}
 
 type ShipmentRow = {
   id: string
   order_id: string
   awb: string | null
   status: string
+  carrier?: string | null
   last_notified_milestone: string | null
 }
 
@@ -153,6 +162,7 @@ async function notifyCustomerOfShipmentMilestone(
         trackingNumber,
         expectedDeliveryDate,
         instructions,
+        carrier: rowCarrier(shipment.carrier),
       })
     }
 
@@ -164,6 +174,7 @@ async function notifyCustomerOfShipmentMilestone(
         milestone,
         trackingNumber,
         items: order.items,
+        carrier: rowCarrier(shipment.carrier),
       })
     }
 
@@ -230,6 +241,7 @@ async function notifyCustomerOfReversePickupMilestone(
         trackingNumber,
         itemLabel,
         pickupType: reversePickup.pickup_type,
+        carrier: rowCarrier(reversePickup.carrier),
       })
     }
 
@@ -245,6 +257,7 @@ async function notifyCustomerOfReversePickupMilestone(
         milestone,
         trackingNumber,
         pickupType: reversePickup.pickup_type,
+        carrier: rowCarrier(reversePickup.carrier),
       })
     }
 
@@ -267,7 +280,7 @@ export async function createDelhiveryShipmentForOrder(
   const supabase = createAdminClient()
   const { data: existing } = await supabase
     .from('delhivery_shipments')
-    .select('id, order_id, awb, status, last_notified_milestone')
+    .select('id, order_id, awb, status, carrier, last_notified_milestone')
     .eq('order_id', orderId)
     .maybeSingle()
 
@@ -350,7 +363,7 @@ export async function createDelhiveryShipmentForOrder(
 
       const { data: concurrentShipment } = await supabase
         .from('delhivery_shipments')
-        .select('id, order_id, awb, status, last_notified_milestone')
+        .select('id, order_id, awb, status, carrier, last_notified_milestone')
         .eq('order_id', orderId)
         .single()
 
@@ -388,7 +401,7 @@ export async function createDelhiveryShipmentForOrder(
         last_synced_at: new Date().toISOString(),
       })
       .eq('id', shipmentId)
-      .select('id, order_id, awb, status, last_notified_milestone')
+      .select('id, order_id, awb, status, carrier, last_notified_milestone')
       .single()
 
     if (saveError || !saved) throw saveError || new Error('Shipment was not saved')
@@ -438,7 +451,7 @@ export async function ensureDelhiveryShipmentForPaidOrder(
   try {
     const { data: existing, error: existingError } = await supabase
       .from('delhivery_shipments')
-      .select('id, order_id, awb, status, last_notified_milestone')
+      .select('id, order_id, awb, status, carrier, last_notified_milestone')
       .eq('order_id', orderId)
       .maybeSingle()
 
@@ -497,7 +510,7 @@ export async function syncDelhiveryShipment(
   if (!shipment.awb) throw new Error('Shipment has no AWB')
 
   const supabase = createAdminClient()
-  const tracking = await trackShipment(shipment.awb)
+  const tracking = await trackShipment(shipment.awb, shipment.carrier)
   const latestEvent = tracking.events
     .filter((event) => event.occurredAt)
     .sort((a, b) => {
@@ -712,7 +725,7 @@ export async function syncDelhiveryShipmentByOrderId(
   const supabase = createAdminClient()
   const { data: shipment, error } = await supabase
     .from('delhivery_shipments')
-    .select('id, order_id, awb, status, last_notified_milestone')
+    .select('id, order_id, awb, status, carrier, last_notified_milestone')
     .eq('order_id', orderId)
     .single()
 
@@ -729,7 +742,7 @@ export async function syncDelhiveryShipmentsForAdmin(options?: {
 
   let query = supabase
     .from('delhivery_shipments')
-    .select('id, order_id, awb, status, last_notified_milestone')
+    .select('id, order_id, awb, status, carrier, last_notified_milestone')
     .not('awb', 'is', null)
 
   if (options?.orderIds?.length) {
@@ -796,6 +809,7 @@ type ReversePickupRow = {
   awb: string | null
   exchange_forward_awb: string | null
   status: string
+  carrier?: string | null
   last_notified_milestone: string | null
 }
 
@@ -1132,7 +1146,10 @@ export async function syncDelhiveryReversePickup(
   if (!reversePickup.awb) return
 
   const supabase = createAdminClient()
-  const tracking = await trackShipment(reversePickup.awb)
+  const tracking = await trackShipment(
+    reversePickup.awb,
+    reversePickup.carrier
+  )
   const milestone = getReversePickupMilestone(
     tracking.currentStatus,
     tracking.statusType
@@ -1180,7 +1197,10 @@ export async function syncDelhiveryReversePickup(
   }
 
   if (reversePickup.pickup_type === 'exchange' && reversePickup.exchange_forward_awb) {
-    const forwardTracking = await trackShipment(reversePickup.exchange_forward_awb)
+    const forwardTracking = await trackShipment(
+      reversePickup.exchange_forward_awb,
+      reversePickup.carrier
+    )
     const forwardDelivered =
       forwardTracking.currentStatus.toLowerCase().includes('delivered') &&
       !forwardTracking.currentStatus.toLowerCase().includes('undelivered')
@@ -1204,7 +1224,7 @@ export async function syncActiveDelhiveryReversePickups(limit = 50) {
   const { data: pickups, error } = await supabase
     .from('delhivery_reverse_pickups')
     .select(
-      'id, order_id, order_item_id, pickup_type, awb, exchange_forward_awb, status, last_notified_milestone'
+      'id, order_id, order_item_id, pickup_type, awb, exchange_forward_awb, status, carrier, last_notified_milestone'
     )
     .not('awb', 'is', null)
     .or(

@@ -3,8 +3,12 @@ import { Order } from '@/types'
 import logger from '@/lib/logger'
 import {
   formatOrderItemsSummary,
-  getDelhiveryTrackingUrl,
+  getCarrierTrackingUrl,
 } from '@/lib/whatsapp/templates'
+import {
+  getCarrierDisplayName,
+  type ShipmentCarrier,
+} from '@/lib/shipment-carrier'
 
 /** Shipped/delivered customer emails are sent from Delhivery milestone sync only. */
 const DELHIVERY_MANAGED_ORDER_STATUSES = new Set(['shipped', 'delivered'])
@@ -686,6 +690,7 @@ export async function sendShipmentStatusEmail({
   trackingNumber,
   expectedDeliveryDate,
   instructions,
+  carrier,
 }: {
   order: Order
   email: string
@@ -694,10 +699,12 @@ export async function sendShipmentStatusEmail({
   trackingNumber: string
   expectedDeliveryDate?: string | null
   instructions?: string | null
+  carrier?: ShipmentCarrier | null
 }): Promise<void> {
   const ordersUrl = `${APP_URL}/dashboard/orders`
   const itemsSummary = formatOrderItemsSummary(order.items || [])
-  const delhiveryTrackingUrl = getDelhiveryTrackingUrl(trackingNumber)
+  const carrierTrackingUrl = getCarrierTrackingUrl(trackingNumber, carrier)
+  const carrierLabel = getCarrierDisplayName(carrier || 'dtdc')
 
   if (milestone === 'delivered') {
     const content = `
@@ -772,8 +779,8 @@ export async function sendShipmentStatusEmail({
     <p><strong>Tracking number:</strong> ${trackingNumber}</p>
     <p><strong>Current status:</strong> ${carrierStatus}</p>
     ${eta ? `<p><strong>Expected delivery:</strong> ${eta}</p>` : ''}
-    <p><strong>Track on Delhivery:</strong> <a href="${delhiveryTrackingUrl}">${delhiveryTrackingUrl}</a></p>
-    <a href="${delhiveryTrackingUrl}" class="button">Track Your Order</a>
+    <p><strong>Track on ${carrierLabel}:</strong> <a href="${carrierTrackingUrl}">${carrierTrackingUrl}</a></p>
+    <a href="${carrierTrackingUrl}" class="button">Track Your Order</a>
   `
 
   await deliverMail({
@@ -792,6 +799,7 @@ export async function sendReversePickupStatusEmail({
   trackingNumber,
   itemLabel,
   pickupType,
+  carrier,
 }: {
   order: Order
   email: string
@@ -800,9 +808,11 @@ export async function sendReversePickupStatusEmail({
   trackingNumber: string
   itemLabel: string
   pickupType?: 'return' | 'exchange'
+  carrier?: ShipmentCarrier | null
 }): Promise<void> {
   const ordersUrl = `${APP_URL}/dashboard/orders`
-  const delhiveryTrackingUrl = getDelhiveryTrackingUrl(trackingNumber)
+  const carrierTrackingUrl = getCarrierTrackingUrl(trackingNumber, carrier)
+  const carrierLabel = getCarrierDisplayName(carrier || 'dtdc')
   const flowLabel = pickupType === 'exchange' ? 'exchange' : 'return'
 
   if (milestone === 'reverse_dto') {
@@ -836,8 +846,8 @@ export async function sendReversePickupStatusEmail({
     <p><strong>Item:</strong> ${itemLabel}</p>
     <p><strong>Return tracking number:</strong> ${trackingNumber}</p>
     <p><strong>Current status:</strong> ${carrierStatus}</p>
-    <p><strong>Track on Delhivery:</strong> <a href="${delhiveryTrackingUrl}">${delhiveryTrackingUrl}</a></p>
-    <a href="${delhiveryTrackingUrl}" class="button">Track Return Pickup</a>
+    <p><strong>Track on ${carrierLabel}:</strong> <a href="${carrierTrackingUrl}">${carrierTrackingUrl}</a></p>
+    <a href="${carrierTrackingUrl}" class="button">Track Return Pickup</a>
   `
 
   await deliverMail({

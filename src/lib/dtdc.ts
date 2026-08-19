@@ -668,7 +668,7 @@ async function trackViaPullApi(
   }
 }
 
-export async function trackShipment(
+export async function trackDtdcShipment(
   awb: string
 ): Promise<NormalizedDelhiveryTracking> {
   const customer = await trackViaCustomerApi(awb)

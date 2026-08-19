@@ -1,3 +1,5 @@
+import type { ShipmentCarrier } from '@/lib/shipment-carrier'
+
 export const VEBLIKA_TEMPLATE_CONFIG = {
   phone_otp_verify: { language: 'en', includeOtpButton: true },
   order_confirmation_update: { language: 'en' },
@@ -202,9 +204,22 @@ export function buildOrderConfirmationParams(
   )
 }
 
-export function getDelhiveryTrackingUrl(awb: string): string {
+export function getCarrierTrackingUrl(
+  awb: string,
+  carrier?: ShipmentCarrier | null
+): string {
   const cleaned = sanitizeWhatsAppParam(awb, 'N/A')
+  if (carrier === 'delhivery') {
+    return `https://www.delhivery.com/track/package/${encodeURIComponent(cleaned)}`
+  }
   return `https://www.dtdc.in/tracking/tracking_results.asp?Ttype=awb_no&strCnno=${encodeURIComponent(cleaned)}`
+}
+
+export function getDelhiveryTrackingUrl(
+  awb: string,
+  carrier?: ShipmentCarrier | null
+): string {
+  return getCarrierTrackingUrl(awb, carrier)
 }
 
 /** AWB for dynamic "Track your order" button ({{1}} in Delhivery package URL). */
@@ -223,13 +238,14 @@ export function getDelhiveryTrackingUrlButtonParam(awb: string): string {
 export function buildOrderShipmentMilestoneParams(
   orderNumber: string,
   itemsSummary: string,
-  trackingNumber: string
+  trackingNumber: string,
+  carrier?: ShipmentCarrier | null
 ): string[] {
   return [
     sanitizeWhatsAppParam(orderNumber),
     sanitizeWhatsAppParam(itemsSummary, 'Your order items'),
     sanitizeWhatsAppParam(trackingNumber, 'N/A'),
-    sanitizeWhatsAppParam(getDelhiveryTrackingUrl(trackingNumber)),
+    sanitizeWhatsAppParam(getCarrierTrackingUrl(trackingNumber, carrier)),
   ]
 }
 
@@ -302,13 +318,14 @@ export function buildReturnRequestedParams(
 export function buildReturnPickupPickedUpParams(
   orderNumber: string,
   itemLabel: string,
-  trackingNumber: string
+  trackingNumber: string,
+  carrier?: ShipmentCarrier | null
 ): string[] {
   return [
     sanitizeWhatsAppParam(orderNumber),
     sanitizeWhatsAppParam(itemLabel, 'Your item'),
     sanitizeWhatsAppParam(trackingNumber, 'N/A'),
-    sanitizeWhatsAppParam(getDelhiveryTrackingUrl(trackingNumber)),
+    sanitizeWhatsAppParam(getCarrierTrackingUrl(trackingNumber, carrier)),
   ]
 }
 
@@ -342,9 +359,15 @@ export function buildReturnPickupReceivedParams(
 export function buildExchangePickupPickedUpParams(
   orderNumber: string,
   itemLabel: string,
-  trackingNumber: string
+  trackingNumber: string,
+  carrier?: ShipmentCarrier | null
 ): string[] {
-  return buildReturnPickupPickedUpParams(orderNumber, itemLabel, trackingNumber)
+  return buildReturnPickupPickedUpParams(
+    orderNumber,
+    itemLabel,
+    trackingNumber,
+    carrier
+  )
 }
 
 /**
