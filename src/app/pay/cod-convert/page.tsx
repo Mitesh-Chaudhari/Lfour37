@@ -1,42 +1,16 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { Suspense, useEffect, useState, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Script from 'next/script'
-
-declare global {
-  interface Window {
-    Razorpay: new (options: RazorpayOptions) => RazorpayInstance
-  }
-}
-
-type RazorpayOptions = {
-  key: string
-  amount: number
-  currency: string
-  order_id: string
-  name: string
-  description: string
-  prefill?: { contact?: string; name?: string; email?: string }
-  theme?: { color?: string }
-  handler: (response: RazorpayResponse) => void
-  modal?: { ondismiss?: () => void }
-}
-
-type RazorpayInstance = { open: () => void }
-
-type RazorpayResponse = {
-  razorpay_payment_id: string
-  razorpay_order_id: string
-  razorpay_signature: string
-}
+import type { RazorpayCheckoutResponse } from '@/types/razorpay-checkout'
 
 type OfferState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
   | { status: 'expired' }
   | { status: 'declined' }
-  | { status: 'accepted' }
+  | { status: 'accepted'; savingsAmount: number }
   | {
       status: 'ready'
       offerId: string
@@ -76,7 +50,7 @@ function useCountdown(expiresAt: string | null) {
   return { remaining, minutes, seconds }
 }
 
-export default function CodConvertPage() {
+function CodConvertContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const token = searchParams.get('token') || ''
@@ -157,7 +131,7 @@ export default function CodConvertPage() {
       name: 'LFOUR37',
       description: 'Convert to Prepaid — 10% off',
       theme: { color: '#000000' },
-      handler: async (response: RazorpayResponse) => {
+      handler: async (response: RazorpayCheckoutResponse) => {
         try {
           const res = await fetch('/api/payments/cod-to-prepaid/verify', {
             method: 'POST',
@@ -171,7 +145,7 @@ export default function CodConvertPage() {
           })
           const data = await res.json()
           if (data.success || data.already_converted) {
-            setOffer({ status: 'accepted' })
+            setOffer({ status: 'accepted', savingsAmount: offer.savingsAmount })
           } else {
             alert(data.error || 'Payment verification failed. Contact support.')
           }
@@ -260,7 +234,7 @@ export default function CodConvertPage() {
               <p className="font-semibold text-gray-700">Payment successful!</p>
               <p className="text-sm text-gray-500">
                 Your order has been converted to Prepaid. You saved{' '}
-                <strong>{formatInr((offer as { savingsAmount: number }).savingsAmount)}</strong>.
+                <strong>{formatInr(offer.savingsAmount)}</strong>.
               </p>
             </div>
           )}
@@ -323,5 +297,21 @@ export default function CodConvertPage() {
         </div>
       </div>
     </>
+  )
+}
+
+export default function CodConvertPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-10">
+          <div className="bg-white rounded-2xl shadow-lg w-full max-w-md p-8 text-center text-gray-500">
+            Loading offer…
+          </div>
+        </div>
+      }
+    >
+      <CodConvertContent />
+    </Suspense>
   )
 }

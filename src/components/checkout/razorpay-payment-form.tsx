@@ -6,12 +6,6 @@ import { useCartStore } from '@/store/cart-store'
 import { Button } from '@/components/ui/button'
 import { BlockingContainer } from '@/components/ui/blocking-container'
 
-declare global {
-  interface Window {
-    Razorpay: any
-  }
-}
-
 export function RazorpayPaymentForm({ razorpayOrder, orderId, amount }: any) {
   const [isLoaded, setIsLoaded] = useState(false)
   const [isVerifying, setIsVerifying] = useState(false)
@@ -53,7 +47,7 @@ export function RazorpayPaymentForm({ razorpayOrder, orderId, amount }: any) {
     }
 
     const options = {
-      key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+      key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '',
       amount: razorpayOrder.amount,
       currency: 'INR',
       order_id: razorpayOrder.id,
