@@ -176,31 +176,45 @@ function totalQuantity(items: DelhiveryOrderItem[]): number {
   return items.reduce((total, item) => total + item.quantity, 0)
 }
 
+/**
+ * Brand warehouse printed on DTDC labels (FROM / pickup / return).
+ * Single-warehouse store — keep this in sync with the physical pickup location.
+ */
+const WAREHOUSE = {
+  name: 'Lfour37',
+  address:
+    'Shop No.2, Swagat Complex, Opp. Adidas Showroom, P N Marg, Jamnagar, 361008',
+  city: 'Jamnagar',
+  state: 'Gujarat',
+  pin: '361008',
+  phone: '9978437437',
+} as const
+
+/** Origin (FROM) block on forward DTDC labels + reverse destination. */
 function warehouseOriginDetails() {
   return {
-    name: requiredEnv('DELHIVERY_SELLER_NAME'),
-    phone: normalizeIndianPhone(requiredEnv('DELHIVERY_RETURN_PHONE')),
+    name: WAREHOUSE.name,
+    phone: normalizeIndianPhone(WAREHOUSE.phone),
     alternate_phone: '',
-    address_line_1: requiredEnv('DELHIVERY_SELLER_ADDRESS'),
+    address_line_1: WAREHOUSE.address,
     address_line_2: '',
-    pincode: normalizeIndianPin(requiredEnv('DELHIVERY_RETURN_PIN')),
-    city: requiredEnv('DELHIVERY_RETURN_CITY'),
-    state: requiredEnv('DELHIVERY_RETURN_STATE'),
+    pincode: normalizeIndianPin(WAREHOUSE.pin),
+    city: WAREHOUSE.city,
+    state: WAREHOUSE.state,
   }
 }
 
+/** Return / RTO address (same as pickup for Lfour37). */
 function warehouseReturnDetails() {
   return {
-    name:
-      process.env.DELHIVERY_RETURN_NAME ||
-      requiredEnv('DELHIVERY_SELLER_NAME'),
-    phone: normalizeIndianPhone(requiredEnv('DELHIVERY_RETURN_PHONE')),
+    name: WAREHOUSE.name,
+    phone: normalizeIndianPhone(WAREHOUSE.phone),
     alternate_phone: '',
-    address_line_1: requiredEnv('DELHIVERY_RETURN_ADDRESS'),
+    address_line_1: WAREHOUSE.address,
     address_line_2: '',
-    city_name: requiredEnv('DELHIVERY_RETURN_CITY'),
-    state_name: requiredEnv('DELHIVERY_RETURN_STATE'),
-    pincode: normalizeIndianPin(requiredEnv('DELHIVERY_RETURN_PIN')),
+    city_name: WAREHOUSE.city,
+    state_name: WAREHOUSE.state,
+    pincode: normalizeIndianPin(WAREHOUSE.pin),
     email: '',
     latitude: '',
     longitude: '',
@@ -306,9 +320,11 @@ export async function resolveDelhiveryPinLocation(
     throw new Error(`Invalid PIN code "${pin}"`)
   }
 
-  const originPin = normalizeIndianPin(requiredEnv('DELHIVERY_RETURN_PIN'))
+  const originPin = normalizeIndianPin(
+    process.env.DELHIVERY_RETURN_PIN?.trim() || WAREHOUSE.pin
+  )
   if (!/^\d{6}$/.test(originPin)) {
-    throw new Error('DELHIVERY_RETURN_PIN is not configured')
+    throw new Error('Origin PIN is not configured')
   }
 
   const response = await fetch(PINCODE_URL, {
@@ -497,6 +513,7 @@ type DtdcCreateResponse = {
     reference_number?: string
     remarks?: string[]
     reason?: string
+    message?: string
   }>
   error?: { message?: string }
 }
@@ -511,6 +528,7 @@ export function parseShipmentCreationResponse(response: unknown): {
 
   if (data?.status !== 'OK' || shipment?.success === false || !awb) {
     const details =
+      shipment?.message ||
       shipment?.remarks?.join(', ') ||
       shipment?.reason ||
       data?.error?.message ||
@@ -1094,7 +1112,9 @@ export async function quoteDtdcRate(
 ): Promise<{ total: number; serviceCode?: string; serviceName?: string }> {
   const token = process.env.DTDC_RATE_API_TOKEN
   const { customerCode } = getPxConfig()
-  const originPin = normalizeIndianPin(requiredEnv('DELHIVERY_RETURN_PIN'))
+  const originPin = normalizeIndianPin(
+    process.env.DELHIVERY_RETURN_PIN?.trim() || WAREHOUSE.pin
+  )
 
   if (!token) {
     throw new Error('DTDC_RATE_API_TOKEN is not configured')
