@@ -181,7 +181,7 @@ function totalQuantity(items: DelhiveryOrderItem[]): number {
  * Single-warehouse store — keep this in sync with the physical pickup location.
  */
 const WAREHOUSE = {
-  name: 'Lfour37',
+  name: 'LFOUR37',
   address:
     'Shop No.2, Swagat Complex, Opp. Adidas Showroom, P N Marg, Jamnagar, 361008',
   city: 'Jamnagar',
