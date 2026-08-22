@@ -197,12 +197,14 @@ export function CheckoutForm({
     isGuest,
   ])
 
-  // COD isn't offered by Delhivery on every PIN code
+  // COD isn't offered by DTDC on every PIN code (B2C COD serviceability)
   useEffect(() => {
     if (codUnavailable && paymentMethod === 'cod') {
       setPaymentMethod('razorpay')
       setValue('payment_method', 'razorpay')
-      toast.error('Cash on Delivery is not available for this PIN code')
+      toast.error(
+        'Cash on Delivery is not available for this PIN. Please pay online.'
+      )
     }
   }, [codUnavailable, paymentMethod, setValue])
 
@@ -688,7 +690,9 @@ export function CheckoutForm({
     }
 
     if (paymentMethod === 'cod' && codUnavailable) {
-      toast.error('Cash on Delivery is not available for this PIN code')
+      toast.error(
+        'Cash on Delivery is not available for this PIN. Please pay online.'
+      )
       return
     }
 

@@ -5,6 +5,7 @@ import logger from '@/lib/logger'
 import { z } from 'zod'
 import { resolveHsnFromCategories, mappingsArrayToRecord } from '@/lib/hsn'
 import { calculatePrepaidDiscount } from '@/lib/prepaid-discount'
+import { resolveDelhiveryPinLocation } from '@/lib/dtdc'
 
 const attributionSchema = z
   .object({
@@ -167,8 +168,27 @@ export async function POST(request: NextRequest) {
     let codCollectAmount: number | null = null
 
     if (data.payment_method === 'cod') {
+      try {
+        await resolveDelhiveryPinLocation(data.shipping_address.postal_code, {
+          requireCod: true,
+        })
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Cash on Delivery is not available for this PIN code'
+        return NextResponse.json(
+          {
+            error:
+              'Cash on Delivery is not available for this PIN code. Please pay online to place your order.',
+            details: message,
+          },
+          { status: 400 }
+        )
+      }
+
       // COD is free: no online advance and the full product total is collected
-      // at delivery. PIN/COD serviceability is validated separately.
+      // at delivery. PIN/COD serviceability is validated above.
       shippingAmount = 0
       codAdvanceAmount = 0
       codCollectAmount = Number(afterDiscount.toFixed(2))

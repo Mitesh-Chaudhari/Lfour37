@@ -4,6 +4,7 @@ import { ensureDelhiveryShipmentForPaidOrder } from '@/lib/delhivery-shipping'
 import { sendOrderConfirmationEmail, sendNewOrderOwnerNotificationEmail } from '@/lib/email'
 import { notifyOrderConfirmation } from '@/lib/whatsapp/order-notifications'
 import { markAbandonedCartRecovered } from '@/lib/abandoned-cart'
+import { resolveDelhiveryPinLocation } from '@/lib/dtdc'
 import logger from '@/lib/logger'
 import { z } from 'zod'
 
@@ -43,6 +44,30 @@ export async function POST(request: NextRequest) {
     if (order.payment_method !== 'cod') {
       return NextResponse.json(
         { error: 'This order is not a Cash on Delivery order' },
+        { status: 400 }
+      )
+    }
+
+    const destinationPin =
+      (order.shipping_address as { postal_code?: string } | null)?.postal_code || ''
+    try {
+      await resolveDelhiveryPinLocation(destinationPin, { requireCod: true })
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Cash on Delivery is not available for this PIN code'
+      logger.warn('COD confirm blocked — pin does not support B2C COD', {
+        orderId: order_id,
+        destinationPin,
+        message,
+      })
+      return NextResponse.json(
+        {
+          error:
+            'Cash on Delivery is not available for this PIN code. Please pay online to place your order.',
+          details: message,
+        },
         { status: 400 }
       )
     }

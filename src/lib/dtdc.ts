@@ -347,7 +347,11 @@ export async function resolveDelhiveryPinLocation(
       DESTPIN?: string
     }>
     PIN_CITY?: Array<{ CITY?: string; PIN?: string }>
-    SERV_LIST?: Array<{ COD_Serviceable?: string }>
+    SERV_LIST?: Array<{
+      COD_Serviceable?: string
+      b2C_COD_Serviceable?: string
+      b2C_SERVICEABLE?: string
+    }>
     errorMessage?: string
   }
 
@@ -359,12 +363,27 @@ export async function resolveDelhiveryPinLocation(
   }
 
   const zip = body?.ZIPCODE_RESP?.[0]
+  const servList = body?.SERV_LIST?.[0]
   const servFlag = String(zip?.SERVFLAG || '').toUpperCase()
-  const codFlag =
-    String(zip?.SERV_COD || body?.SERV_LIST?.[0]?.COD_Serviceable || '').toUpperCase()
+  const b2cServiceable = String(servList?.b2C_SERVICEABLE || '').toUpperCase()
 
-  const serviceable = servFlag === 'Y'
-  const codAvailable = codFlag === 'Y' || codFlag === 'YES'
+  // B2C PRIORITY bookings must use SERV_LIST COD flags. ZIPCODE SERV_COD can
+  // be "Y" even when b2C_COD_Serviceable is "NO" (booking then fails).
+  const b2cCodFlag = String(servList?.b2C_COD_Serviceable || '').toUpperCase()
+  const genericCodFlag = String(servList?.COD_Serviceable || '').toUpperCase()
+  const legacyCodFlag = String(zip?.SERV_COD || '').toUpperCase()
+
+  const isYes = (value: string) => value === 'Y' || value === 'YES'
+  const hasServListCod =
+    Boolean(servList?.b2C_COD_Serviceable) || Boolean(servList?.COD_Serviceable)
+
+  const serviceable =
+    servFlag === 'Y' &&
+    (b2cServiceable === '' || isYes(b2cServiceable))
+
+  const codAvailable = hasServListCod
+    ? isYes(b2cCodFlag) || isYes(genericCodFlag)
+    : isYes(legacyCodFlag)
 
   if (!serviceable) {
     throw new Error(
