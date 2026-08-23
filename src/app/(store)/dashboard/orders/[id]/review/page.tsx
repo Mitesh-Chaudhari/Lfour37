@@ -21,7 +21,7 @@ export default async function OrderReviewPage({ params }: PageProps) {
 
   if (!user) {
     redirect(
-      buildAuthHref('login', `/dashboard/orders/${orderId}/review`)
+      buildAuthHref('/login', `/dashboard/orders/${orderId}/review`)
     )
   }
 
