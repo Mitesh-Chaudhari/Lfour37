@@ -8,6 +8,7 @@ export type InvoiceItemInput = {
   total_price: number
   variant_size?: string | null
   variant_color?: string | null
+  product_image?: string | null
   hsn_code?: string | null
 }
 

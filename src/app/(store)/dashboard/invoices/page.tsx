@@ -1,10 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Download, FileText } from 'lucide-react'
+import { FileText } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { formatDate, formatPrice } from '@/lib/utils'
 import { canDownloadInvoice } from '@/lib/invoice-access'
+import { InvoiceDownloadButton } from '@/components/order/invoice-download-button'
 
 export const metadata = {
   title: 'Invoices | Lfour37',
@@ -83,14 +84,10 @@ export default async function InvoicesPage() {
                     </Badge>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <a
-                      href={`/api/invoices/${order.id}`}
-                      download={`invoice-${order.order_number}.pdf`}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-purple-600 hover:text-purple-700 border border-purple-200 hover:border-purple-300 rounded-lg transition-colors"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                      Download
-                    </a>
+                    <InvoiceDownloadButton
+                      orderId={order.id}
+                      orderNumber={order.order_number}
+                    />
                   </td>
                 </tr>
               ))}

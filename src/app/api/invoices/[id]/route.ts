@@ -1,10 +1,13 @@
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { generateInvoicePdf } from '@/lib/invoice-pdf'
 import type { InvoiceOrderInput } from '@/lib/invoice'
 import { canDownloadInvoice } from '@/lib/invoice-access'
+import logger from '@/lib/logger'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -24,7 +27,8 @@ export async function GET(_req: NextRequest, { params }: Props) {
       .from('orders')
       .select(`
         *,
-        items:order_items(*)
+        items:order_items(*),
+        delhivery_shipment:delhivery_shipments(expected_delivery_date)
       `)
       .eq('id', id)
       .single()
@@ -53,7 +57,13 @@ export async function GET(_req: NextRequest, { params }: Props) {
       )
     }
 
-    const pdfBytes = generateInvoicePdf(order as InvoiceOrderInput)
+    const shipment = Array.isArray(order.delhivery_shipment)
+      ? order.delhivery_shipment[0]
+      : order.delhivery_shipment
+
+    const pdfBytes = await generateInvoicePdf(order as InvoiceOrderInput, {
+      expectedDeliveryDate: shipment?.expected_delivery_date || null,
+    })
     const filename = `invoice-${order.order_number}.pdf`
 
     return new NextResponse(Buffer.from(pdfBytes), {
@@ -61,10 +71,11 @@ export async function GET(_req: NextRequest, { params }: Props) {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${filename}"`,
         'Cache-Control': 'no-store',
+        'Content-Length': String(pdfBytes.byteLength),
       },
     })
   } catch (error) {
-    console.error('Failed to generate invoice PDF', error)
+    logger.error('Failed to generate invoice PDF', { error })
     return NextResponse.json({ error: 'Failed to generate invoice' }, { status: 500 })
   }
 }

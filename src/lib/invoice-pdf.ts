@@ -1,64 +1,25 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { jsPDF } from 'jspdf'
-import autoTable from 'jspdf-autotable'
+import sharp from 'sharp'
+import type { InvoiceOrderInput } from '@/lib/invoice'
 import {
-  amountInWords,
-  buildInvoiceData,
-  type InvoiceOrderInput,
-} from '@/lib/invoice'
+  buildOrderDocumentData,
+  formatOrderDocumentInrPlain,
+  ORDER_DOCUMENT_BRAND,
+  type OrderDocumentData,
+  type OrderDocumentItem,
+} from '@/lib/order-document'
 
-const GOLD = [184, 134, 11] as const
-const BEIGE = [245, 236, 220] as const
-const TEXT = [31, 41, 55] as const
-const MUTED = [107, 114, 128] as const
+const TEXT = [17, 17, 17] as const
+const MUTED = [102, 102, 102] as const
+const LINE = [236, 236, 236] as const
 
-/** Helvetica in jsPDF cannot render ₹ — it shows as a stray "1". */
-function formatPdfInr(amount: number, decimals = 2): string {
-  return `Rs. ${amount.toLocaleString('en-IN', {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  })}`
-}
-
-function getCustomerAppUrl(): string {
-  const configuredUrl = process.env.NEXT_PUBLIC_APP_URL?.trim()
-
-  if (configuredUrl) {
-    try {
-      const url = new URL(configuredUrl)
-      const isLocalhost =
-        url.hostname === 'localhost' || url.hostname === '127.0.0.1'
-
-      if (!isLocalhost) {
-        return url.origin.replace(/\/$/, '')
-      }
-    } catch {
-      // Fall through to the customer-facing production URL.
-    }
-  }
-
-  return 'https://www.lfour37.com'
-}
-
-function getCompanyConfig() {
-  return {
-    name:
-      process.env.INVOICE_COMPANY_NAME ||
-      'LFour37',
-    legalName:
-      process.env.INVOICE_COMPANY_LEGAL_NAME ||
-      'Yadevi Lifestyle Private Limited',
-    tagline: process.env.INVOICE_COMPANY_TAGLINE || 'Perfect People, Perfect Style',
-    address:
-      process.env.INVOICE_COMPANY_ADDRESS ||
-      'Shop No.2, Swagat Complex, Pandit Nehru Marg, Valkeshwari, Park Colony, Jamnagar, Gujarat 361008',
-    gstin: process.env.INVOICE_COMPANY_GSTIN || process.env.DELHIVERY_SELLER_GSTIN || '',
-    cin: process.env.INVOICE_COMPANY_CIN || 'U14101GJ2025PTC170456',
-    supportPhone: process.env.INVOICE_SUPPORT_PHONE || '+91-9978437437',
-    supportEmail: process.env.INVOICE_SUPPORT_EMAIL || 'support@lfour37.com',
-    website: process.env.INVOICE_COMPANY_WEBSITE || getCustomerAppUrl(),
-  }
+type LoadedItemImage = {
+  dataUrl: string
+  format: 'PNG' | 'JPEG'
+  width: number
+  height: number
 }
 
 type LogoPlacement = {
@@ -72,319 +33,411 @@ function tryAddLogo(doc: jsPDF, x: number, y: number): LogoPlacement | null {
 
   const imgData = fs.readFileSync(logoPath)
   const dataUrl = `data:image/png;base64,${imgData.toString('base64')}`
-
   const imgProps = doc.getImageProperties(dataUrl)
 
-  const maxWidth = 78
-  const maxHeight = 78
-
+  const maxWidth = 56
+  const maxHeight = 56
   const ratio = Math.min(maxWidth / imgProps.width, maxHeight / imgProps.height)
   const width = imgProps.width * ratio
   const height = imgProps.height * ratio
 
   doc.addImage(dataUrl, 'PNG', x, y, width, height)
-
   return { width, height }
 }
 
-function getLastTableY(doc: jsPDF): number | undefined {
-  return (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY
+function formatPdfInr(amount: number): string {
+  return formatOrderDocumentInrPlain(amount)
 }
 
-export function generateInvoicePdf(order: InvoiceOrderInput): Uint8Array {
-  const company = getCompanyConfig()
-  const invoice = buildInvoiceData(order)
-  const addr = order.shipping_address
-  const doc = new jsPDF({ unit: 'pt', format: 'a4' })
-  const pageWidth = doc.internal.pageSize.getWidth()
-  const pageHeight = doc.internal.pageSize.getHeight()
-  const margin = 40
-  const headerTop = margin + 8
-  let y = headerTop
+function resolveImageFormatFromBuffer(buffer: Buffer): 'PNG' | 'JPEG' | null {
+  if (buffer.length >= 8 && buffer[0] === 0x89 && buffer[1] === 0x50) return 'PNG'
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8) return 'JPEG'
+  return null
+}
 
-  const logo = tryAddLogo(doc, margin, y)
-
-  if (!logo) {
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(18)
-    doc.setTextColor(...GOLD)
-    doc.text(company.name, margin, y + 18)
-
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(9)
-    doc.setTextColor(...MUTED)
-    doc.text(company.tagline, margin, y + 34)
-  }
-
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8.5)
-  doc.setTextColor(...MUTED)
-  const addressLines = doc.splitTextToSize(company.address, 220)
-  doc.text(addressLines, pageWidth - margin, y, { align: 'right' })
-  let addressHeight = addressLines.length * 10
-
-  if (company.gstin) {
-    doc.text(`GSTIN: ${company.gstin}`, pageWidth - margin, y + addressHeight, {
-      align: 'right',
+async function loadRemoteImage(url: string): Promise<LoadedItemImage | null> {
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(15000),
+      cache: 'no-store',
     })
-    addressHeight += 12
+    if (!response.ok) return null
+
+    const buffer = Buffer.from(await response.arrayBuffer())
+    if (buffer.length === 0 || buffer.length > 10_000_000) return null
+
+    try {
+      const resized = await sharp(buffer)
+        .rotate()
+        .resize(120, 120, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 82 })
+        .toBuffer()
+
+      const dataUrl = `data:image/jpeg;base64,${resized.toString('base64')}`
+      return {
+        dataUrl,
+        format: 'JPEG',
+        width: 0,
+        height: 0,
+      }
+    } catch {
+      const format = resolveImageFormatFromBuffer(buffer)
+      if (!format) return null
+
+      const mime = format === 'PNG' ? 'image/png' : 'image/jpeg'
+      return {
+        dataUrl: `data:${mime};base64,${buffer.toString('base64')}`,
+        format,
+        width: 0,
+        height: 0,
+      }
+    }
+  } catch {
+    return null
   }
+}
 
-  if (company.cin) {
-    doc.text(`CIN: ${company.cin}`, pageWidth - margin, y + addressHeight, {
-      align: 'right',
-    })
-    addressHeight += 12
+async function loadItemImages(
+  items: OrderDocumentItem[]
+): Promise<Map<string, LoadedItemImage>> {
+  try {
+    const entries = await Promise.all(
+      items.map(async (item) => {
+        if (!item.imageUrl) return null
+        const loaded = await loadRemoteImage(item.imageUrl)
+        return loaded ? ([item.imageUrl, loaded] as const) : null
+      })
+    )
+
+    return new Map(entries.filter(Boolean) as Array<[string, LoadedItemImage]>)
+  } catch {
+    return new Map()
   }
+}
 
-  y = Math.max(
-    logo ? y + logo.height + 12 : y + 44,
-    headerTop + addressHeight + 8
-  )
-
-  doc.setFillColor(...BEIGE)
-  doc.roundedRect(margin, y, pageWidth - margin * 2, 34, 4, 4, 'F')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(16)
-  doc.setTextColor(...GOLD)
-  doc.text(`Tax Invoice ${invoice.invoiceNumber}`, pageWidth - margin - 12, y + 22, {
-    align: 'right',
-  })
-
-  y += 52
-
+function drawSectionTitle(doc: jsPDF, text: string, x: number, y: number) {
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(9)
   doc.setTextColor(...TEXT)
-  doc.text('Billing Address:', margin, y)
-  doc.setFont('helvetica', 'normal')
-  doc.text(addr.full_name || 'Customer', margin, y + 14)
-  doc.setTextColor(...MUTED)
-  doc.text(
-    [
-      [addr.address_line1, addr.address_line2].filter(Boolean).join(', '),
-      [addr.city, addr.state, addr.postal_code].filter(Boolean).join(', '),
-      addr.country || 'India',
-    ]
-      .filter(Boolean)
-      .join('\n'),
-    margin,
-    y + 28
-  )
-  doc.text(`Place of supply: ${invoice.placeOfSupply}`, margin, y + 62)
+  doc.text(text.toUpperCase(), x, y)
+}
 
+function drawLabelValue(
+  doc: jsPDF,
+  label: string,
+  value: string,
+  x: number,
+  y: number
+) {
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9)
   doc.setTextColor(...TEXT)
+  doc.text(label, x, y)
+  doc.setFont('helvetica', 'normal')
+  doc.text(value, x + doc.getTextWidth(label) + 4, y)
+}
+
+function drawBillingRow(
+  doc: jsPDF,
+  label: string,
+  value: string,
+  x: number,
+  y: number,
+  width: number,
+  bold = false
+) {
+  doc.setFont('helvetica', bold ? 'bold' : 'normal')
+  doc.setFontSize(9)
+  const labelColor = bold ? TEXT : MUTED
+  doc.setTextColor(labelColor[0], labelColor[1], labelColor[2])
+  doc.text(label, x, y)
+  doc.setTextColor(...TEXT)
+  doc.text(value, x + width, y, { align: 'right' })
+}
+
+function drawProductImage(
+  doc: jsPDF,
+  item: OrderDocumentItem,
+  image: LoadedItemImage | undefined,
+  x: number,
+  y: number
+): number {
+  const box = 48
+
+  if (image && item.imageUrl) {
+    try {
+      const props = doc.getImageProperties(image.dataUrl)
+      const ratio = Math.min(box / props.width, box / props.height)
+      const width = props.width * ratio
+      const height = props.height * ratio
+      doc.addImage(image.dataUrl, image.format, x, y, width, height)
+      return box + 10
+    } catch {
+      // Fall through to placeholder box.
+    }
+  }
+
+  doc.setDrawColor(...LINE)
+  doc.setFillColor(243, 243, 243)
+  doc.roundedRect(x, y, box, box, 3, 3, 'FD')
+  return box + 10
+}
+
+function drawTssOrderSummary(
+  doc: jsPDF,
+  data: OrderDocumentData,
+  itemImages: Map<string, LoadedItemImage>,
+  margin: number,
+  startY: number,
+  contentWidth: number
+): number {
+  let y = startY
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const rightX = pageWidth - margin
+  const billingWidth = 220
+  const billingX = rightX - billingWidth
+  const priceColRight = rightX - 98
+  const totalColRight = rightX
+  const textStartX = margin
+  const textWidth = contentWidth - 210
+
+  const logo = tryAddLogo(doc, margin, y)
+  y += (logo?.height || 56) + 16
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.setTextColor(...TEXT)
+  doc.text(
+    `Order ID: ${data.orderNumber} | Order Date: ${data.orderDate}`,
+    margin,
+    y
+  )
+  y += 18
+
+  doc.setFontSize(11)
+  doc.text(`Hey ${data.customerFirstName},`, margin, y)
+  y += 16
+
+  doc.setFontSize(9.5)
+  doc.setTextColor(...MUTED)
+  const intro = doc.splitTextToSize(
+    "Hurrayyyyy! We're delighted you decided to place your order with us! We're preparing your package and will notify you as soon as it is shipped along with tracking details.",
+    contentWidth
+  )
+  doc.text(intro, margin, y)
+  y += intro.length * 11 + 14
+
+  drawSectionTitle(doc, 'Order Details', margin, y)
+  y += 14
+  drawLabelValue(doc, 'ORDER ID:', data.orderNumber, margin, y)
+  y += 12
+  drawLabelValue(doc, 'ORDER DATE:', data.orderDate, margin, y)
+  y += 18
+
+  drawSectionTitle(doc, 'Delivery Address', margin, y)
+  y += 14
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.setTextColor(...TEXT)
+  for (const line of data.addressLines) {
+    doc.text(line, margin, y)
+    y += 12
+  }
+  if (data.phone) {
+    doc.text(`Contact No.: ${data.phone}`, margin, y)
+    y += 12
+  }
+  y += 8
+
+  doc.setDrawColor(...LINE)
+  doc.line(margin, y, rightX, y)
+  y += 16
+
+  drawSectionTitle(doc, 'Order Summary', margin, y)
+  y += 14
+
+  if (data.estimatedDelivery) {
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(9)
+    doc.setTextColor(...TEXT)
+    doc.text(`Estimated Delivery by ${data.estimatedDelivery}.`, margin, y)
+    y += 16
+  }
+
   doc.setFont('helvetica', 'bold')
-  doc.text('Invoice Date:', pageWidth / 2 + 20, y)
-  doc.setFont('helvetica', 'normal')
-  doc.text(invoice.invoiceDate, pageWidth / 2 + 20, y + 14)
-
-  doc.setFont('helvetica', 'bold')
-  doc.text('Due Date:', pageWidth / 2 + 20, y + 34)
-  doc.setFont('helvetica', 'normal')
-  doc.text(invoice.dueDate, pageWidth / 2 + 20, y + 48)
-
-  y += 88
-
-  autoTable(doc, {
-    startY: y,
-    margin: { left: margin, right: margin },
-    head: [
-      [
-        'Description',
-        'HSN/SAC',
-        'Quantity',
-        'Unit Price',
-        'Disc.%',
-        'Taxes',
-        'Amount',
-      ],
-    ],
-    body: invoice.lines.map((line) => [
-      line.description,
-      line.hsn,
-      line.quantity.toFixed(2),
-      line.unitPriceExclusive.toFixed(6),
-      line.discountPercent.toFixed(2),
-      line.taxLabel,
-      formatPdfInr(line.taxableAmount),
-    ]),
-    styles: {
-      fontSize: 8,
-      cellPadding: 5,
-      textColor: [...TEXT],
-      lineColor: [229, 231, 235],
-      lineWidth: 0.5,
-    },
-    headStyles: {
-      fillColor: [...GOLD],
-      textColor: [255, 255, 255],
-      fontStyle: 'bold',
-      halign: 'center',
-    },
-    columnStyles: {
-      0: { cellWidth: 150 },
-      1: { halign: 'center', cellWidth: 58 },
-      2: { halign: 'right', cellWidth: 52 },
-      3: { halign: 'right', cellWidth: 68 },
-      4: { halign: 'right', cellWidth: 42 },
-      5: { halign: 'center', cellWidth: 48 },
-      6: { halign: 'right', cellWidth: 72 },
-    },
-  })
-
-  y = (getLastTableY(doc) ?? y) + 18
-
-  doc.setFont('helvetica', 'normal')
   doc.setFontSize(8.5)
   doc.setTextColor(...MUTED)
-  // doc.text('Payment terms: Immediate Payment', margin, y)
-  // doc.text(`Payment Communication: ${invoice.invoiceNumber}`, margin, y + 12)
-  // doc.text(
-  //   `Payment method: ${order.payment_method.toUpperCase()} | Status: ${order.payment_status}`,
-  //   margin,
-  //   y + 24
-  // )
+  doc.text('Price', priceColRight, y, { align: 'right' })
+  doc.text('Total', totalColRight, y, { align: 'right' })
+  y += 6
+  doc.setDrawColor(...LINE)
+  doc.line(margin, y, rightX, y)
+  y += 12
 
-  const totalsX = pageWidth - margin - 180
-  let totalsY = y
+  for (const item of data.items) {
+    const rowTop = y
+    const imageOffset = drawProductImage(
+      doc,
+      item,
+      item.imageUrl ? itemImages.get(item.imageUrl) : undefined,
+      textStartX,
+      rowTop
+    )
+    const productX = textStartX + imageOffset
 
-  const totalRows = [
-    ['Untaxed Amount', formatPdfInr(invoice.totals.untaxedAmount)],
-    ['SGST/UTGST', formatPdfInr(invoice.totals.sgst)],
-    ['CGST', formatPdfInr(invoice.totals.cgst)],
-  ]
-
-  if (invoice.totals.shippingAmount > 0) {
-    totalRows.push(['Shipping', formatPdfInr(invoice.totals.shippingAmount)])
-  }
-
-  for (const [label, value] of totalRows) {
     doc.setFont('helvetica', 'normal')
-    doc.setTextColor(...MUTED)
-    doc.text(label, totalsX, totalsY)
+    doc.setFontSize(9.5)
     doc.setTextColor(...TEXT)
-    doc.text(value, pageWidth - margin, totalsY, { align: 'right' })
-    totalsY += 14
+    const nameLines = doc.splitTextToSize(item.name, textWidth - imageOffset)
+    doc.text(nameLines, productX, rowTop + 10)
+
+    const variantParts = [
+      item.size ? `Size: ${item.size}` : null,
+      `Qty: ${item.quantity}`,
+    ].filter(Boolean)
+    doc.setFontSize(8.5)
+    doc.setTextColor(...MUTED)
+    doc.text(
+      variantParts.join(' | '),
+      productX,
+      rowTop + 10 + nameLines.length * 10 + 2
+    )
+
+    doc.setFontSize(9)
+    doc.setTextColor(...TEXT)
+    doc.text(formatPdfInr(item.unitPrice), priceColRight, rowTop + 10, {
+      align: 'right',
+    })
+    doc.text(formatPdfInr(item.lineTotal), totalColRight, rowTop + 10, {
+      align: 'right',
+    })
+
+    y = Math.max(rowTop + 58, rowTop + nameLines.length * 10 + 28)
+    doc.setDrawColor(...LINE)
+    doc.line(margin, y, rightX, y)
+    y += 10
   }
 
-  totalsY += 4
-  doc.setDrawColor(...GOLD)
-  doc.line(totalsX, totalsY, pageWidth - margin, totalsY)
-  totalsY += 14
+  y += 4
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
-  doc.setTextColor(...GOLD)
-  doc.text('Total', totalsX, totalsY)
-  doc.text(formatPdfInr(invoice.totals.total), pageWidth - margin, totalsY, {
+  doc.setFontSize(9)
+  doc.setTextColor(...TEXT)
+  doc.text('Billing Details', margin, y)
+  y += 14
+
+  const { billing } = data
+  drawBillingRow(
+    doc,
+    'Sub-total:',
+    formatPdfInr(billing.subtotal),
+    billingX,
+    y,
+    billingWidth
+  )
+  y += 12
+
+  if (billing.discount > 0) {
+    drawBillingRow(
+      doc,
+      'Discount:',
+      `-${formatPdfInr(billing.discount)}`,
+      billingX,
+      y,
+      billingWidth
+    )
+    y += 12
+  }
+
+  drawBillingRow(
+    doc,
+    'Shipping Charges:',
+    billing.shippingLabel === 'FREE' ? 'FREE' : billing.shippingLabel.replace('₹', 'Rs.'),
+    billingX,
+    y,
+    billingWidth
+  )
+  y += 12
+
+  if (billing.showCodCharges) {
+    drawBillingRow(
+      doc,
+      'COD Charges:',
+      formatPdfInr(billing.codCharges),
+      billingX,
+      y,
+      billingWidth
+    )
+    y += 12
+  }
+
+  drawBillingRow(
+    doc,
+    'Grand Total:',
+    formatPdfInr(billing.grandTotal),
+    billingX,
+    y,
+    billingWidth,
+    true
+  )
+  y += 12
+  drawBillingRow(
+    doc,
+    'Mode of Payment:',
+    billing.paymentMode,
+    billingX,
+    y,
+    billingWidth
+  )
+  y += 20
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(10)
+  doc.setTextColor(...TEXT)
+  doc.text('Have a great day!', margin, y)
+  y += 12
+  doc.text(ORDER_DOCUMENT_BRAND, margin, y)
+  y += 18
+
+  doc.setDrawColor(...LINE)
+  doc.line(margin, y, rightX, y)
+  y += 14
+
+  doc.setFontSize(8)
+  doc.setTextColor(...MUTED)
+  const footerLines = doc.splitTextToSize(data.companyAddress, contentWidth)
+  doc.text(footerLines, margin, y)
+  y += footerLines.length * 10 + 8
+
+  if (data.supportEmail || data.supportPhone) {
+    const contact = [data.supportEmail, data.supportPhone].filter(Boolean).join(' | ')
+    doc.text(contact, margin, y)
+    y += 12
+  }
+
+  return y
+}
+
+export async function generateInvoicePdf(
+  order: InvoiceOrderInput,
+  options?: { expectedDeliveryDate?: string | null }
+): Promise<Uint8Array> {
+  const documentData = buildOrderDocumentData(order, {
+    expectedDeliveryDate: options?.expectedDeliveryDate,
+  })
+  const itemImages = await loadItemImages(documentData.items)
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' })
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const pageHeight = doc.internal.pageSize.getHeight()
+  const margin = 42
+  const contentWidth = pageWidth - margin * 2
+
+  drawTssOrderSummary(doc, documentData, itemImages, margin, margin, contentWidth)
+
+  doc.setFontSize(8)
+  doc.setTextColor(...MUTED)
+  doc.text('Page 1 / 1', pageWidth - margin, pageHeight - margin, {
     align: 'right',
   })
 
-  totalsY += 22
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8.5)
-  doc.setTextColor(...TEXT)
-  const words = doc.splitTextToSize(amountInWords(invoice.totals.total), pageWidth - margin * 2)
-  doc.text(words, margin, totalsY)
-
-  totalsY += words.length * 11 + 14
-
-  const disputeBannerHeight = 26
-  doc.setFillColor(...BEIGE)
-  doc.setDrawColor(...GOLD)
-  doc.setLineWidth(0.6)
-  doc.roundedRect(margin, totalsY, pageWidth - margin * 2, disputeBannerHeight, 3, 3, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8.5)
-  doc.setTextColor(...TEXT)
-  doc.text(
-    'All disputes shall be subject to Jamnagar, Gujarat Judiciary only.',
-    pageWidth / 2,
-    totalsY + 16,
-    { align: 'center' }
-  )
-
-  totalsY += disputeBannerHeight + 14
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(10)
-  doc.setTextColor(...TEXT)
-  doc.text('HSN Summary', margin, totalsY)
-
-  autoTable(doc, {
-    startY: totalsY + 8,
-    margin: { left: margin, right: margin },
-    head: [['HSN/SAC', 'Quantity', 'Rate %', 'Taxable Value', 'SGST/UTGST', 'CGST']],
-    body: invoice.hsnSummary.map((row) => [
-      row.hsn,
-      row.quantity.toFixed(2),
-      row.ratePercent.toFixed(2),
-      formatPdfInr(row.taxableValue),
-      formatPdfInr(row.sgst),
-      formatPdfInr(row.cgst),
-    ]),
-    styles: {
-      fontSize: 8,
-      cellPadding: 4,
-      textColor: [...TEXT],
-      lineColor: [229, 231, 235],
-      lineWidth: 0.5,
-    },
-    headStyles: {
-      fillColor: [...GOLD],
-      textColor: [255, 255, 255],
-      fontStyle: 'bold',
-      halign: 'center',
-    },
-    columnStyles: {
-      0: { halign: 'center' },
-      1: { halign: 'right' },
-      2: { halign: 'right' },
-      3: { halign: 'right' },
-      4: { halign: 'right' },
-      5: { halign: 'right' },
-    },
-  })
-
-  let footerStartY = (getLastTableY(doc) ?? totalsY) + 20
-  const footerBlockHeight = 72
-  const minFooterY = pageHeight - margin - footerBlockHeight
-
-  if (footerStartY > minFooterY) {
-    doc.addPage()
-    footerStartY = margin + 20
-  }
-
-  doc.setDrawColor(229, 231, 235)
-  doc.line(margin, footerStartY - 8, pageWidth - margin, footerStartY - 8)
-
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8.5)
-  doc.setTextColor(...TEXT)
-  doc.text(company.legalName, pageWidth / 2, footerStartY + 4, { align: 'center' })
-
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
-  doc.setTextColor(...MUTED)
-  const supportLines = doc.splitTextToSize(
-    `If you have any questions, feel free to call customer care at ${company.supportPhone} or email ${company.supportEmail}.`,
-    pageWidth - margin * 2
-  )
-  doc.text(supportLines, pageWidth / 2, footerStartY + 18, { align: 'center' })
-
-  const regParts = [
-    company.gstin ? `GSTIN: ${company.gstin}` : '',
-    company.cin ? `CIN: ${company.cin}` : '',
-    company.website,
-  ].filter(Boolean)
-
-  if (regParts.length) {
-    doc.text(regParts.join(' | '), pageWidth / 2, footerStartY + 18 + supportLines.length * 10 + 4, {
-      align: 'center',
-    })
-  }
-
-  doc.setFontSize(8)
-  doc.text('Page 1 / 1', pageWidth - margin, pageHeight - margin, { align: 'right' })
-
-  return doc.output('arraybuffer') as unknown as Uint8Array
+  return new Uint8Array(doc.output('arraybuffer'))
 }

@@ -6,6 +6,10 @@ import {
   getCarrierTrackingUrl,
 } from '@/lib/whatsapp/templates'
 import {
+  buildOrderDocumentData,
+  buildOrderDocumentEmailHtml,
+} from '@/lib/order-document'
+import {
   getCarrierDisplayName,
   type ShipmentCarrier,
 } from '@/lib/shipment-carrier'
@@ -274,56 +278,15 @@ function baseTemplate(content: string): string {
 }
 
 export async function sendOrderConfirmationEmail(order: Order, email: string): Promise<void> {
-  const itemsHtml = order.items
-    ?.map(
-      (item) => `
-      <tr>
-        <td>${item.product_name}${item.variant_size ? ` (${item.variant_size}/${item.variant_color})` : ''}</td>
-        <td>${item.quantity}</td>
-        <td>${formatEmailInr(item.unit_price)}</td>
-        <td>${formatEmailInr(item.total_price)}</td>
-      </tr>
-    `
-    )
-    .join('')
-
-  const content = `
-    <h2>Order Confirmed! 🎉</h2>
-    <p>Thank you for your order. We're preparing it now.</p>
-    <p><strong>Order Number:</strong> ${order.order_number}</p>
-    <p><strong>Status:</strong> ${order.status.charAt(0).toUpperCase() + order.status.slice(1)}</p>
-    ${
-      order.tracking_number
-        ? `<p><strong>Tracking Number:</strong> ${order.tracking_number}</p>`
-        : ''
-    }
-
-    <h3>Order Summary</h3>
-    <table>
-      <thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead>
-      <tbody>${itemsHtml}</tbody>
-    </table>
-
-    <table>
-      <tr><td>Subtotal</td><td>${formatEmailInr(order.subtotal)}</td></tr>
-      ${order.discount_amount > 0 ? `<tr><td>Discount</td><td>-${formatEmailInr(order.discount_amount)}</td></tr>` : ''}
-      <tr><td>Tax</td><td>${formatEmailInr(order.tax_amount)}</td></tr>
-      <tr><td>Shipping</td><td>${formatEmailInr(order.shipping_amount)}</td></tr>
-      <tr><td><strong>Total</strong></td><td><strong>${formatEmailInr(order.total)}</strong></td></tr>
-    </table>
-
-    <p><strong>Shipping to:</strong><br>
-    ${order.shipping_address.full_name}<br>
-    ${order.shipping_address.address_line1}<br>
-    ${order.shipping_address.city}, ${order.shipping_address.state} ${order.shipping_address.postal_code}</p>
-
-    <a href="${APP_URL}/dashboard/orders" class="button">Track Your Order</a>
-  `
+  const documentData = buildOrderDocumentData(order)
+  const html = buildOrderDocumentEmailHtml(documentData, {
+    introVariant: 'confirmation',
+  })
 
   await deliverMail({
     to: email,
-    subject: `Order Confirmed - ${order.order_number}`,
-    html: baseTemplate(content),
+    subject: `Order Placed (${order.order_number})`,
+    html,
     context: 'order_confirmation_customer',
   })
 }

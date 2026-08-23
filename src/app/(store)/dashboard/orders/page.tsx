@@ -1,7 +1,7 @@
 import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Package, FileDown } from 'lucide-react'
+import { Package } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { formatPrice, formatDate } from '@/lib/utils'
 import { OrderStatus } from '@/types'
@@ -19,6 +19,7 @@ import {
   isItemCancelled,
 } from '@/lib/order-status'
 import { canDownloadInvoice } from '@/lib/invoice-access'
+import { InvoiceDownloadButton } from '@/components/order/invoice-download-button'
 import { cancelExpiredUnpaidOrders } from '@/lib/cancel-unpaid-orders'
 import {
   canResumePendingPayment,
@@ -248,13 +249,11 @@ export default async function OrdersPage() {
                     <div className="flex items-center justify-between sm:justify-end gap-3 pt-3 sm:pt-0 border-t sm:border-t-0 border-gray-200">
                       <Badge variant={statusConfig.color}>{statusConfig.label}</Badge>
                       {canDownloadInvoice(order) ? (
-                        <a
-                          href={`/api/invoices/${order.id}`}
-                          download={`invoice-${order.order_number}.pdf`}
-                          className="flex items-center gap-1 text-sm text-gray-600 hover:text-purple-600 transition-colors"
-                        >
-                          <FileDown className="h-4 w-4" /> Invoice
-                        </a>
+                        <InvoiceDownloadButton
+                          orderId={order.id}
+                          orderNumber={order.order_number}
+                          variant="link"
+                        />
                       ) : order.payment_method === 'cod' ? (
                         <span
                           className="text-xs text-gray-400"
