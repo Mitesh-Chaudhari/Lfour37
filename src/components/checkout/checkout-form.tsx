@@ -690,9 +690,7 @@ export function CheckoutForm({
     }
 
     if (paymentMethod === 'cod' && codUnavailable) {
-      toast.error(
-        'Cash on Delivery is not available for this PIN. Please pay online.'
-      )
+      toast.error('Cash on Delivery is not available for this PIN code')
       return
     }
 
@@ -1269,10 +1267,13 @@ export function CheckoutForm({
                     <p className="font-medium text-sm text-gray-900">
                       Cash on Delivery
                     </p>
-                    <p className="text-xs text-gray-500">
+                    {/* <p className="text-xs text-gray-500">
                       {codUnavailable
                         ? 'Not available for this PIN code'
                         : `Pay ${formatPrice(productTotal)} on delivery`}
+                    </p> */}
+                    <p className={`text-xs text-gray-500 ${codUnavailable ? 'text-sm text-red-500' : ''}`}>
+                      {codUnavailable ? 'Not available for this PIN code' : `Pay ${formatPrice(productTotal)} on delivery`}
                     </p>
                     {/* {!codUnavailable && (
                       <p className="mt-1 text-[11px] font-medium text-green-700">

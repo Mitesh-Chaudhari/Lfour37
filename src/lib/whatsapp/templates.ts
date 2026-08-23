@@ -8,6 +8,7 @@ export const VEBLIKA_TEMPLATE_CONFIG = {
   order_in_transit: { language: 'en', includeUrlButton: true },
   order_out_for_delivery: { language: 'en', includeUrlButton: true },
   order_delivered: { language: 'en' },
+  order_review_request: { language: 'en', includeUrlButton: true },
   order_cancelled: { language: 'en' },
   exchange_requested: { language: 'en' },
   return_requested: { language: 'en' },
@@ -258,6 +259,25 @@ export function buildOrderDeliveredParams(
     sanitizeWhatsAppParam(orderNumber),
     sanitizeWhatsAppParam(ordersUrl),
   ]
+}
+
+/** Body params for order_review_request (sent after delivery). */
+export function buildOrderReviewRequestParams(
+  customerFirstName: string,
+  orderNumber: string
+): string[] {
+  return [
+    sanitizeWhatsAppParam(customerFirstName, 'there'),
+    sanitizeWhatsAppParam(orderNumber),
+  ]
+}
+
+/** Dynamic URL button suffix → /dashboard/orders/{orderId}/review */
+export function getOrderReviewUrlButtonParam(orderId: string): string {
+  return sanitizeWhatsAppParam(
+    `dashboard/orders/${orderId}/review`,
+    'dashboard/orders'
+  )
 }
 
 export function buildOrderCancelledParams(

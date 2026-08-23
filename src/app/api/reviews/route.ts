@@ -43,25 +43,40 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'You have already reviewed this product' }, { status: 400 })
     }
 
-    // Check if user purchased this product
-    const { data: purchase } = await supabase
+    // Verified purchase: paid order, or COD that was delivered
+    const { data: purchaseRows } = await supabase
       .from('order_items')
-      .select('id, order:orders!inner(id, user_id, payment_status)')
+      .select(
+        'id, order:orders!inner(id, user_id, payment_status, status, payment_method)'
+      )
       .eq('product_id', data.product_id)
       .eq('orders.user_id', user.id)
-      .eq('orders.payment_status', 'completed')
-      .limit(1)
-      .single()
+      .limit(10)
+
+    const purchase = (purchaseRows || []).find((row) => {
+      const orderRow = Array.isArray(row.order) ? row.order[0] : row.order
+      if (!orderRow) return false
+      if (orderRow.payment_status === 'completed') return true
+      return (
+        orderRow.payment_method === 'cod' &&
+        ['delivered', 'exchanged', 'returned'].includes(orderRow.status)
+      )
+    })
+
+    const orderId =
+      (purchase?.order as { id?: string } | null)?.id ||
+      (Array.isArray(purchase?.order) ? purchase?.order[0]?.id : null) ||
+      null
 
     const { error } = await supabase.from('reviews').insert({
       product_id: data.product_id,
       user_id: user.id,
-      order_id: (purchase?.order as any)?.id || (Array.isArray(purchase?.order) ? purchase?.order[0]?.id : null) || null,
+      order_id: orderId,
       rating: data.rating,
       title: data.title || null,
       body: data.body || null,
       status: 'pending',
-      is_verified_purchase: !!purchase,
+      is_verified_purchase: Boolean(purchase),
     })
 
     if (error) {

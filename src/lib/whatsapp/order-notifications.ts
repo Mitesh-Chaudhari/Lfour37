@@ -4,6 +4,8 @@ import {
   buildOrderConfirmationParams,
   buildOrderDeliveredParams,
   buildOrderShipmentMilestoneParams,
+  buildOrderReviewRequestParams,
+  getOrderReviewUrlButtonParam,
   buildExchangeRequestedParams,
   buildExchangePickupPickedUpParams,
   buildExchangePickupReceivedParams,
@@ -174,6 +176,38 @@ export async function notifyOrderDelivered(
     })
   } catch (error) {
     logger.error('Order delivered WhatsApp failed', { error, orderId: order.id })
+  }
+
+  // Separate marketing CTA — customer can review purchased products.
+  await notifyOrderReviewRequest(order)
+}
+
+export async function notifyOrderReviewRequest(
+  order: Pick<
+    OrderForWhatsApp,
+    'id' | 'order_number' | 'user_id' | 'shipping_address'
+  >
+) {
+  const phone = getOrderPhone(order as OrderForWhatsApp)
+  if (!phone || !isWhatsAppConfigured()) return
+
+  const firstName =
+    order.shipping_address?.full_name?.trim().split(/\s+/)[0] || 'there'
+
+  try {
+    await sendWhatsAppTemplate({
+      phone,
+      userId: order.user_id,
+      orderId: order.id,
+      templateName: 'order_review_request',
+      variables: buildOrderReviewRequestParams(firstName, order.order_number),
+      urlButtonParam: getOrderReviewUrlButtonParam(order.id),
+    })
+  } catch (error) {
+    logger.error('Order review request WhatsApp failed', {
+      error,
+      orderId: order.id,
+    })
   }
 }
 
