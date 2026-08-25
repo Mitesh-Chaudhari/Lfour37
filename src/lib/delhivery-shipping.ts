@@ -8,6 +8,8 @@ import {
   getReversePickupMilestone,
   getTrackingMilestone,
   resolveWhatsAppNotifyMilestone,
+  shouldSendShipmentWhatsApp,
+  getShipmentWhatsAppProgressRank,
   isDelhiveryOutForDelivery,
   isDelhiveryRtoStatus,
   isDelhiveryStatusCancellable,
@@ -90,6 +92,50 @@ function eventKey(
   ].join('|')
 }
 
+async function claimShipmentMilestone(
+  shipmentId: string,
+  milestone: string,
+  expectedLastNotified: string | null | undefined
+): Promise<boolean> {
+  const supabase = createAdminClient()
+
+  // Never claim a sideways/backwards WhatsApp-tier update that would unlock duplicates.
+  // Allow bookkeeping milestones (delivery_exception) only when progress rank is >= current.
+  const nextRank = getShipmentWhatsAppProgressRank(milestone)
+  const prevRank = getShipmentWhatsAppProgressRank(expectedLastNotified)
+  if (
+    expectedLastNotified &&
+    nextRank < prevRank &&
+    milestone !== 'cancelled' &&
+    milestone !== 'rto_delivered'
+  ) {
+    return false
+  }
+
+  let query = supabase
+    .from('delhivery_shipments')
+    .update({ last_notified_milestone: milestone })
+    .eq('id', shipmentId)
+
+  if (expectedLastNotified == null || expectedLastNotified === '') {
+    query = query.is('last_notified_milestone', null)
+  } else {
+    query = query.eq('last_notified_milestone', expectedLastNotified)
+  }
+
+  const { data, error } = await query.select('id')
+  if (error) {
+    logger.warn('Failed to claim shipment milestone', {
+      error,
+      shipmentId,
+      milestone,
+    })
+    return false
+  }
+
+  return (data?.length ?? 0) > 0
+}
+
 async function notifyCustomerOfShipmentMilestone(
   shipment: ShipmentRow,
   {
@@ -107,15 +153,35 @@ async function notifyCustomerOfShipmentMilestone(
   }
 ): Promise<void> {
   if (milestone === shipment.last_notified_milestone) return
+
   // AWB/manifest create is tracked but not messaged as "shipped"
   if (milestone === 'shipment_created') {
-    const supabase = createAdminClient()
-    await supabase
-      .from('delhivery_shipments')
-      .update({ last_notified_milestone: milestone })
-      .eq('id', shipment.id)
+    await claimShipmentMilestone(
+      shipment.id,
+      milestone,
+      shipment.last_notified_milestone
+    )
     return
   }
+
+  const sendWhatsApp = shouldSendShipmentWhatsApp(
+    milestone,
+    shipment.last_notified_milestone
+  )
+  const sendEmail =
+    sendWhatsApp ||
+    milestone === 'cancelled' ||
+    milestone === 'rto_delivered' ||
+    (milestone === 'delivery_exception' &&
+      shipment.last_notified_milestone !== 'delivery_exception')
+
+  // Claim before sending so parallel cron/admin sync cannot double-send.
+  const claimed = await claimShipmentMilestone(
+    shipment.id,
+    milestone,
+    shipment.last_notified_milestone
+  )
+  if (!claimed) return
 
   const supabase = createAdminClient()
   const { data: order } = await supabase
@@ -140,21 +206,19 @@ async function notifyCustomerOfShipmentMilestone(
 
     // Portal cancel / parcel back at warehouse → cancellation email + WhatsApp
     if (milestone === 'cancelled' || milestone === 'rto_delivered') {
-      if (orderUser?.email) {
+      if (orderUser?.email && sendEmail) {
         await sendOrderStatusEmail(order, orderUser.email, 'cancelled')
       }
-      await notifyOrderCancelled({
-        order: orderForWhatsApp,
-        item: order.items?.[0] ?? null,
-      })
-      await supabase
-        .from('delhivery_shipments')
-        .update({ last_notified_milestone: milestone })
-        .eq('id', shipment.id)
+      if (sendWhatsApp) {
+        await notifyOrderCancelled({
+          order: orderForWhatsApp,
+          item: order.items?.[0] ?? null,
+        })
+      }
       return
     }
 
-    if (orderUser?.email) {
+    if (orderUser?.email && sendEmail) {
       await sendShipmentStatusEmail({
         order,
         email: orderUser.email,
@@ -167,6 +231,8 @@ async function notifyCustomerOfShipmentMilestone(
       })
     }
 
+    if (!sendWhatsApp) return
+
     if (milestone === 'delivered') {
       await notifyOrderDelivered(orderForWhatsApp)
     } else if (isShipmentWhatsAppMilestone(milestone)) {
@@ -178,13 +244,8 @@ async function notifyCustomerOfShipmentMilestone(
         carrier: rowCarrier(shipment.carrier),
       })
     }
-
-    await supabase
-      .from('delhivery_shipments')
-      .update({ last_notified_milestone: milestone })
-      .eq('id', shipment.id)
   } catch (error) {
-    logger.warn('Delhivery status email failed', {
+    logger.warn('Shipment milestone notification failed', {
       error,
       orderId: shipment.order_id,
       milestone,

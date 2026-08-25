@@ -1069,6 +1069,7 @@ const WHATSAPP_MILESTONE_RANK: Record<string, number> = {
   picked_up: 1,
   in_transit: 2,
   out_for_delivery: 3,
+  // Same tier as OFD — NDR/reattempt must not unlock another OFD WhatsApp.
   delivery_exception: 3,
   delivered: 4,
   cancelled: 5,
@@ -1076,11 +1077,43 @@ const WHATSAPP_MILESTONE_RANK: Record<string, number> = {
   rto_delivered: 5,
 }
 
+const WHATSAPP_CHAIN = [
+  'picked_up',
+  'in_transit',
+  'out_for_delivery',
+  'delivered',
+] as const
+
+/** Progress rank used to prevent duplicate / sideways WhatsApp sends. */
+export function getShipmentWhatsAppProgressRank(
+  milestone: string | null | undefined
+): number {
+  if (!milestone) return -1
+  return WHATSAPP_MILESTONE_RANK[milestone] ?? -1
+}
+
+/**
+ * Only forward WhatsApp milestones may notify.
+ * Re-OFD after Undelivered (last_notified=delivery_exception) must NOT resend.
+ */
+export function shouldSendShipmentWhatsApp(
+  milestone: string,
+  lastNotified: string | null | undefined
+): boolean {
+  if (!(WHATSAPP_CHAIN as readonly string[]).includes(milestone)) {
+    return milestone === 'cancelled' || milestone === 'rto_delivered'
+  }
+  return (
+    getShipmentWhatsAppProgressRank(milestone) >
+    getShipmentWhatsAppProgressRank(lastNotified)
+  )
+}
+
 /**
  * Pick the WhatsApp milestone to notify on sync.
  * If current status skipped past OFD (e.g. now Undelivered) but events include
  * Out for Delivery and we never notified OFD, return out_for_delivery so the
- * customer still gets that message.
+ * customer still gets that message — once only.
  */
 export function resolveWhatsAppNotifyMilestone(
   events: Array<{
@@ -1092,7 +1125,7 @@ export function resolveWhatsAppNotifyMilestone(
   currentMilestone: string,
   lastNotified: string | null | undefined
 ): string {
-  const lastRank = WHATSAPP_MILESTONE_RANK[lastNotified || ''] ?? -1
+  const lastRank = getShipmentWhatsAppProgressRank(lastNotified)
 
   const eventMilestones = events.map((event) =>
     getTrackingMilestone(
@@ -1103,54 +1136,46 @@ export function resolveWhatsAppNotifyMilestone(
     )
   )
 
-  const whatsappChain = [
-    'picked_up',
-    'in_transit',
-    'out_for_delivery',
-    'delivered',
-  ] as const
-
   let highestFromEvents: string | null = null
   let highestRank = -1
   for (const milestone of eventMilestones) {
-    if (!(whatsappChain as readonly string[]).includes(milestone)) continue
-    const rank = WHATSAPP_MILESTONE_RANK[milestone] ?? -1
+    if (!(WHATSAPP_CHAIN as readonly string[]).includes(milestone)) continue
+    const rank = getShipmentWhatsAppProgressRank(milestone)
     if (rank > highestRank) {
       highestRank = rank
       highestFromEvents = milestone
     }
   }
 
-  // Successful delivery always wins.
+  // Successful delivery always wins (if not already notified at that tier).
   if (currentMilestone === 'delivered') {
-    return lastNotified === 'delivered' ? currentMilestone : 'delivered'
+    return shouldSendShipmentWhatsApp('delivered', lastNotified)
+      ? 'delivered'
+      : lastNotified || 'delivered'
   }
 
-  // Late sync after NDR: still notify OFD if it was reached and never sent.
+  // Late sync after NDR: notify OFD only if that tier was never reached.
   if (
     currentMilestone === 'delivery_exception' &&
     highestFromEvents === 'out_for_delivery' &&
-    lastRank < WHATSAPP_MILESTONE_RANK.out_for_delivery
+    shouldSendShipmentWhatsApp('out_for_delivery', lastNotified)
   ) {
     return 'out_for_delivery'
   }
 
   if (
     highestFromEvents &&
-    highestRank > lastRank &&
-    (WHATSAPP_MILESTONE_RANK[currentMilestone] ?? -1) < highestRank
+    shouldSendShipmentWhatsApp(highestFromEvents, lastNotified) &&
+    getShipmentWhatsAppProgressRank(currentMilestone) < highestRank
   ) {
-    // Current status is behind history (e.g. stuck label) — use history peak.
     return highestFromEvents
   }
 
-  if (
-    (whatsappChain as readonly string[]).includes(currentMilestone) &&
-    (WHATSAPP_MILESTONE_RANK[currentMilestone] ?? -1) > lastRank
-  ) {
+  if (shouldSendShipmentWhatsApp(currentMilestone, lastNotified)) {
     return currentMilestone
   }
 
+  // No new WhatsApp-worthy progress — keep current for email/status bookkeeping.
   return currentMilestone
 }
 
