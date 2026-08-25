@@ -7,6 +7,7 @@ import {
   formatDelhiveryCarrierStatus,
   getReversePickupMilestone,
   getTrackingMilestone,
+  resolveWhatsAppNotifyMilestone,
   isDelhiveryOutForDelivery,
   isDelhiveryRtoStatus,
   isDelhiveryStatusCancellable,
@@ -525,6 +526,11 @@ export async function syncDelhiveryShipment(
     tracking.instructions,
     tracking.statusCode
   )
+  const notifyMilestone = resolveWhatsAppNotifyMilestone(
+    tracking.events,
+    milestone,
+    shipment.last_notified_milestone
+  )
   const displayStatus = formatDelhiveryCarrierStatus(
     tracking.currentStatus,
     tracking.statusType,
@@ -667,7 +673,7 @@ export async function syncDelhiveryShipment(
     !cancellationRequested &&
     order &&
     order.status !== 'cancelled' &&
-    milestone !== lastNotified
+    notifyMilestone !== lastNotified
   ) {
     await notifyCustomerOfShipmentMilestone(
       {
@@ -675,7 +681,7 @@ export async function syncDelhiveryShipment(
         last_notified_milestone: lastNotified,
       },
       {
-        milestone,
+        milestone: notifyMilestone,
         carrierStatus: displayStatus,
         trackingNumber: tracking.awb,
         expectedDeliveryDate: tracking.expectedDeliveryDate,
@@ -691,6 +697,7 @@ export async function syncDelhiveryShipment(
     statusType: tracking.statusType,
     isRto,
     milestone,
+    notifyMilestone,
   })
 
   const { data: updatedOrder } = await supabase
@@ -748,8 +755,11 @@ export async function syncDelhiveryShipmentsForAdmin(options?: {
   if (options?.orderIds?.length) {
     query = query.in('order_id', options.orderIds)
   } else {
+    // Exclude successful Delivered, but keep Undelivered (contains "delivered").
     query = query
-      .not('status', 'ilike', '%delivered%')
+      .or(
+        'status.not.ilike.%delivered%,status.ilike.%undelivered%,status.ilike.%attempted%'
+      )
       .order('last_synced_at', { ascending: true, nullsFirst: true })
       .limit(limit)
   }

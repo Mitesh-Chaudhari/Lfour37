@@ -18,7 +18,34 @@ export function carrierStatusIncludes(
   const needle = phrase.toLowerCase().trim()
   if (!needle) return false
   if (normalized.includes(needle)) return true
-  return compactCarrierStatus(status).includes(needle.replace(/[\s_\-./]+/g, ''))
+
+  const compact = compactCarrierStatus(status)
+  const compactNeedle = needle.replace(/[\s_\-./]+/g, '')
+
+  // "undelivered" contains "delivered" as a substring — never treat that as a match.
+  if (compactNeedle === 'delivered') {
+    return (
+      compact === 'delivered' ||
+      (compact.includes('delivered') &&
+        !compact.includes('undelivered') &&
+        !compact.includes('notdelivered'))
+    )
+  }
+
+  return compact.includes(compactNeedle)
+}
+
+/** True only for successful delivery (excludes Undelivered / NDR). */
+export function isSuccessfulDeliveredStatus(status: string): boolean {
+  const compact = compactCarrierStatus(status)
+  if (
+    compact.includes('undelivered') ||
+    compact.includes('notdelivered') ||
+    compact.includes('attempted')
+  ) {
+    return false
+  }
+  return carrierStatusIncludes(status, 'delivered')
 }
 
 /**

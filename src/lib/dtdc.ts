@@ -5,6 +5,8 @@ import {
   isDelhiveryRtoStatus,
   normalizeCarrierStatus,
   carrierStatusIncludes,
+  compactCarrierStatus,
+  isSuccessfulDeliveredStatus,
 } from '@/lib/delhivery-status'
 
 export {
@@ -13,6 +15,8 @@ export {
   isDelhiveryRtoStatus,
   normalizeCarrierStatus,
   carrierStatusIncludes,
+  compactCarrierStatus,
+  isSuccessfulDeliveredStatus,
 } from '@/lib/delhivery-status'
 
 const PX_BASE_DEFAULT = 'https://pxapi.dtdc.in'
@@ -369,23 +373,34 @@ export async function resolveDelhiveryPinLocation(
   const servFlag = String(zip?.SERVFLAG || '').toUpperCase()
   const b2cServiceable = String(servList?.b2C_SERVICEABLE || '').toUpperCase()
 
-  // B2C PRIORITY bookings must use SERV_LIST COD flags. ZIPCODE SERV_COD can
-  // be "Y" even when b2C_COD_Serviceable is "NO" (booking then fails).
+  // B2C PRIORITY bookings must use b2C_COD_Serviceable when present.
+  // COD_Serviceable / SERV_COD can be YES while B2C COD is NO — booking then fails with:
+  // "B2C COD bookings are not allowed for the destination pincode".
   const b2cCodFlag = String(servList?.b2C_COD_Serviceable || '').toUpperCase()
   const genericCodFlag = String(servList?.COD_Serviceable || '').toUpperCase()
   const legacyCodFlag = String(zip?.SERV_COD || '').toUpperCase()
 
   const isYes = (value: string) => value === 'Y' || value === 'YES'
-  const hasServListCod =
-    Boolean(servList?.b2C_COD_Serviceable) || Boolean(servList?.COD_Serviceable)
+  const isNo = (value: string) => value === 'N' || value === 'NO'
 
   const serviceable =
     servFlag === 'Y' &&
     (b2cServiceable === '' || isYes(b2cServiceable))
 
-  const codAvailable = hasServListCod
-    ? isYes(b2cCodFlag) || isYes(genericCodFlag)
-    : isYes(legacyCodFlag)
+  let codAvailable: boolean
+  if (b2cCodFlag) {
+    // Explicit B2C COD flag — this is what DTDC booking enforces for B2C PRIORITY.
+    codAvailable = isYes(b2cCodFlag)
+  } else if (genericCodFlag) {
+    codAvailable = isYes(genericCodFlag)
+  } else {
+    codAvailable = isYes(legacyCodFlag)
+  }
+
+  // Treat explicit "NO" on B2C COD as non-COD even if other COD flags are YES.
+  if (isNo(b2cCodFlag)) {
+    codAvailable = false
+  }
 
   if (!serviceable) {
     throw new Error(
@@ -563,6 +578,113 @@ export function parseShipmentCreationResponse(response: unknown): {
   }
 }
 
+type NormalizedTrackEvent = {
+  status: string
+  statusCode: string | null
+  statusType: string | null
+  location: string | null
+  instructions: string | null
+  occurredAt: string | null
+}
+
+/**
+ * DTDC customer track API uses different labels than the public portal.
+ * Portal "Out for Delivery" often arrives as type=accept / customer_update=accept.
+ * Portal "Undelivered" arrives as type=attempted.
+ */
+function mapDtdcCustomerEvent(event: {
+  type?: string
+  customer_update?: string
+  event_time?: number
+  hub_name?: string
+  failure_reason?: string | null
+  notes?: string | null
+}): NormalizedTrackEvent {
+  const type = compactCarrierStatus(asString(event.type) || '')
+  const update = asString(event.customer_update) || ''
+  const updateCompact = compactCarrierStatus(update)
+
+  let status = update || asString(event.type) || 'Unknown'
+  let statusCode = asString(event.type)
+
+  if (type === 'accept' || updateCompact === 'accept' || updateCompact === 'outfordelivery') {
+    status = 'Out for Delivery'
+    statusCode = 'OUTDLV'
+  } else if (
+    type === 'attempted' ||
+    updateCompact === 'attempted' ||
+    updateCompact === 'undelivered' ||
+    updateCompact.includes('nondlv')
+  ) {
+    status = updateCompact.includes('undelivered') ? 'Undelivered' : 'Undelivered'
+    statusCode = 'NONDLV'
+  } else if (type === 'reachedathub' || updateCompact === 'reachedathub') {
+    status = 'Reached at Delivery Centre'
+    statusCode = 'RAD'
+  } else if (
+    type === 'intransittohub' ||
+    updateCompact === 'intransittohub' ||
+    updateCompact === 'intransit'
+  ) {
+    status = 'In Transit'
+    statusCode = type || 'INTRANSIT'
+  } else if (
+    type === 'pickup_completed' ||
+    type === 'pickupcompleted' ||
+    updateCompact === 'pickupcompleted' ||
+    carrierStatusIncludes(update, 'pickup completed')
+  ) {
+    status = 'Pickup Completed'
+    statusCode = 'PCUP'
+  } else if (type === 'dlv' || type === 'delivered' || updateCompact === 'delivered') {
+    status = 'Delivered'
+    statusCode = 'DLV'
+  }
+
+  return {
+    status,
+    statusCode,
+    statusType: type.startsWith('rto') ? 'RT' : null,
+    location: asString(event.hub_name),
+    instructions: asString(event.failure_reason) || asString(event.notes),
+    occurredAt: epochMsToIso(event.event_time),
+  }
+}
+
+function mapDtdcCurrentStatus(
+  rawStatus: string | null | undefined,
+  latestEvent: NormalizedTrackEvent | undefined
+): { currentStatus: string; statusCode: string | null } {
+  const compact = compactCarrierStatus(rawStatus || '')
+
+  if (compact === 'attempted' || compact === 'undelivered') {
+    return {
+      currentStatus: latestEvent?.status || 'Undelivered',
+      statusCode: 'NONDLV',
+    }
+  }
+
+  if (compact === 'accept' || compact === 'outfordelivery') {
+    return { currentStatus: 'Out for Delivery', statusCode: 'OUTDLV' }
+  }
+
+  if (compact === 'delivered' || compact === 'dlv') {
+    return { currentStatus: 'Delivered', statusCode: 'DLV' }
+  }
+
+  if (latestEvent?.statusCode === 'OUTDLV' || latestEvent?.statusCode === 'NONDLV') {
+    return {
+      currentStatus: latestEvent.status,
+      statusCode: latestEvent.statusCode,
+    }
+  }
+
+  return {
+    currentStatus: asString(rawStatus) || latestEvent?.status || 'Unknown',
+    statusCode: latestEvent?.statusCode || null,
+  }
+}
+
 async function trackViaCustomerApi(
   awb: string
 ): Promise<NormalizedDelhiveryTracking | null> {
@@ -583,16 +705,7 @@ async function trackViaCustomerApi(
       `/api/customer/integration/consignment/track?reference_number=${encodeURIComponent(awb)}`
     )
 
-    const events = (response.events || []).map((event) => ({
-      status: asString(event.customer_update) || asString(event.type) || 'Unknown',
-      statusCode: asString(event.type),
-      statusType: asString(event.type)?.toUpperCase().startsWith('RTO')
-        ? 'RT'
-        : null,
-      location: asString(event.hub_name),
-      instructions: asString(event.failure_reason) || asString(event.notes),
-      occurredAt: epochMsToIso(event.event_time),
-    }))
+    const events = (response.events || []).map((event) => mapDtdcCustomerEvent(event))
 
     const sortedEvents = [...events].sort((a, b) => {
       return (
@@ -601,20 +714,17 @@ async function trackViaCustomerApi(
       )
     })
     const latestEvent = sortedEvents[0]
-
-    const currentStatus =
-      asString(response.status) || latestEvent?.status || 'Unknown'
+    const mappedCurrent = mapDtdcCurrentStatus(response.status, latestEvent)
 
     const deliveredEvent = sortedEvents.find(
       (event) =>
-        event.statusCode === 'DLV' ||
-        carrierStatusIncludes(event.status, 'delivered')
+        event.statusCode === 'DLV' || isSuccessfulDeliveredStatus(event.status)
     )
 
     return {
       awb: asString(response.reference_number) || awb,
-      currentStatus,
-      statusCode: latestEvent?.statusCode || null,
+      currentStatus: mappedCurrent.currentStatus,
+      statusCode: mappedCurrent.statusCode,
       statusType: latestEvent?.statusType || null,
       instructions: latestEvent?.instructions || null,
       expectedDeliveryDate: asString(response.expected_delivery_date),
@@ -696,9 +806,7 @@ async function trackViaPullApi(
     .reverse()
     .find(
       (event) =>
-        event.statusCode === 'DLV' ||
-        (event.status.toLowerCase().includes('delivered') &&
-          !event.status.toLowerCase().includes('not delivered'))
+        event.statusCode === 'DLV' || isSuccessfulDeliveredStatus(event.status)
     )
 
   return {
@@ -740,9 +848,10 @@ const PRE_PICKUP_CODES = new Set([
   'DRSC',
 ])
 
-const PICKED_UP_CODES = new Set(['PCUP', 'DRCOM'])
-const OFD_CODES = new Set(['OUTDLV', 'RTOOUTDLV'])
+const PICKED_UP_CODES = new Set(['PCUP', 'DRCOM', 'PICKUP_COMPLETED'])
+const OFD_CODES = new Set(['OUTDLV', 'RTOOUTDLV', 'ACCEPT'])
 const DELIVERED_CODES = new Set(['DLV', 'RTODLV'])
+const UNDELIVERED_CODES = new Set(['NONDLV', 'ATTEMPTED', 'UNDLV'])
 const RTO_CODES = new Set([
   'IRTO',
   'SETRTO',
@@ -796,7 +905,12 @@ export function isDelhiveryPickedUpStatus(
   if (isDelhiveryPrePickupStatus(status, statusCode)) return false
 
   const normalized = normalizeCarrierStatus(status)
-  return normalized.includes('picked up') || normalized === 'picked up'
+  return (
+    normalized.includes('picked up') ||
+    normalized === 'picked up' ||
+    compactCarrierStatus(status) === 'pickupcompleted' ||
+    code === 'PICKUP_COMPLETED'
+  )
 }
 
 export function isDelhiveryOutForDelivery(
@@ -806,13 +920,21 @@ export function isDelhiveryOutForDelivery(
   statusCode?: string | null
 ): boolean {
   const code = (statusCode || '').toUpperCase()
-  if (OFD_CODES.has(code)) {
-    return code === 'OUTDLV'
+  if (code === 'OUTDLV' || code === 'ACCEPT') {
+    return true
+  }
+  if (OFD_CODES.has(code) && code !== 'RTOOUTDLV') {
+    return true
   }
 
   // DTDC customer API often returns compact text like "outfordelivery".
   if (carrierStatusIncludes(status, 'out for delivery')) {
     return !carrierStatusIncludes(status, 'rto')
+  }
+
+  // Portal "Out for Delivery" is often type=accept in the customer track API.
+  if (compactCarrierStatus(status) === 'accept') {
+    return true
   }
 
   if (
@@ -851,15 +973,21 @@ export function mapDelhiveryStatusToOrderStatus(
 
   if (
     DELIVERED_CODES.has(code) ||
-    (carrierStatusIncludes(status, 'delivered') &&
-      !carrierStatusIncludes(status, 'not delivered') &&
-      !carrierStatusIncludes(status, 'undelivered'))
+    isSuccessfulDeliveredStatus(status)
   ) {
     return 'delivered'
   }
 
   if (isDelhiveryPrePickupStatus(status, statusCode)) {
     return 'processing'
+  }
+
+  if (
+    UNDELIVERED_CODES.has(code) ||
+    carrierStatusIncludes(status, 'undelivered') ||
+    compactCarrierStatus(status) === 'attempted'
+  ) {
+    return 'shipped'
   }
 
   if (
@@ -899,19 +1027,15 @@ export function getTrackingMilestone(
     return 'out_for_delivery'
   }
 
-  if (
-    DELIVERED_CODES.has(code) ||
-    (carrierStatusIncludes(status, 'delivered') &&
-      !carrierStatusIncludes(status, 'undelivered') &&
-      !carrierStatusIncludes(status, 'not delivered'))
-  ) {
+  if (DELIVERED_CODES.has(code) || isSuccessfulDeliveredStatus(status)) {
     return 'delivered'
   }
 
   if (
+    UNDELIVERED_CODES.has(code) ||
     carrierStatusIncludes(status, 'undelivered') ||
     carrierStatusIncludes(status, 'not delivered') ||
-    code === 'NONDLV' ||
+    compactCarrierStatus(status) === 'attempted' ||
     carrierStatusIncludes(status, 'failed') ||
     carrierStatusIncludes(status, 'exception')
   ) {
@@ -929,12 +1053,105 @@ export function getTrackingMilestone(
   if (
     carrierStatusIncludes(status, 'in transit') ||
     code.endsWith('MF') ||
-    code.endsWith('MD')
+    code.endsWith('MD') ||
+    code === 'INTRANSIT' ||
+    code === 'RAD'
   ) {
     return 'in_transit'
   }
 
   return 'shipment_update'
+}
+
+const WHATSAPP_MILESTONE_RANK: Record<string, number> = {
+  shipment_created: 0,
+  shipment_update: 0,
+  picked_up: 1,
+  in_transit: 2,
+  out_for_delivery: 3,
+  delivery_exception: 3,
+  delivered: 4,
+  cancelled: 5,
+  return_to_origin: 5,
+  rto_delivered: 5,
+}
+
+/**
+ * Pick the WhatsApp milestone to notify on sync.
+ * If current status skipped past OFD (e.g. now Undelivered) but events include
+ * Out for Delivery and we never notified OFD, return out_for_delivery so the
+ * customer still gets that message.
+ */
+export function resolveWhatsAppNotifyMilestone(
+  events: Array<{
+    status: string
+    statusCode?: string | null
+    statusType?: string | null
+    instructions?: string | null
+  }>,
+  currentMilestone: string,
+  lastNotified: string | null | undefined
+): string {
+  const lastRank = WHATSAPP_MILESTONE_RANK[lastNotified || ''] ?? -1
+
+  const eventMilestones = events.map((event) =>
+    getTrackingMilestone(
+      event.status,
+      event.statusType,
+      event.instructions,
+      event.statusCode
+    )
+  )
+
+  const whatsappChain = [
+    'picked_up',
+    'in_transit',
+    'out_for_delivery',
+    'delivered',
+  ] as const
+
+  let highestFromEvents: string | null = null
+  let highestRank = -1
+  for (const milestone of eventMilestones) {
+    if (!(whatsappChain as readonly string[]).includes(milestone)) continue
+    const rank = WHATSAPP_MILESTONE_RANK[milestone] ?? -1
+    if (rank > highestRank) {
+      highestRank = rank
+      highestFromEvents = milestone
+    }
+  }
+
+  // Successful delivery always wins.
+  if (currentMilestone === 'delivered') {
+    return lastNotified === 'delivered' ? currentMilestone : 'delivered'
+  }
+
+  // Late sync after NDR: still notify OFD if it was reached and never sent.
+  if (
+    currentMilestone === 'delivery_exception' &&
+    highestFromEvents === 'out_for_delivery' &&
+    lastRank < WHATSAPP_MILESTONE_RANK.out_for_delivery
+  ) {
+    return 'out_for_delivery'
+  }
+
+  if (
+    highestFromEvents &&
+    highestRank > lastRank &&
+    (WHATSAPP_MILESTONE_RANK[currentMilestone] ?? -1) < highestRank
+  ) {
+    // Current status is behind history (e.g. stuck label) — use history peak.
+    return highestFromEvents
+  }
+
+  if (
+    (whatsappChain as readonly string[]).includes(currentMilestone) &&
+    (WHATSAPP_MILESTONE_RANK[currentMilestone] ?? -1) > lastRank
+  ) {
+    return currentMilestone
+  }
+
+  return currentMilestone
 }
 
 export function isDelhiveryStatusCancellable(
