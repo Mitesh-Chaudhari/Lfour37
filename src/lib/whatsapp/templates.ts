@@ -223,9 +223,24 @@ export function getDelhiveryTrackingUrl(
   return getCarrierTrackingUrl(awb, carrier)
 }
 
-/** AWB for dynamic "Track your order" button ({{1}} in Delhivery package URL). */
-export function getDelhiveryTrackingUrlButtonParam(awb: string): string {
+/**
+ * Dynamic URL button suffix for shipment Track buttons.
+ * Prefer Meta template button URL:
+ *   https://www.lfour37.com/track/{{1}}
+ * so one template works for both Delhivery and DTDC (redirect chooses carrier).
+ *
+ * Fallback (legacy Delhivery-only Meta templates): pass AWB only.
+ */
+export function getCarrierTrackingUrlButtonParam(
+  awb: string,
+  _carrier?: ShipmentCarrier | null
+): string {
   return sanitizeWhatsAppParam(awb, 'N/A')
+}
+
+/** @deprecated Use getCarrierTrackingUrlButtonParam */
+export function getDelhiveryTrackingUrlButtonParam(awb: string): string {
+  return getCarrierTrackingUrlButtonParam(awb)
 }
 
 /**
@@ -234,7 +249,7 @@ export function getDelhiveryTrackingUrlButtonParam(awb: string): string {
  *   {{1}} order id
  *   {{2}} items summary
  *   {{3}} tracking number (AWB)
- *   {{4}} Delhivery tracking URL
+ *   {{4}} carrier tracking URL (DTDC for new orders, Delhivery for legacy)
  */
 export function buildOrderShipmentMilestoneParams(
   orderNumber: string,

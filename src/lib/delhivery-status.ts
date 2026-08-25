@@ -4,6 +4,23 @@ export function normalizeCarrierStatus(status: string): string {
   return (status || '').trim().toLowerCase()
 }
 
+/** Collapse spaces/underscores/hyphens so "outfordelivery" matches "out for delivery". */
+export function compactCarrierStatus(status: string): string {
+  return normalizeCarrierStatus(status).replace(/[\s_\-./]+/g, '')
+}
+
+/** Phrase match that tolerates DTDC compact statuses (no spaces). */
+export function carrierStatusIncludes(
+  status: string,
+  phrase: string
+): boolean {
+  const normalized = normalizeCarrierStatus(status)
+  const needle = phrase.toLowerCase().trim()
+  if (!needle) return false
+  if (normalized.includes(needle)) return true
+  return compactCarrierStatus(status).includes(needle.replace(/[\s_\-./]+/g, ''))
+}
+
 /**
  * Delhivery marks return-to-origin with StatusType "RT".
  * Status text may be "RTO - In Transit", "In Transit", "Dispatched", etc.

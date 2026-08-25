@@ -16,7 +16,7 @@ import {
   formatItemVariant,
   formatOrderItemsSummary,
   formatWhatsAppStatusLabel,
-  getDelhiveryTrackingUrlButtonParam,
+  getCarrierTrackingUrlButtonParam,
   getReversePickupTemplateName,
   SHIPMENT_MILESTONE_TEMPLATES,
   type ReversePickupWhatsAppMilestone,
@@ -148,7 +148,7 @@ export async function notifyOrderShipmentMilestone({
         awb,
         carrier
       ),
-      urlButtonParam: getDelhiveryTrackingUrlButtonParam(awb),
+      urlButtonParam: getCarrierTrackingUrlButtonParam(awb, carrier),
     })
   } catch (error) {
     logger.error('Shipment milestone WhatsApp failed', {
@@ -355,7 +355,7 @@ export async function notifyReversePickupMilestone({
         orderId: order.id,
         templateName,
         variables,
-        urlButtonParam: getDelhiveryTrackingUrlButtonParam(awb),
+        urlButtonParam: getCarrierTrackingUrlButtonParam(awb, carrier),
       })
       return
     }

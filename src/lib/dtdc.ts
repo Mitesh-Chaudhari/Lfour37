@@ -4,6 +4,7 @@ import {
   isDelhiveryRtoDelivered,
   isDelhiveryRtoStatus,
   normalizeCarrierStatus,
+  carrierStatusIncludes,
 } from '@/lib/delhivery-status'
 
 export {
@@ -11,6 +12,7 @@ export {
   isDelhiveryRtoDelivered,
   isDelhiveryRtoStatus,
   normalizeCarrierStatus,
+  carrierStatusIncludes,
 } from '@/lib/delhivery-status'
 
 const PX_BASE_DEFAULT = 'https://pxapi.dtdc.in'
@@ -592,22 +594,29 @@ async function trackViaCustomerApi(
       occurredAt: epochMsToIso(event.event_time),
     }))
 
-    const currentStatus = asString(response.status) || events[0]?.status || 'Unknown'
-
-    const deliveredEvent = [...events]
-      .reverse()
-      .find(
-        (event) =>
-          event.statusCode === 'DLV' ||
-          event.status.toLowerCase().includes('delivered')
+    const sortedEvents = [...events].sort((a, b) => {
+      return (
+        new Date(b.occurredAt || 0).getTime() -
+        new Date(a.occurredAt || 0).getTime()
       )
+    })
+    const latestEvent = sortedEvents[0]
+
+    const currentStatus =
+      asString(response.status) || latestEvent?.status || 'Unknown'
+
+    const deliveredEvent = sortedEvents.find(
+      (event) =>
+        event.statusCode === 'DLV' ||
+        carrierStatusIncludes(event.status, 'delivered')
+    )
 
     return {
       awb: asString(response.reference_number) || awb,
       currentStatus,
-      statusCode: events[0]?.statusCode || null,
-      statusType: events[0]?.statusType || null,
-      instructions: events[0]?.instructions || null,
+      statusCode: latestEvent?.statusCode || null,
+      statusType: latestEvent?.statusType || null,
+      instructions: latestEvent?.instructions || null,
       expectedDeliveryDate: asString(response.expected_delivery_date),
       deliveredAt: deliveredEvent?.occurredAt || null,
       events,
@@ -801,12 +810,16 @@ export function isDelhiveryOutForDelivery(
     return code === 'OUTDLV'
   }
 
-  const normalized = normalizeCarrierStatus(status)
-  if (normalized.includes('out for delivery')) {
-    return !normalized.includes('rto')
+  // DTDC customer API often returns compact text like "outfordelivery".
+  if (carrierStatusIncludes(status, 'out for delivery')) {
+    return !carrierStatusIncludes(status, 'rto')
   }
 
-  if (normalized.includes('dispatched') && statusType !== 'RT') {
+  if (
+    carrierStatusIncludes(status, 'dispatched') &&
+    statusType !== 'RT' &&
+    !carrierStatusIncludes(status, 'rto')
+  ) {
     return true
   }
 
@@ -838,9 +851,9 @@ export function mapDelhiveryStatusToOrderStatus(
 
   if (
     DELIVERED_CODES.has(code) ||
-    (normalizeCarrierStatus(status).includes('delivered') &&
-      !normalizeCarrierStatus(status).includes('not delivered') &&
-      !normalizeCarrierStatus(status).includes('undelivered'))
+    (carrierStatusIncludes(status, 'delivered') &&
+      !carrierStatusIncludes(status, 'not delivered') &&
+      !carrierStatusIncludes(status, 'undelivered'))
   ) {
     return 'delivered'
   }
@@ -850,7 +863,7 @@ export function mapDelhiveryStatusToOrderStatus(
   }
 
   if (
-    normalizeCarrierStatus(status).includes('in transit') ||
+    carrierStatusIncludes(status, 'in transit') ||
     isDelhiveryOutForDelivery(status, statusType, instructions, statusCode) ||
     isDelhiveryPickedUpStatus(status, statusCode)
   ) {
@@ -866,10 +879,12 @@ export function getTrackingMilestone(
   instructions?: string | null,
   statusCode?: string | null
 ): string {
-  const normalized = normalizeCarrierStatus(status)
   const code = (statusCode || '').toUpperCase()
 
-  if (normalized.includes('cancel') && !isDelhiveryRtoStatus(status, statusType, instructions)) {
+  if (
+    carrierStatusIncludes(status, 'cancel') &&
+    !isDelhiveryRtoStatus(status, statusType, instructions)
+  ) {
     return 'cancelled'
   }
 
@@ -886,19 +901,19 @@ export function getTrackingMilestone(
 
   if (
     DELIVERED_CODES.has(code) ||
-    (normalized.includes('delivered') &&
-      !normalized.includes('undelivered') &&
-      !normalized.includes('not delivered'))
+    (carrierStatusIncludes(status, 'delivered') &&
+      !carrierStatusIncludes(status, 'undelivered') &&
+      !carrierStatusIncludes(status, 'not delivered'))
   ) {
     return 'delivered'
   }
 
   if (
-    normalized.includes('undelivered') ||
-    normalized.includes('not delivered') ||
+    carrierStatusIncludes(status, 'undelivered') ||
+    carrierStatusIncludes(status, 'not delivered') ||
     code === 'NONDLV' ||
-    normalized.includes('failed') ||
-    normalized.includes('exception')
+    carrierStatusIncludes(status, 'failed') ||
+    carrierStatusIncludes(status, 'exception')
   ) {
     return 'delivery_exception'
   }
@@ -911,7 +926,11 @@ export function getTrackingMilestone(
     return 'picked_up'
   }
 
-  if (normalized.includes('in transit') || code.endsWith('MF') || code.endsWith('MD')) {
+  if (
+    carrierStatusIncludes(status, 'in transit') ||
+    code.endsWith('MF') ||
+    code.endsWith('MD')
+  ) {
     return 'in_transit'
   }
 
