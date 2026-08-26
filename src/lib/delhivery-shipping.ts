@@ -28,10 +28,12 @@ import {
   notifyOrderShipmentMilestone,
   notifyReversePickupMilestone,
 } from '@/lib/whatsapp/order-notifications'
+import { hasSuccessfulWhatsAppTemplate } from '@/lib/whatsapp'
 import {
   formatItemLabel,
   isReversePickupWhatsAppMilestone,
   isShipmentWhatsAppMilestone,
+  SHIPMENT_MILESTONE_TEMPLATES,
 } from '@/lib/whatsapp/templates'
 import logger from '@/lib/logger'
 import { markCodCollectedOnDelivery } from '@/lib/cod-payment'
@@ -99,15 +101,19 @@ async function claimShipmentMilestone(
 ): Promise<boolean> {
   const supabase = createAdminClient()
 
-  // Never claim a sideways/backwards WhatsApp-tier update that would unlock duplicates.
-  // Allow bookkeeping milestones (delivery_exception) only when progress rank is >= current.
+  // Monotonic progress only. Never write a lower/equal noise milestone
+  // (e.g. shipment_update after picked_up) — that used to unlock duplicate WhatsApps.
   const nextRank = getShipmentWhatsAppProgressRank(milestone)
   const prevRank = getShipmentWhatsAppProgressRank(expectedLastNotified)
+  const isTerminalCancel =
+    milestone === 'cancelled' || milestone === 'rto_delivered'
+  const isExceptionBookkeeping =
+    milestone === 'delivery_exception' && nextRank === prevRank && nextRank >= 3
+
   if (
-    expectedLastNotified &&
-    nextRank < prevRank &&
-    milestone !== 'cancelled' &&
-    milestone !== 'rto_delivered'
+    !isTerminalCancel &&
+    !isExceptionBookkeeping &&
+    nextRank <= prevRank
   ) {
     return false
   }
@@ -175,6 +181,10 @@ async function notifyCustomerOfShipmentMilestone(
     (milestone === 'delivery_exception' &&
       shipment.last_notified_milestone !== 'delivery_exception')
 
+  // Do not touch last_notified for noise statuses (shipment_update, etc.).
+  // Writing those used to lower the watermark and re-trigger picked_up / OFD.
+  if (!sendWhatsApp && !sendEmail) return
+
   // Claim before sending so parallel cron/admin sync cannot double-send.
   const claimed = await claimShipmentMilestone(
     shipment.id,
@@ -210,10 +220,16 @@ async function notifyCustomerOfShipmentMilestone(
         await sendOrderStatusEmail(order, orderUser.email, 'cancelled')
       }
       if (sendWhatsApp) {
-        await notifyOrderCancelled({
-          order: orderForWhatsApp,
-          item: order.items?.[0] ?? null,
-        })
+        const alreadySent = await hasSuccessfulWhatsAppTemplate(
+          order.id,
+          'order_cancelled'
+        )
+        if (!alreadySent) {
+          await notifyOrderCancelled({
+            order: orderForWhatsApp,
+            item: order.items?.[0] ?? null,
+          })
+        }
       }
       return
     }
@@ -234,8 +250,31 @@ async function notifyCustomerOfShipmentMilestone(
     if (!sendWhatsApp) return
 
     if (milestone === 'delivered') {
-      await notifyOrderDelivered(orderForWhatsApp)
-    } else if (isShipmentWhatsAppMilestone(milestone)) {
+      const alreadyDelivered = await hasSuccessfulWhatsAppTemplate(
+        order.id,
+        'order_delivered'
+      )
+      if (!alreadyDelivered) {
+        await notifyOrderDelivered(orderForWhatsApp)
+      }
+      return
+    }
+
+    if (isShipmentWhatsAppMilestone(milestone)) {
+      const templateName = SHIPMENT_MILESTONE_TEMPLATES[milestone]
+      const alreadySent = await hasSuccessfulWhatsAppTemplate(
+        order.id,
+        templateName
+      )
+      if (alreadySent) {
+        logger.info('Skipping duplicate shipment WhatsApp', {
+          orderId: order.id,
+          milestone,
+          templateName,
+        })
+        return
+      }
+
       await notifyOrderShipmentMilestone({
         order: orderForWhatsApp,
         milestone,
@@ -486,11 +525,17 @@ export async function createDelhiveryShipmentForOrder(
 
     // Do NOT notify customer here. AWB creation is not "shipped".
     // Mark milestone so sync won't send a fake shipment_created "shipped" message.
-    // Real customer updates start at picked_up / in_transit via syncDelhiveryShipment.
-    await supabase
-      .from('delhivery_shipments')
-      .update({ last_notified_milestone: 'shipment_created' })
-      .eq('id', saved.id)
+    // Never overwrite a higher watermark (retries must not unlock duplicate WhatsApps).
+    const existingRank = getShipmentWhatsAppProgressRank(
+      saved.last_notified_milestone
+    )
+    if (existingRank < 0) {
+      await supabase
+        .from('delhivery_shipments')
+        .update({ last_notified_milestone: 'shipment_created' })
+        .eq('id', saved.id)
+        .is('last_notified_milestone', null)
+    }
 
     return saved as ShipmentRow
   } catch (error) {

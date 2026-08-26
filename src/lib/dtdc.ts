@@ -1175,8 +1175,18 @@ export function resolveWhatsAppNotifyMilestone(
     return currentMilestone
   }
 
-  // No new WhatsApp-worthy progress — keep current for email/status bookkeeping.
-  return currentMilestone
+  // Keep watermark stable: do not return a lower/sideways status that would
+  // rewrite last_notified (e.g. shipment_update after picked_up).
+  // Exception: first delivery_exception after OFD for one-time NDR email.
+  if (
+    currentMilestone === 'delivery_exception' &&
+    lastNotified !== 'delivery_exception' &&
+    lastRank >= getShipmentWhatsAppProgressRank('out_for_delivery')
+  ) {
+    return 'delivery_exception'
+  }
+
+  return lastNotified || currentMilestone
 }
 
 export function isDelhiveryStatusCancellable(

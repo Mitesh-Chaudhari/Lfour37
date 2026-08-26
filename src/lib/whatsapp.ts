@@ -79,6 +79,42 @@ async function logWhatsAppMessage(entry: {
   }
 }
 
+/** True if this order already got a successful send of this template (dedupe). */
+export async function hasSuccessfulWhatsAppTemplate(
+  orderId: string | null | undefined,
+  templateName: string
+): Promise<boolean> {
+  if (!orderId) return false
+
+  try {
+    const supabase = createAdminClient()
+    const { count, error } = await supabase
+      .from('whatsapp_logs')
+      .select('id', { count: 'exact', head: true })
+      .eq('order_id', orderId)
+      .eq('template_name', templateName)
+      .eq('status', 'sent')
+
+    if (error) {
+      logger.warn('whatsapp_logs dedupe lookup failed', {
+        error,
+        orderId,
+        templateName,
+      })
+      return false
+    }
+
+    return (count ?? 0) > 0
+  } catch (error) {
+    logger.warn('whatsapp_logs dedupe lookup failed', {
+      error,
+      orderId,
+      templateName,
+    })
+    return false
+  }
+}
+
 export async function sendWhatsAppMessage({
   phone,
   message,
