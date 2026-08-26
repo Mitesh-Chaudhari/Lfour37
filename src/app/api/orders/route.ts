@@ -167,26 +167,31 @@ export async function POST(request: NextRequest) {
     let codAdvanceAmount: number | null = null
     let codCollectAmount: number | null = null
 
-    if (data.payment_method === 'cod') {
-      try {
-        await resolveDelhiveryPinLocation(data.shipping_address.postal_code, {
-          requireCod: true,
-        })
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'Cash on Delivery is not available for this PIN code'
-        return NextResponse.json(
-          {
-            error:
-              'Cash on Delivery is not available for this PIN code. Please pay online to place your order.',
-            details: message,
-          },
-          { status: 400 }
-        )
-      }
+    // Block prepaid + COD before payment if DTDC cannot deliver to this PIN.
+    const isCod = data.payment_method === 'cod'
+    try {
+      await resolveDelhiveryPinLocation(data.shipping_address.postal_code, {
+        requireCod: isCod,
+      })
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Delivery is not available for this PIN code'
+      const isCodBlocked =
+        isCod && message.toLowerCase().includes('cash on delivery')
+      return NextResponse.json(
+        {
+          error: isCodBlocked
+            ? 'Cash on Delivery is not available for this PIN code. Please pay online to place your order.'
+            : 'Sorry, we cannot deliver to this PIN code. Please use a different address.',
+          details: message,
+        },
+        { status: 400 }
+      )
+    }
 
+    if (isCod) {
       // COD is free: no online advance and the full product total is collected
       // at delivery. PIN/COD serviceability is validated above.
       shippingAmount = 0

@@ -168,6 +168,17 @@ export function CheckoutForm({
     (pinStatus === 'idle' || pinStatus === 'loading')
 
   const codUnavailable = pinData?.codAvailable === false
+  const areaNotServiceable =
+    pinStatus === 'unserviceable' || pinData?.serviceable === false
+  const deliveryUnavailableMessage = pinData?.remarks
+    ?.toLowerCase()
+    .includes('embargo')
+    ? 'This PIN is temporarily under Delhivery Embargo. Please try again after 24 hours or use another address.'
+    : pinData?.remarks
+        ?.toLowerCase()
+        .includes('could not verify')
+      ? 'Could not verify delivery for this PIN code. Please try again.'
+      : 'Sorry, this area is not serviceable for delivery. Please use a different address.'
 
   // Fill form from selected saved address, or profile when entering a new address
   useEffect(() => {
@@ -680,12 +691,8 @@ export function CheckoutForm({
       return
     }
 
-    if (pinStatus === 'unserviceable') {
-      toast.error(
-        pinData?.remarks?.toLowerCase().includes('embargo')
-          ? 'This PIN is temporarily under Delhivery Embargo. Please try again after 24 hours or use another address.'
-          : 'Sorry, we cannot deliver to this PIN code yet. Please use a different address.'
-      )
+    if (pinStatus === 'unserviceable' || pinData?.serviceable === false) {
+      toast.error(deliveryUnavailableMessage)
       return
     }
 
@@ -1106,20 +1113,20 @@ export function CheckoutForm({
                     maxLength={6}
                     error={
                       errors.postal_code?.message ||
-                      (pinStatus === 'unserviceable'
-                        ? pinData?.remarks?.toLowerCase().includes('embargo')
-                          ? 'This PIN is temporarily under Delhivery Embargo. Please try again after 24 hours or use another address.'
-                          : 'Sorry, delivery is not available to this PIN code'
+                      (areaNotServiceable
+                        ? deliveryUnavailableMessage
                         : undefined)
                     }
                     helperText={
                       pinStatus === 'loading'
-                        ? 'Finding your city & state...'
-                        : pinStatus === 'success'
-                          ? 'City & state auto-filled — you can edit them if needed'
-                          : pinStatus === 'error'
-                            ? "Couldn't auto-fill from this PIN code — please enter city & state manually"
-                            : 'Enter your 6-digit PIN code to auto-fill city & state'
+                        ? 'Checking if we deliver to this PIN...'
+                        : areaNotServiceable
+                          ? deliveryUnavailableMessage
+                          : pinStatus === 'success'
+                            ? 'City & state auto-filled — you can edit them if needed'
+                            : pinStatus === 'error'
+                              ? "Couldn't auto-fill from this PIN code — please enter city & state manually"
+                              : 'Enter your 6-digit PIN code to auto-fill city & state'
                     }
                     rightIcon={
                       pinStatus === 'loading' ? (
@@ -1289,6 +1296,11 @@ export function CheckoutForm({
                   discount.
                 </p>
               )}
+              {areaNotServiceable && (
+                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  {deliveryUnavailableMessage}
+                </p>
+              )}
               <input
                 type="hidden"
                 value={paymentMethod}
@@ -1303,6 +1315,8 @@ export function CheckoutForm({
               className="w-full"
               loading={isSubmitting}
               disabled={
+                areaNotServiceable ||
+                pinStatus === 'loading' ||
                 (paymentMethod === 'cod' && codUnavailable) ||
                 (isGuest &&
                   (!isValidPhone ||

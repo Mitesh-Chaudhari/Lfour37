@@ -383,9 +383,14 @@ export async function resolveDelhiveryPinLocation(
   const isYes = (value: string) => value === 'Y' || value === 'YES'
   const isNo = (value: string) => value === 'N' || value === 'NO'
 
-  const serviceable =
-    servFlag === 'Y' &&
-    (b2cServiceable === '' || isYes(b2cServiceable))
+  // Prefer B2C serviceability (what softdata booking enforces). SERVFLAG alone can
+  // be Y while B2C PRIORITY still rejects the destination PIN.
+  let serviceable = servFlag === 'Y'
+  if (isNo(b2cServiceable)) {
+    serviceable = false
+  } else if (b2cServiceable) {
+    serviceable = serviceable && isYes(b2cServiceable)
+  }
 
   let codAvailable: boolean
   if (b2cCodFlag) {

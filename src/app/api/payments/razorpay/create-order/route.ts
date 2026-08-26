@@ -6,6 +6,7 @@ import {
   getOnlineChargeAmount,
   isUnpaidPendingCheckoutOrder,
 } from '@/lib/pending-payment'
+import { resolveDelhiveryPinLocation } from '@/lib/dtdc'
 import logger from '@/lib/logger'
 import { z } from 'zod'
 
@@ -52,6 +53,7 @@ export async function POST(request: NextRequest) {
         payment_status,
         payment_method,
         created_at,
+        shipping_address,
         cod_advance_amount,
         shipping_amount,
         payment:payments(
@@ -91,6 +93,33 @@ export async function POST(request: NextRequest) {
           error:
             'Payment window expired. This order was cancelled because payment was not completed within 30 minutes.',
           expired: true,
+        },
+        { status: 400 }
+      )
+    }
+
+    const destinationPin =
+      (order.shipping_address as { postal_code?: string } | null)?.postal_code ||
+      ''
+    try {
+      await resolveDelhiveryPinLocation(destinationPin, {
+        requireCod: order.payment_method === 'cod',
+      })
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Delivery is not available for this PIN code'
+      logger.warn('Razorpay create blocked — destination PIN not serviceable', {
+        orderId: order_id,
+        destinationPin,
+        message,
+      })
+      return NextResponse.json(
+        {
+          error:
+            'Sorry, we cannot deliver to this PIN code. Please go back and use a different address.',
+          details: message,
         },
         { status: 400 }
       )

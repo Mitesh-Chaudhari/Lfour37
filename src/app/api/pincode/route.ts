@@ -108,7 +108,16 @@ async function lookupDtdc(pin: string): Promise<CarrierPinLookup | null> {
       }
     }
 
-    return null
+    // DTDC is configured but lookup failed/timed out — fail closed so checkout
+    // cannot treat an unverified PIN as deliverable (prepaid orders were slipping through).
+    return {
+      city: null,
+      state: null,
+      serviceable: false,
+      codAvailable: false,
+      remarks:
+        'Could not verify delivery for this PIN code. Please try again in a moment.',
+    }
   }
 }
 
