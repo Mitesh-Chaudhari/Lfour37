@@ -12,6 +12,8 @@ import {
   PackageCheck,
   RefreshCw,
   Download,
+  Save,
+  Trash2,
 } from 'lucide-react'
 import {
   resolveItemPurchasePrice,
@@ -341,11 +343,29 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
   const [cancelReasonOption, setCancelReasonOption] =
     useState<AdminCancelReasonOption | ''>('')
   const [cancelCustomReason, setCancelCustomReason] = useState('')
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      initialOrders.map((order) => [order.id, order.admin_notes || ''])
+    )
+  )
+  const [savingNoteId, setSavingNoteId] = useState<string | null>(null)
   const autoSyncedRef = useRef(false)
 
   useEffect(() => {
     if (statusFromUrl) setSelectedStatus(statusFromUrl)
   }, [statusFromUrl])
+
+  useEffect(() => {
+    setNoteDrafts((prev) => {
+      const next = { ...prev }
+      for (const order of initialOrders) {
+        if (prev[order.id] === undefined) {
+          next[order.id] = order.admin_notes || ''
+        }
+      }
+      return next
+    })
+  }, [initialOrders])
 
   const applyDelhiverySyncResults = useCallback(
     (results: AdminDelhiverySyncPayload[]) => {
@@ -513,6 +533,47 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
       toast.error('Failed to export orders')
     } finally {
       setExporting(false)
+    }
+  }
+
+  const saveAdminNote = async (orderId: string, notes?: string | null) => {
+    const draft =
+      notes === undefined
+        ? (noteDrafts[orderId] ?? '').trim()
+        : (notes || '').trim()
+    const adminNotes = draft.length > 0 ? draft : null
+
+    setSavingNoteId(orderId)
+    try {
+      const res = await fetch('/api/admin/orders/notes', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: orderId,
+          admin_notes: adminNotes,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to save note')
+        return
+      }
+
+      const saved = (data.admin_notes as string | null) || null
+      setOrders((current) =>
+        current.map((order) =>
+          order.id === orderId ? { ...order, admin_notes: saved } : order
+        )
+      )
+      setNoteDrafts((current) => ({
+        ...current,
+        [orderId]: saved || '',
+      }))
+      toast.success(saved ? 'Note saved' : 'Note cleared')
+    } catch {
+      toast.error('Failed to save note')
+    } finally {
+      setSavingNoteId(null)
     }
   }
 
@@ -1217,6 +1278,7 @@ const markDelivered =
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Items</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Update Status</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Notes</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Actions</th>
               </tr>
             </thead>
@@ -1843,6 +1905,60 @@ const markDelivered =
                         )}
                       </div>
                     )}
+                  </td>
+                  <td className="px-4 py-3 align-top min-w-[220px] max-w-[260px]">
+                    {(() => {
+                      const draft = noteDrafts[order.id] ?? ''
+                      const saved = order.admin_notes || ''
+                      const dirty = draft.trim() !== saved.trim()
+                      const hasSaved = Boolean(saved.trim())
+                      const saving = savingNoteId === order.id
+
+                      return (
+                        <div className="space-y-1.5">
+                          <textarea
+                            value={draft}
+                            rows={2}
+                            placeholder="Add a note…"
+                            disabled={saving}
+                            onChange={(e) =>
+                              setNoteDrafts((current) => ({
+                                ...current,
+                                [order.id]: e.target.value,
+                              }))
+                            }
+                            className="w-full min-h-[56px] resize-y rounded-lg border border-gray-300 px-2 py-1.5 text-xs text-gray-800 bg-white focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50"
+                          />
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs"
+                              loading={saving}
+                              disabled={saving || !dirty}
+                              onClick={() => saveAdminNote(order.id)}
+                            >
+                              <Save className="h-3.5 w-3.5 mr-1" />
+                              Save
+                            </Button>
+                            {(hasSaved || draft.trim()) && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs text-red-600 border-red-200"
+                                disabled={saving}
+                                onClick={() => saveAdminNote(order.id, '')}
+                              >
+                                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                                Clear
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </td>
                   <td className="px-4 py-3 text-right">
 
