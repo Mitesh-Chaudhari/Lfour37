@@ -16,6 +16,7 @@ import {
   LogOut,
   TicketSlash,
   SquareX,
+  Undo2,
   Newspaper,
   PanelLeftClose,
   PanelLeftOpen,
@@ -34,7 +35,7 @@ interface AdminSidebarProps {
   onToggleCollapse?: () => void
 }
 
-type NotificationKey = 'orders' | 'cancelRequests'
+type NotificationKey = 'orders' | 'cancelRequests' | 'returns'
 
 const NAV_ITEMS: Array<{
   href: string
@@ -62,6 +63,12 @@ const NAV_ITEMS: Array<{
     notificationKey: 'cancelRequests',
   },
   {
+    href: '/admin/returns',
+    icon: Undo2,
+    label: 'Returns',
+    notificationKey: 'returns',
+  },
+  {
     href: '/admin/cancel-reasons',
     icon: SquareX,
     label: 'Order Cancel Reasons Manage',
@@ -87,11 +94,12 @@ const NAV_ITEMS: Array<{
 
 const SEEN_ORDERS_AT_KEY = 'admin_seen_orders_at'
 const SEEN_CANCEL_IDS_KEY = 'admin_seen_cancel_request_ids'
+const SEEN_RETURN_IDS_KEY = 'admin_seen_return_request_ids'
 const POLL_INTERVAL_MS = 60_000
 
-function getSeenCancelIds(): string[] {
+function getSeenIds(key: string): string[] {
   try {
-    return JSON.parse(localStorage.getItem(SEEN_CANCEL_IDS_KEY) || '[]')
+    return JSON.parse(localStorage.getItem(key) || '[]')
   } catch {
     return []
   }
@@ -112,6 +120,7 @@ export function AdminSidebar({
   >({
     orders: false,
     cancelRequests: false,
+    returns: false,
   })
 
   useEffect(() => {
@@ -132,14 +141,19 @@ export function AdminSidebar({
         if (!res.ok || cancelled) return
 
         const data = await res.json()
-        const seenIds = getSeenCancelIds()
+        const seenCancelIds = getSeenIds(SEEN_CANCEL_IDS_KEY)
         const unseenCancelRequests = (data.cancel_request_ids || []).some(
-          (id: string) => !seenIds.includes(id)
+          (id: string) => !seenCancelIds.includes(id)
+        )
+        const seenReturnIds = getSeenIds(SEEN_RETURN_IDS_KEY)
+        const unseenReturns = (data.return_request_ids || []).some(
+          (id: string) => !seenReturnIds.includes(id)
         )
 
         setNotifications({
           orders: (data.new_orders_count || 0) > 0,
           cancelRequests: unseenCancelRequests,
+          returns: unseenReturns,
         })
       } catch {
         // best-effort
@@ -173,6 +187,21 @@ export function AdminSidebar({
         })
         .catch(() => {})
       setNotifications((n) => ({ ...n, cancelRequests: false }))
+    }
+
+    if (pathname.startsWith('/admin/returns')) {
+      fetch('/api/admin/notifications', { cache: 'no-store' })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data) {
+            localStorage.setItem(
+              SEEN_RETURN_IDS_KEY,
+              JSON.stringify(data.return_request_ids || [])
+            )
+          }
+        })
+        .catch(() => {})
+      setNotifications((n) => ({ ...n, returns: false }))
     }
 
     // Auto-close mobile drawer after navigation

@@ -47,8 +47,15 @@ export async function GET(request: NextRequest) {
     .eq('status', 'cancel_requested')
     .limit(200)
 
+  const { data: returnRequests } = await supabase
+    .from('order_items')
+    .select('id')
+    .eq('return_status', 'return_requested')
+    .limit(200)
+
   return NextResponse.json({
     new_orders_count: newOrdersCount,
     cancel_request_ids: (cancelRequests || []).map((item) => item.id),
+    return_request_ids: (returnRequests || []).map((item) => item.id),
   })
 }

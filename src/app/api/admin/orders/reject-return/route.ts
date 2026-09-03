@@ -48,6 +48,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Item not found' }, { status: 404 })
     }
 
+    if (item.return_status !== 'return_requested') {
+      return NextResponse.json(
+        {
+          error:
+            item.return_status === 'return_approved'
+              ? 'This return/exchange was already approved elsewhere. Refresh the page to see the latest status.'
+              : item.return_status === 'return_rejected'
+                ? 'This return/exchange was already rejected. Refresh the page to see the latest status.'
+                : 'Only pending return/exchange requests can be rejected.',
+          code: 'already_processed',
+        },
+        { status: 409 }
+      )
+    }
+
+    // Conditional update — loses cleanly if Orders/Returns page already acted.
     const { data: updatedItem, error: updateError } = await admin
       .from('order_items')
       .update({
@@ -55,17 +71,29 @@ export async function POST(req: NextRequest) {
         status: 'delivered',
       })
       .eq('id', item_id)
+      .eq('return_status', 'return_requested')
       .select('id, return_status')
-      .single()
+      .maybeSingle()
 
-    if (updateError || !updatedItem) {
+    if (updateError) {
       logger.error('Reject return item update failed', {
         error: updateError,
         itemId: item_id,
       })
       return NextResponse.json(
-        { error: updateError?.message || 'Failed to reject return' },
+        { error: updateError.message || 'Failed to reject return' },
         { status: 500 }
+      )
+    }
+
+    if (!updatedItem) {
+      return NextResponse.json(
+        {
+          error:
+            'This return/exchange was already handled elsewhere. Refresh the page to see the latest status.',
+          code: 'already_processed',
+        },
+        { status: 409 }
       )
     }
 

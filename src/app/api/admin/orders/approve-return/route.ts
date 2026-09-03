@@ -36,7 +36,6 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Use service role so updates are not blocked by customer-only RLS.
     const { data: item, error: itemError } = await admin
       .from('order_items')
       .select(`
@@ -52,14 +51,69 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Item not found' }, { status: 404 })
     }
 
+    if (item.return_status === 'return_rejected') {
+      return NextResponse.json(
+        {
+          error:
+            'This return/exchange was already rejected. Refresh the page to see the latest status.',
+          code: 'already_processed',
+        },
+        { status: 409 }
+      )
+    }
+
     if (
       item.return_status !== 'return_requested' &&
       item.return_status !== 'return_approved'
     ) {
       return NextResponse.json(
-        { error: 'Only pending or already-approved return/exchange requests can be processed' },
+        {
+          error:
+            'Only pending or already-approved return/exchange requests can be processed',
+        },
         { status: 400 }
       )
+    }
+
+    const isExchange = item.return_type === 'exchange'
+    const nextStatus = isExchange ? 'exchange_initiated' : 'return_initiated'
+    const approvedAt = new Date().toISOString()
+
+    // Claim pending requests so a concurrent reject/approve on the other page cannot win.
+    if (item.return_status === 'return_requested') {
+      const { data: claimed, error: claimError } = await admin
+        .from('order_items')
+        .update({
+          return_status: 'return_approved',
+          status: nextStatus,
+          return_approved_at: approvedAt,
+        })
+        .eq('id', item_id)
+        .eq('return_status', 'return_requested')
+        .select('id')
+        .maybeSingle()
+
+      if (claimError) {
+        logger.error('Approve return claim failed', {
+          error: claimError,
+          itemId: item_id,
+        })
+        return NextResponse.json(
+          { error: claimError.message || 'Failed to approve return' },
+          { status: 500 }
+        )
+      }
+
+      if (!claimed) {
+        return NextResponse.json(
+          {
+            error:
+              'This return/exchange was already handled elsewhere. Refresh the page to see the latest status.',
+            code: 'already_processed',
+          },
+          { status: 409 }
+        )
+      }
     }
 
     const delhiveryResult = await createDelhiveryReversePickupForItem(item_id)
@@ -74,17 +128,13 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const isExchange = item.return_type === 'exchange'
-    const nextStatus = isExchange ? 'exchange_initiated' : 'return_initiated'
-
-    // Always persist approval even when reverse AWB already existed from a
-    // previous attempt (Delhivery succeeded, item status update had failed).
+    // Ensure final status even when retrying an already-approved item.
     const { data: updatedItem, error } = await admin
       .from('order_items')
       .update({
         return_status: 'return_approved',
         status: nextStatus,
-        return_approved_at: new Date().toISOString(),
+        return_approved_at: approvedAt,
       })
       .eq('id', item_id)
       .select('id, return_status, status')

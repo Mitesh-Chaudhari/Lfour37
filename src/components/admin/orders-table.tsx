@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import { Order, OrderItem, OrderStatus } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,8 @@ import {
   Download,
   Save,
   Trash2,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import {
   resolveItemPurchasePrice,
@@ -23,6 +25,11 @@ import { isDelhiveryRtoStatus } from '@/lib/delhivery-status'
 import {
   getShipmentCarrierLabel,
 } from '@/lib/shipment-carrier'
+import {
+  ADMIN_ORDERS_PAGE_SIZE,
+  buildAdminOrdersHref,
+  type AdminOrdersQuery,
+} from '@/lib/admin-orders'
 
 const ADMIN_CANCEL_REASON_OPTIONS = [
   'Test order',
@@ -322,16 +329,43 @@ function getPartialCodCollectAmount(order: AdminOrder): number {
 
 interface AdminOrdersTableProps {
   orders: AdminOrder[]
+  totalCount: number
+  totalOrders: number
+  page: number
+  totalPages: number
+  query: AdminOrdersQuery
 }
 
-export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProps) {
-  const searchParams = useSearchParams()
-  const statusFromUrl = searchParams.get('status')
-  const [orders, setOrders] = useState(initialOrders)
-  const [selectedStatus, setSelectedStatus] = useState<string>(
-    statusFromUrl || 'all'
+function getPageNumbers(
+  currentPage: number,
+  totalPages: number
+): Array<number | 'ellipsis'> {
+  const pages = Array.from({ length: totalPages }, (_, i) => i + 1).filter(
+    (p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2
   )
-  const [search, setSearch] = useState('')
+
+  const withEllipsis: Array<number | 'ellipsis'> = []
+  for (let i = 0; i < pages.length; i++) {
+    if (i > 0 && pages[i] - pages[i - 1] > 1) {
+      withEllipsis.push('ellipsis')
+    }
+    withEllipsis.push(pages[i])
+  }
+  return withEllipsis
+}
+
+export function AdminOrdersTable({
+  orders: ordersFromServer,
+  totalCount,
+  page,
+  totalPages,
+  query,
+}: AdminOrdersTableProps) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const [isPending, startTransition] = useTransition()
+  const [orders, setOrders] = useState(ordersFromServer)
+  const [searchInput, setSearchInput] = useState(query.q)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [syncingTracking, setSyncingTracking] = useState(false)
   const [exportFrom, setExportFrom] = useState('')
@@ -345,27 +379,53 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
   const [cancelCustomReason, setCancelCustomReason] = useState('')
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>(() =>
     Object.fromEntries(
-      initialOrders.map((order) => [order.id, order.admin_notes || ''])
+      ordersFromServer.map((order) => [order.id, order.admin_notes || ''])
     )
   )
   const [savingNoteId, setSavingNoteId] = useState<string | null>(null)
   const autoSyncedRef = useRef(false)
 
-  useEffect(() => {
-    if (statusFromUrl) setSelectedStatus(statusFromUrl)
-  }, [statusFromUrl])
+  const hasActiveFilters = query.q !== '' || query.status !== 'all'
+  const rangeStart =
+    totalCount === 0 ? 0 : (page - 1) * ADMIN_ORDERS_PAGE_SIZE + 1
+  const rangeEnd = Math.min(page * ADMIN_ORDERS_PAGE_SIZE, totalCount)
+
+  const navigate = (updates: Partial<AdminOrdersQuery>) => {
+    startTransition(() => {
+      router.push(buildAdminOrdersHref(query, updates))
+    })
+  }
 
   useEffect(() => {
-    setNoteDrafts((prev) => {
-      const next = { ...prev }
-      for (const order of initialOrders) {
-        if (prev[order.id] === undefined) {
-          next[order.id] = order.admin_notes || ''
-        }
+    setOrders(ordersFromServer)
+  }, [ordersFromServer])
+
+  // Keep Orders and Returns pages aligned after actions on either screen.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        router.refresh()
       }
-      return next
-    })
-  }, [initialOrders])
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [router])
+
+  useEffect(() => {
+    setSearchInput(query.q)
+  }, [query.q])
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      const nextQ = searchInput.trim()
+      if (nextQ === query.q) return
+      startTransition(() => {
+        router.push(buildAdminOrdersHref(query, { q: nextQ, page: 1 }))
+      })
+    }, 350)
+
+    return () => window.clearTimeout(handle)
+  }, [searchInput, query, router])
 
   const applyDelhiverySyncResults = useCallback(
     (results: AdminDelhiverySyncPayload[]) => {
@@ -458,7 +518,7 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
     if (autoSyncedRef.current) return
     autoSyncedRef.current = true
 
-    const orderIds = initialOrders
+    const orderIds = ordersFromServer
       .filter((order) => {
         const shipment = getDelhiveryShipment(order)
         return (
@@ -472,27 +532,19 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
     if (orderIds.length) {
       void refreshDelhiveryTracking(orderIds, { silent: true })
     }
-  }, [initialOrders, refreshDelhiveryTracking])
+  }, [ordersFromServer, refreshDelhiveryTracking])
 
-  const filtered = orders.filter((o) => {
-    if (selectedStatus === 'rto') {
-      const shipment = getDelhiveryShipment(o)
-      if (
-        !isDelhiveryRtoStatus(
-          shipment?.status || '',
-          shipment?.status_type,
-          shipment?.instructions
-        )
-      ) {
-        return false
+  useEffect(() => {
+    setNoteDrafts((prev) => {
+      const next = { ...prev }
+      for (const order of ordersFromServer) {
+        if (prev[order.id] === undefined) {
+          next[order.id] = order.admin_notes || ''
+        }
       }
-    } else if (selectedStatus !== 'all' && o.status !== selectedStatus) {
-      return false
-    }
-    if (search && !o.order_number.toLowerCase().includes(search.toLowerCase()) &&
-      !o.user?.email?.toLowerCase().includes(search.toLowerCase())) return false
-    return true
-  })
+      return next
+    })
+  }, [ordersFromServer])
 
   const exportOrdersExcel = async () => {
     if (!exportFrom || !exportTo) {
@@ -768,31 +820,22 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
     }
   }
 
-  const approveReturn = async (
-    itemId: string
-  ) => {
+  const approveReturn = async (itemId: string) => {
+    setUpdatingId(itemId)
     try {
-      const res = await fetch(
-        '/api/admin/orders/approve-return',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type':
-              'application/json',
-          },
-          body: JSON.stringify({
-            item_id: itemId,
-          }),
-        }
-      )
+      const res = await fetch('/api/admin/orders/approve-return', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_id: itemId }),
+      })
 
       const data = await res.json()
 
       if (!res.ok) {
-        toast.error(
-          data.error ||
-          'Failed to approve'
-        )
+        toast.error(data.error || 'Failed to approve')
+        if (data.code === 'already_processed') {
+          router.refresh()
+        }
         return
       }
 
@@ -806,8 +849,6 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
 
           return {
             ...order,
-            // Keep order-level fulfillment status (e.g. delivered).
-            // Return/exchange state lives on the item + reverse pickup.
             items: order.items?.map((item: AdminOrderItem) =>
               item.id === itemId
                 ? {
@@ -847,38 +888,30 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
             }`
           : 'Return approved'
       )
+      router.refresh()
     } catch {
-      toast.error(
-        'Failed to approve return'
-      )
+      toast.error('Failed to approve return')
+    } finally {
+      setUpdatingId(null)
     }
   }
 
-  const rejectReturn = async (
-    itemId: string
-  ) => {
+  const rejectReturn = async (itemId: string) => {
+    setUpdatingId(itemId)
     try {
-      const res = await fetch(
-        '/api/admin/orders/reject-return',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type':
-              'application/json',
-          },
-          body: JSON.stringify({
-            item_id: itemId,
-          }),
-        }
-      )
+      const res = await fetch('/api/admin/orders/reject-return', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_id: itemId }),
+      })
 
       const data = await res.json()
 
       if (!res.ok) {
-        toast.error(
-          data.error ||
-          'Failed to reject'
-        )
+        toast.error(data.error || 'Failed to reject')
+        if (data.code === 'already_processed') {
+          router.refresh()
+        }
         return
       }
 
@@ -901,13 +934,12 @@ export function AdminOrdersTable({ orders: initialOrders }: AdminOrdersTableProp
         })
       )
 
-      toast.success(
-        'Return rejected'
-      )
+      toast.success('Return rejected')
+      router.refresh()
     } catch {
-      toast.error(
-        'Failed to reject return'
-      )
+      toast.error('Failed to reject return')
+    } finally {
+      setUpdatingId(null)
     }
   }
 
@@ -1184,20 +1216,26 @@ const markDelivered =
   }
 
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 ${isPending ? 'opacity-70 transition-opacity' : ''}`}>
       {/* Filters */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-col sm:flex-row gap-3">
           <input
             type="search"
             placeholder="Search order # or email..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="flex-1 px-4 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
           />
           <select
-            value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value)}
+            value={query.status}
+            onChange={(e) =>
+              navigate({
+                status: e.target.value as AdminOrdersQuery['status'],
+                page: 1,
+              })
+            }
+            disabled={isPending}
             className="px-4 py-2 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
           >
             <option value="all">All Statuses</option>
@@ -1224,6 +1262,20 @@ const markDelivered =
             />
             Sync tracking
           </Button>
+          {hasActiveFilters && (
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={isPending}
+              onClick={() => {
+                setSearchInput('')
+                startTransition(() => router.push(pathname))
+              }}
+              className="shrink-0"
+            >
+              Clear filters
+            </Button>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-end gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
@@ -1283,7 +1335,7 @@ const markDelivered =
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filtered.map((order) => (
+              {orders.map((order) => (
                 <tr key={order.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3 min-w-[200px]">
                     <p className="font-medium text-gray-900">{order.order_number}</p>
@@ -1794,6 +1846,8 @@ const markDelivered =
                                   <Button
                                     size="sm"
                                     className="h-8"
+                                    loading={updatingId === item.id}
+                                    disabled={updatingId === item.id}
                                     onClick={() =>
                                       approveReturn(item.id)
                                     }
@@ -1807,6 +1861,7 @@ const markDelivered =
                                     size="sm"
                                     variant="destructive"
                                     className="h-8"
+                                    disabled={updatingId === item.id}
                                     onClick={() =>
                                       rejectReturn(item.id)
                                     }
@@ -2027,8 +2082,75 @@ const markDelivered =
           </table>
         </div>
 
-        {filtered.length === 0 && (
+        {orders.length === 0 && (
           <div className="py-12 text-center text-gray-400">No orders found</div>
+        )}
+
+        {totalCount > 0 && (
+          <div className="flex flex-col gap-3 border-t border-gray-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-gray-500">
+              Showing{' '}
+              <span className="font-medium text-gray-900">
+                {rangeStart}–{rangeEnd}
+              </span>{' '}
+              of{' '}
+              <span className="font-medium text-gray-900">{totalCount}</span>
+              {hasActiveFilters ? ' matching orders' : ' orders'}
+              <span className="text-gray-400">
+                {' '}
+                · Page {page} of {totalPages} · {ADMIN_ORDERS_PAGE_SIZE} per page
+              </span>
+            </p>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => navigate({ page: Math.max(1, page - 1) })}
+                disabled={page <= 1 || isPending}
+                className="inline-flex h-9 items-center gap-1 rounded-lg border border-gray-300 px-3 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Prev
+              </button>
+
+              {getPageNumbers(page, totalPages).map((entry, index) =>
+                entry === 'ellipsis' ? (
+                  <span
+                    key={`ellipsis-${index}`}
+                    className="px-2 text-sm text-gray-400"
+                  >
+                    …
+                  </span>
+                ) : (
+                  <button
+                    key={entry}
+                    type="button"
+                    onClick={() => navigate({ page: entry })}
+                    disabled={isPending}
+                    className={`inline-flex h-9 min-w-9 items-center justify-center rounded-lg border px-2.5 text-sm transition-colors ${
+                      page === entry
+                        ? 'border-purple-600 bg-purple-600 text-white'
+                        : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    {entry}
+                  </button>
+                )
+              )}
+
+              <button
+                type="button"
+                onClick={() =>
+                  navigate({ page: Math.min(totalPages, page + 1) })
+                }
+                disabled={page >= totalPages || isPending}
+                className="inline-flex h-9 items-center gap-1 rounded-lg border border-gray-300 px-3 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
