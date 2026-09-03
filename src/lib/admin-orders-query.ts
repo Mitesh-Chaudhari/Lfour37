@@ -203,10 +203,15 @@ function applyOrderFilters(
   return next.order('created_at', { ascending: false })
 }
 
+// Supabase nested selects don't produce a clean Order type; keep a loose row
+// shape so AdminOrdersTable can consume the payload without build-time mismatches.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AdminOrderRow = any
+
 function mapOrderRows(
   data: Array<Record<string, unknown>>,
   reasonById: Map<string, string>
-) {
+): AdminOrderRow[] {
   const stuckOrderIds = data
     .filter((order) => {
       const items = (order.items as Array<{ status?: string }>) || []
@@ -245,7 +250,7 @@ function mapOrderRows(
 }
 
 export async function getAdminOrdersPage(query: AdminOrdersQuery): Promise<{
-  orders: ReturnType<typeof mapOrderRows>
+  orders: AdminOrderRow[]
   totalCount: number
   totalOrders: number
   page: number
