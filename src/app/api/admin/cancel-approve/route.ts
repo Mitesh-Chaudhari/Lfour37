@@ -1,18 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireAdminUser } from '@/lib/admin-auth'
 import { areAllOrderItemsCancelled } from '@/lib/order-status'
 import logger from '@/lib/logger'
 
 export async function POST(req: NextRequest) {
-  const supabase = await createClient()
+  const adminUser = await requireAdminUser()
+  if (!adminUser) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
+  const supabase = await createClient()
   const { item_id } = await req.json()
 
   if (!item_id) {
     return NextResponse.json({ error: 'Missing item_id' }, { status: 400 })
   }
 
-  // Get item
   const { data: item } = await supabase
     .from('order_items')
     .select('id, order_id, variant_id, quantity, status')
@@ -23,12 +27,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Item not found' }, { status: 404 })
   }
 
-  // Prevent double approval
   if (item.status === 'cancelled') {
     return NextResponse.json({ success: true })
   }
 
-  // Update status
   const { error } = await supabase
     .from('order_items')
     .update({
@@ -41,7 +43,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Restore stock
   if (item.variant_id) {
     await supabase.rpc('restore_variant_stock', {
       variant_uuid: item.variant_id,

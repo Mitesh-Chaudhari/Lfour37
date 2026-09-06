@@ -3,6 +3,7 @@ import {
   syncActiveDelhiveryReversePickups,
   syncActiveDelhiveryShipments,
 } from '@/lib/delhivery-shipping'
+import { isCronRequestAuthorized } from '@/lib/cron-auth'
 import logger from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
@@ -10,27 +11,10 @@ export const dynamic = 'force-dynamic'
 export async function GET(
   request: NextRequest
 ) {
-  const isVercelCron =
-    request.headers.get(
-      'x-vercel-cron'
-    ) === '1'
-
-  const secret =
-    process.env
-      .DELHIVERY_CRON_SECRET
-
-  const authorization =
-    request.headers.get(
-      'authorization'
-    )
-
-  const isManualCall =
-    authorization ===
-    `Bearer ${secret}`
-
   if (
-    !isVercelCron &&
-    !isManualCall
+    !isCronRequestAuthorized(request, [
+      process.env.DELHIVERY_CRON_SECRET,
+    ])
   ) {
     return NextResponse.json(
       {

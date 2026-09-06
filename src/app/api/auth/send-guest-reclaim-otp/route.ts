@@ -8,6 +8,7 @@ import {
 } from '@/lib/auth-users'
 import { sendWhatsAppTemplate } from '@/lib/whatsapp'
 import { sendEmailOtpEmail } from '@/lib/email'
+import { authRateLimit } from '@/lib/rate-limit'
 import logger from '@/lib/logger'
 import { z } from 'zod'
 
@@ -16,6 +17,9 @@ const schema = z.object({
 })
 
 export async function POST(req: NextRequest) {
+  const rateLimitRes = authRateLimit(req)
+  if (rateLimitRes) return rateLimitRes
+
   try {
     const parsed = schema.safeParse(await req.json())
     if (!parsed.success) {

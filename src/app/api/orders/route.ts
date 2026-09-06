@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { resolveHsnFromCategories, mappingsArrayToRecord } from '@/lib/hsn'
 import { calculatePrepaidDiscount } from '@/lib/prepaid-discount'
 import { resolveDelhiveryPinLocation } from '@/lib/dtdc'
+import { applyCoupon } from '@/lib/utils'
 
 const attributionSchema = z
   .object({
@@ -27,7 +28,8 @@ const createOrderSchema = z.object({
     product_id: z.string().uuid(),
     variant_id: z.string().uuid(),
     quantity: z.number().int().min(1).max(100),
-    unit_price: z.number().min(0),
+    // Client may still send this for UX; server always recalculates from DB.
+    unit_price: z.number().min(0).optional(),
   })).min(1),
   shipping_address: z.object({
     full_name: z.string().min(1),
@@ -41,11 +43,13 @@ const createOrderSchema = z.object({
   }),
   shipping_method_id: z.string().uuid(),
   coupon_code: z.string().nullable().optional(),
-  discount_amount: z.number().min(0).default(0),
+  // Ignored for totals — discount is computed server-side from coupon rules.
+  discount_amount: z.number().min(0).optional().default(0),
   payment_method: z.enum(['razorpay', 'cod']),
   save_address: z.boolean().nullable().optional(),
   attribution: attributionSchema,
 })
+
 
 export async function POST(request: NextRequest) {
   const rateLimitRes = apiRateLimit(request)
@@ -85,7 +89,7 @@ export async function POST(request: NextRequest) {
     const variantIds = data.items.map((i) => i.variant_id)
     const { data: variants } = await supabase
       .from('product_variants')
-      .select('id, stock, product_id, size, color, image_url')
+      .select('id, stock, product_id, size, color, image_url, price_modifier')
       .in('id', variantIds)
       .eq('is_active', true)
 
@@ -93,16 +97,45 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'One or more items are unavailable' }, { status: 400 })
     }
 
+    const productIdsForPrice = [...new Set(data.items.map((i) => i.product_id))]
+    const { data: pricedProducts } = await supabase
+      .from('products')
+      .select('id, price, status')
+      .in('id', productIdsForPrice)
+
+    if (!pricedProducts || pricedProducts.length !== productIdsForPrice.length) {
+      return NextResponse.json({ error: 'One or more products are unavailable' }, { status: 400 })
+    }
+
+    const serverUnitPrices = new Map<string, number>()
     for (const item of data.items) {
       const variant = variants.find((v) => v.id === item.variant_id)
       if (!variant) {
         return NextResponse.json({ error: `Variant ${item.variant_id} not found` }, { status: 400 })
+      }
+      if (variant.product_id !== item.product_id) {
+        return NextResponse.json({ error: 'Product/variant mismatch' }, { status: 400 })
       }
       if (variant.stock < item.quantity) {
         return NextResponse.json({
           error: `Insufficient stock for ${variant.size}/${variant.color}. Only ${variant.stock} available.`
         }, { status: 400 })
       }
+
+      const product = pricedProducts.find((p) => p.id === item.product_id)
+      if (!product || product.status !== 'active') {
+        return NextResponse.json({ error: 'One or more products are unavailable' }, { status: 400 })
+      }
+
+      const unitPrice = Number(
+        (
+          Number(product.price || 0) + Number(variant.price_modifier || 0)
+        ).toFixed(2)
+      )
+      if (unitPrice < 0) {
+        return NextResponse.json({ error: 'Invalid product price' }, { status: 400 })
+      }
+      serverUnitPrices.set(item.variant_id, unitPrice)
     }
 
     // Validate shipping method
@@ -124,9 +157,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate coupon if provided
+    // Validate coupon if provided — discount always computed server-side
     let couponId: string | null = null
-    let validatedDiscount = data.discount_amount
+    let validatedDiscount = 0
 
     if (data.coupon_code) {
       const { data: coupon } = await supabase
@@ -149,10 +182,41 @@ export async function POST(request: NextRequest) {
       }
 
       couponId = coupon.id
+
+      const provisionalSubtotal = data.items.reduce(
+        (sum, item) =>
+          sum + (serverUnitPrices.get(item.variant_id) || 0) * item.quantity,
+        0
+      )
+
+      if (
+        coupon.minimum_order_amount &&
+        provisionalSubtotal < Number(coupon.minimum_order_amount)
+      ) {
+        return NextResponse.json(
+          {
+            error: `Minimum order amount of ${coupon.minimum_order_amount} required`,
+          },
+          { status: 400 }
+        )
+      }
+
+      validatedDiscount = applyCoupon(provisionalSubtotal, {
+        discount_type: coupon.discount_type,
+        discount_value: Number(coupon.discount_value),
+        maximum_discount_amount:
+          coupon.maximum_discount_amount != null
+            ? Number(coupon.maximum_discount_amount)
+            : null,
+      })
     }
 
-    // Calculate totals
-    const subtotal = data.items.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
+    // Calculate totals from server prices only
+    const subtotal = data.items.reduce(
+      (sum, item) =>
+        sum + (serverUnitPrices.get(item.variant_id) || 0) * item.quantity,
+      0
+    )
     const couponDiscount = Math.min(validatedDiscount, subtotal)
     // Extra prepaid discount computed server-side from the payment method —
     // never trusted from the client
@@ -287,6 +351,7 @@ export async function POST(request: NextRequest) {
   const orderItems = data.items.map((item) => {
     const product = products?.find((p) => p.id === item.product_id)
     const variant = variants.find((v) => v.id === item.variant_id)
+    const unitPrice = serverUnitPrices.get(item.variant_id) || 0
 
     return {
       order_id: order.id,
@@ -303,8 +368,8 @@ export async function POST(request: NextRequest) {
       variant_size: variant?.size || null,
       variant_color: variant?.color || null,
       quantity: item.quantity,
-      unit_price: item.unit_price,
-      total_price: Number((item.unit_price * item.quantity).toFixed(2)),
+      unit_price: unitPrice,
+      total_price: Number((unitPrice * item.quantity).toFixed(2)),
       hsn_code:
         product?.hsn_code ||
         resolvedHsnByProductId[item.product_id] ||

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { sendEmailOtpEmail } from '@/lib/email'
 import { getAuthUserByEmail } from '@/lib/auth-users'
+import { authRateLimit } from '@/lib/rate-limit'
 import logger from '@/lib/logger'
 import { z } from 'zod'
 
@@ -10,6 +11,9 @@ const schema = z.object({
 })
 
 export async function POST(req: NextRequest) {
+  const rateLimitRes = authRateLimit(req)
+  if (rateLimitRes) return rateLimitRes
+
   try {
     const parsed = schema.safeParse(await req.json())
     if (!parsed.success) {

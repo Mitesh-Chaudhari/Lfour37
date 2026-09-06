@@ -6,6 +6,7 @@ import {
   phoneHint,
   resolveAccountPhone,
 } from '@/lib/auth-users'
+import { authRateLimit } from '@/lib/rate-limit'
 import logger from '@/lib/logger'
 import { z } from 'zod'
 
@@ -14,6 +15,9 @@ const schema = z.object({
 })
 
 export async function POST(req: NextRequest) {
+  const rateLimitRes = authRateLimit(req)
+  if (rateLimitRes) return rateLimitRes
+
   try {
     const parsed = schema.safeParse(await req.json())
     if (!parsed.success) {
@@ -53,10 +57,10 @@ export async function POST(req: NextRequest) {
         })
       : false
 
+    // Do not return full phone — only masked hint for reclaim UX.
     return NextResponse.json({
       exists: true,
       has_phone: hasPhone,
-      phone: phone || null,
       phone_hint: hasPhone ? phoneHint(phone) : null,
       phone_verified: phoneVerified,
       full_name: fullName || null,

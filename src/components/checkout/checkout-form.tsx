@@ -290,12 +290,8 @@ export function CheckoutForm({
           if (data.full_name) {
             setValue('full_name', data.full_name)
           }
-          const savedPhone = String(data.phone || '')
-            .replace(/\D/g, '')
-            .slice(-10)
-          if (savedPhone.length === 10) {
-            setValue('phone', savedPhone, { shouldValidate: true })
-          }
+          // Full phone is no longer returned from guest-lookup (PII).
+          // Prefill happens after reclaim OTP via saved addresses.
         } else {
           setReclaimChannel(null)
           setReclaimPhoneHint(null)

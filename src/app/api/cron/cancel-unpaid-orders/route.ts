@@ -1,22 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { cancelExpiredUnpaidOrders } from '@/lib/cancel-unpaid-orders'
+import { isCronRequestAuthorized } from '@/lib/cron-auth'
 import logger from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
 function isAuthorized(request: NextRequest): boolean {
-  const isVercelCron = request.headers.get('x-vercel-cron') === '1'
-
-  const secret =
-    process.env.CANCEL_UNPAID_ORDERS_CRON_SECRET ||
-    process.env.DELHIVERY_CRON_SECRET ||
-    process.env.ABANDONED_CART_CRON_SECRET
-
-  const authorization = request.headers.get('authorization')
-  const isManualCall = Boolean(secret) && authorization === `Bearer ${secret}`
-
-  return isVercelCron || isManualCall
+  return isCronRequestAuthorized(request, [
+    process.env.CANCEL_UNPAID_ORDERS_CRON_SECRET,
+    process.env.DELHIVERY_CRON_SECRET,
+    process.env.ABANDONED_CART_CRON_SECRET,
+  ])
 }
 
 export async function GET(request: NextRequest) {

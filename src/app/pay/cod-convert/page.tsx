@@ -85,7 +85,7 @@ function CodConvertContent() {
       fetch('/api/payments/cod-to-prepaid/initiate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: payload.orderId }),
+        body: JSON.stringify({ order_id: payload.orderId, token }),
       })
         .then((r) => r.json())
         .then((data) => {

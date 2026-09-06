@@ -15,6 +15,7 @@ import {
   notifyCodPrepaidReminder1,
   notifyCodPrepaidReminder2,
 } from '@/lib/whatsapp/cod-prepaid'
+import { isCronRequestAuthorized } from '@/lib/cron-auth'
 import logger from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
@@ -23,13 +24,11 @@ const REMINDER_1_MS = 20 * 60 * 1000
 const REMINDER_2_MS = 40 * 60 * 1000
 
 function isAuthorized(request: NextRequest): boolean {
-  const isVercelCron = request.headers.get('x-vercel-cron') === '1'
-  const secret =
-    process.env.COD_PREPAID_CRON_SECRET ||
-    process.env.DELHIVERY_CRON_SECRET ||
-    process.env.ABANDONED_CART_CRON_SECRET
-  const authorization = request.headers.get('authorization')
-  return isVercelCron || (Boolean(secret) && authorization === `Bearer ${secret}`)
+  return isCronRequestAuthorized(request, [
+    process.env.COD_PREPAID_CRON_SECRET,
+    process.env.DELHIVERY_CRON_SECRET,
+    process.env.ABANDONED_CART_CRON_SECRET,
+  ])
 }
 
 function getPhone(address: Record<string, unknown> | null): string | null {

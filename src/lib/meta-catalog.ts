@@ -187,7 +187,7 @@ export function buildCatalogCsv(rows: CatalogRow[]): string {
 /**
  * Validates the incoming request's feed secret.
  * - If META_CATALOG_FEED_SECRET is set, the request must supply a matching `?token=`.
- * - If it is not set, the feed is public (not recommended for production).
+ * - If unset, the feed stays reachable (set the secret in production).
  */
 export function isCatalogRequestAuthorized(token: string | null): boolean {
   const secret = process.env.META_CATALOG_FEED_SECRET

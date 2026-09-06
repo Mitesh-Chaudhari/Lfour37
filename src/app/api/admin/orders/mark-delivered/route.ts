@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireAdminUser } from '@/lib/admin-auth'
 import { markCodCollectedOnDelivery } from '@/lib/cod-payment'
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = await createClient()
+    const adminUser = await requireAdminUser()
+    if (!adminUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
 
+    const supabase = await createClient()
     const { orderId } = await req.json()
 
     if (!orderId) {

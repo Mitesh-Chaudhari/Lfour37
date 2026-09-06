@@ -3,10 +3,14 @@ from 'next/server'
 
 import { createAdminClient }
 from '@/lib/supabase/server'
+import { authRateLimit } from '@/lib/rate-limit'
 
 export async function POST(
   req: NextRequest
 ) {
+  const rateLimitRes = authRateLimit(req)
+  if (rateLimitRes) return rateLimitRes
+
   try {
 
     const supabase =
