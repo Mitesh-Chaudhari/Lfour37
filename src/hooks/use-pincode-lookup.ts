@@ -1,6 +1,9 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { apiGet } from '@/lib/api/client'
+import { queryKeys } from '@/lib/query-keys'
 
 export type PincodeStatus =
   | 'idle'
@@ -24,69 +27,72 @@ export interface PincodeData {
  * Watches a PIN code value and looks up city/state (+ Delhivery serviceability)
  * once 6 digits are entered. `onAutofill` fires with the result so the caller
  * can populate its form fields.
+ *
+ * Same return shape as before (`status`, `data`) — backed by React Query cache.
  */
 export function usePincodeLookup(
   pin: string | undefined,
   onAutofill?: (data: PincodeData) => void
 ) {
-  const [status, setStatus] = useState<PincodeStatus>('idle')
-  const [data, setData] = useState<PincodeData | null>(null)
-
-  // Keep the latest callback without retriggering the effect
+  const [debouncedPin, setDebouncedPin] = useState('')
   const onAutofillRef = useRef(onAutofill)
   onAutofillRef.current = onAutofill
-  const lastLookedUpRef = useRef<string | null>(null)
+  const lastAutofillKey = useRef<string | null>(null)
 
   const normalized = (pin ?? '').trim()
   const isComplete = /^\d{6}$/.test(normalized)
 
   useEffect(() => {
     if (!isComplete) {
-      setStatus('idle')
-      setData(null)
-      lastLookedUpRef.current = null
+      setDebouncedPin('')
+      lastAutofillKey.current = null
       return
     }
 
-    if (lastLookedUpRef.current === normalized) return
-
-    const controller = new AbortController()
-    // Debounce so we don't fire while the user is still typing/correcting
-    const timer = window.setTimeout(async () => {
-      setStatus('loading')
-      try {
-        const res = await fetch(`/api/pincode?code=${normalized}`, {
-          signal: controller.signal,
-        })
-        if (!res.ok) throw new Error('Pincode lookup failed')
-
-        const result: PincodeData = await res.json()
-        lastLookedUpRef.current = normalized
-        setData(result)
-
-        if (result.serviceable === false) {
-          setStatus('unserviceable')
-        } else if (result.city || result.state) {
-          setStatus('success')
-        } else {
-          setStatus('error')
-        }
-
-        if (result.city || result.state) {
-          onAutofillRef.current?.(result)
-        }
-      } catch (error) {
-        if ((error as Error).name === 'AbortError') return
-        setStatus('error')
-        setData(null)
-      }
+    const timer = window.setTimeout(() => {
+      setDebouncedPin(normalized)
     }, 400)
 
-    return () => {
-      controller.abort()
-      window.clearTimeout(timer)
-    }
+    return () => window.clearTimeout(timer)
   }, [normalized, isComplete])
 
-  return { status, data }
+  const query = useQuery({
+    queryKey: queryKeys.pincode(debouncedPin),
+    queryFn: () => apiGet<PincodeData>(`/api/pincode?code=${debouncedPin}`),
+    enabled: /^\d{6}$/.test(debouncedPin),
+    staleTime: 15 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    retry: 1,
+  })
+
+  useEffect(() => {
+    if (!query.data || !debouncedPin) return
+    if (lastAutofillKey.current === debouncedPin) return
+    if (!(query.data.city || query.data.state)) return
+
+    lastAutofillKey.current = debouncedPin
+    onAutofillRef.current?.(query.data)
+  }, [query.data, debouncedPin])
+
+  let status: PincodeStatus = 'idle'
+  if (!isComplete) {
+    status = 'idle'
+  } else if (!debouncedPin || query.isFetching) {
+    status = 'loading'
+  } else if (query.isError) {
+    status = 'error'
+  } else if (query.data?.serviceable === false) {
+    status = 'unserviceable'
+  } else if (query.data?.city || query.data?.state) {
+    status = 'success'
+  } else if (query.data) {
+    status = 'error'
+  } else {
+    status = 'loading'
+  }
+
+  return {
+    status,
+    data: isComplete && debouncedPin ? query.data ?? null : null,
+  }
 }

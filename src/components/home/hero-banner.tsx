@@ -7,65 +7,31 @@ import { ArrowRight } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import type { HeroSlide } from '@/lib/hero-slides'
+import { useHeroSlides } from '@/hooks/use-hero-slides'
 
 interface HeroBannerProps {
   initialSlides?: HeroSlide[]
 }
 
-async function fetchHeroSlides(): Promise<HeroSlide[]> {
-  const res = await fetch('/api/hero-slides', {
-    cache: 'no-store',
+export function HeroBanner({ initialSlides = [] }: HeroBannerProps) {
+  const { data: slides = [], isLoading } = useHeroSlides({
+    initialData: initialSlides,
+    // Only hit the API when SSR didn't provide slides
+    enabled: initialSlides.length === 0,
   })
 
-  if (!res.ok) {
-    throw new Error(`Failed to load hero slides (${res.status})`)
-  }
-
-  return res.json()
-}
-
-export function HeroBanner({ initialSlides = [] }: HeroBannerProps) {
-  const [slides, setSlides] = useState<HeroSlide[]>(initialSlides)
   const [current, setCurrent] = useState(0)
   const [fading, setFading] = useState(false)
-  const [loading, setLoading] = useState(initialSlides.length === 0)
+
+  const loading = initialSlides.length === 0 && isLoading
 
   useEffect(() => {
-    if (initialSlides.length > 0) {
-      setSlides(initialSlides)
-      setLoading(false)
-      return
-    }
-
-    let cancelled = false
-
-    const loadSlides = async () => {
-      setLoading(true)
-      try {
-        const data = await fetchHeroSlides()
-        if (!cancelled) {
-          setSlides(data)
-        }
-      } catch (error) {
-        console.error('Failed to load hero slides:', error)
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      }
-    }
-
-    loadSlides()
-
-    return () => {
-      cancelled = true
-    }
-  }, [initialSlides])
+    setCurrent(0)
+  }, [slides])
 
   useEffect(() => {
     if (slides.length <= 1) return
 
-    // Give video slides more time on screen before rotating
     const activeSlide = slides[current]
     const hasVideo = Boolean(
       activeSlide?.video_url?.trim() || activeSlide?.mobile_video_url?.trim()
@@ -112,14 +78,12 @@ export function HeroBanner({ initialSlides = [] }: HeroBannerProps) {
   const desktopImage = slide.image_url?.trim() || null
   const desktopVideo = slide.video_url?.trim() || null
   const mobileImage = slide.mobile_image_url?.trim() || desktopImage
-  // Explicit mobile media wins; otherwise fall back to the desktop media
   const mobileVideo =
     slide.mobile_video_url?.trim() ||
     (slide.mobile_image_url?.trim() ? null : desktopVideo)
 
   return (
     <section className="relative overflow-hidden text-white min-h-[90vh] flex flex-col justify-center bg-gray-950">
-      {/* Desktop media: video takes precedence, image is used as poster/fallback */}
       {desktopVideo ? (
         <video
           key={`${slide.id}-desktop-video`}
@@ -150,7 +114,6 @@ export function HeroBanner({ initialSlides = [] }: HeroBannerProps) {
         />
       ) : null}
 
-      {/* Mobile media */}
       {mobileVideo ? (
         <video
           key={`${slide.id}-mobile-video`}
@@ -181,26 +144,14 @@ export function HeroBanner({ initialSlides = [] }: HeroBannerProps) {
         />
       ) : null}
 
-      {/* Dark overlay */}
-      {/* <div className="absolute inset-0 bg-black/60" /> */}
-
-      {/* Grid lines */}
-      {/* <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff06_1px,transparent_1px),linear-gradient(to_bottom,#ffffff06_1px,transparent_1px)] bg-[size:72px_72px]" /> */}
-
-      {/* Gradient */}
-      {/* <div className={`absolute inset-0 bg-gradient-to-br ${slide.accent} opacity-[0.15]`} /> */}
-
       <div className="relative container mx-auto px-4 py-28 lg:py-36">
         <div className="max-w-5xl mx-auto text-center">
-
-          {/* Badge */}
           <div className={`transition-all duration-300 ${fading ? 'opacity-0 -translate-y-3' : 'opacity-100'}`}>
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 backdrop-blur-md px-5 py-2 text-sm text-white/70 mb-8">
               {slide.badge}
             </div>
           </div>
 
-          {/* Title */}
           <div className={`transition-all duration-300 ${fading ? 'opacity-0 translate-y-5' : 'opacity-100'}`}>
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-black leading-tight mb-8">
               {words.map((word, i) =>
@@ -215,24 +166,13 @@ export function HeroBanner({ initialSlides = [] }: HeroBannerProps) {
             </h1>
           </div>
 
-          {/* Subtitle */}
           <div className={`transition-all duration-300 ${fading ? 'opacity-0 translate-y-5' : 'opacity-100'}`}>
             <p className="text-lg sm:text-xl text-white/70 mb-12 max-w-2xl mx-auto">
               {slide.subtitle}
             </p>
           </div>
 
-          {/* Buttons */}
           <div className={`flex flex-col sm:flex-row justify-center gap-4 transition-all duration-300 ${fading ? 'opacity-0 translate-y-5' : 'opacity-100'}`}>
-            {/* <Button
-              size="lg"
-              asChild
-              className={`bg-gradient-to-r ${slide.accent} border-0 text-white px-8 rounded-full`}
-            >
-              <Link href={slide.cta_link || '/products'}>
-                {slide.cta_text} <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button> */}
             <Button
               size="lg"
               asChild
@@ -255,12 +195,10 @@ export function HeroBanner({ initialSlides = [] }: HeroBannerProps) {
                 </Link>
               </Button>
             )}
-
           </div>
         </div>
       </div>
 
-      {/* Dots */}
       <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex gap-2 z-10">
         {slides.map((_, i) => (
           <button

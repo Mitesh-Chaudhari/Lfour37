@@ -19,16 +19,8 @@ import {
   getRecentSearches,
   removeRecentSearch,
   saveRecentSearch,
-  type SearchCategoryResult,
-  type SearchProductResult,
 } from '@/lib/search'
-
-interface SearchResponse {
-  products: SearchProductResult[]
-  categories: SearchCategoryResult[]
-  trending?: string[]
-  query?: string
-}
+import { useSearch } from '@/hooks/use-search'
 
 interface GlobalSearchProps {
   onClose: () => void
@@ -50,41 +42,26 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
 
   const [query, setQuery] = useState('')
   const [showSuggestions, setShowSuggestions] = useState(false)
-  const [loading, setLoading] = useState(false)
   const [recentSearches, setRecentSearches] = useState<string[]>([])
-  const [results, setResults] = useState<SearchResponse>({
+
+  const debouncedQuery = useDebounce(query.trim(), 300)
+  const { data: results, isFetching, isLoading } = useSearch(debouncedQuery, {
+    enabled: showSuggestions,
+  })
+
+  const searchResults = results ?? {
     products: [],
     categories: [],
     trending: [],
-  })
-
-  const debouncedQuery = useDebounce(query.trim(), 300)
+  }
 
   const loadRecentSearches = useCallback(() => {
     setRecentSearches(getRecentSearches())
   }, [])
 
-  const fetchSuggestions = useCallback(async (term: string) => {
-    setLoading(true)
-    try {
-      const url = term
-        ? `/api/search?q=${encodeURIComponent(term)}`
-        : '/api/search'
-      const res = await fetch(url)
-      if (!res.ok) return
-      const data = (await res.json()) as SearchResponse
-      setResults(data)
-    } catch {
-      // ignore fetch errors
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
   useEffect(() => {
     loadRecentSearches()
-    fetchSuggestions(debouncedQuery)
-  }, [debouncedQuery, fetchSuggestions, loadRecentSearches])
+  }, [loadRecentSearches])
 
   useEffect(() => {
     requestAnimationFrame(() => inputRef.current?.focus())
@@ -137,11 +114,19 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
     loadRecentSearches()
   }
 
+  // Show spinner only when there is nothing useful to display yet
+  const loading =
+    isLoading ||
+    (isFetching &&
+      searchResults.products.length === 0 &&
+      searchResults.categories.length === 0 &&
+      !(searchResults.trending?.length))
   const hasQuery = debouncedQuery.length > 0
   const hasResults =
-    results.products.length > 0 || results.categories.length > 0
+    searchResults.products.length > 0 || searchResults.categories.length > 0
   const showTrending =
-    !hasQuery && (results.trending?.length || recentSearches.length > 0)
+    !hasQuery &&
+    ((searchResults.trending?.length || 0) > 0 || recentSearches.length > 0)
 
   return (
     <div className="border-t border-gray-100 bg-white px-4 py-3">
@@ -223,35 +208,37 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
                     </section>
                   )}
 
-                  {!hasQuery && results.trending && results.trending.length > 0 && (
-                    <section className="mb-2">
-                      <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        Trending
-                      </p>
-                      <ul>
-                        {results.trending.map((term) => (
-                          <li key={term}>
-                            <button
-                              type="button"
-                              onClick={() => handleSelect(term)}
-                              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-purple-50"
-                            >
-                              <TrendingUp className="h-4 w-4 shrink-0 text-purple-500" />
-                              <span className="truncate">{term}</span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </section>
-                  )}
+                  {!hasQuery &&
+                    searchResults.trending &&
+                    searchResults.trending.length > 0 && (
+                      <section className="mb-2">
+                        <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                          Trending
+                        </p>
+                        <ul>
+                          {searchResults.trending.map((term) => (
+                            <li key={term}>
+                              <button
+                                type="button"
+                                onClick={() => handleSelect(term)}
+                                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-purple-50"
+                              >
+                                <TrendingUp className="h-4 w-4 shrink-0 text-purple-500" />
+                                <span className="truncate">{term}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    )}
 
-                  {hasQuery && results.categories.length > 0 && (
+                  {hasQuery && searchResults.categories.length > 0 && (
                     <section className="mb-2">
                       <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
                         Categories
                       </p>
                       <ul>
-                        {results.categories.map((category) => (
+                        {searchResults.categories.map((category) => (
                           <li key={category.id}>
                             <Link
                               href={`/products?category=${category.slug}`}
@@ -290,13 +277,13 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
                     </section>
                   )}
 
-                  {hasQuery && results.products.length > 0 && (
+                  {hasQuery && searchResults.products.length > 0 && (
                     <section>
                       <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
                         Products
                       </p>
                       <ul>
-                        {results.products.map((product) => (
+                        {searchResults.products.map((product) => (
                           <li key={product.id}>
                             <Link
                               href={`/products/${product.slug}`}
@@ -366,13 +353,13 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
                     </button>
                   )}
 
-                  {!hasQuery && !showTrending && results.products.length > 0 && (
+                  {!hasQuery && !showTrending && searchResults.products.length > 0 && (
                     <section>
                       <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
                         Popular Right Now
                       </p>
                       <ul>
-                        {results.products.slice(0, 4).map((product) => (
+                        {searchResults.products.slice(0, 4).map((product) => (
                           <li key={product.id}>
                             <Link
                               href={`/products/${product.slug}`}
