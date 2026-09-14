@@ -30,7 +30,7 @@ import {
   normalizeVariantSize,
 } from '@/lib/product-variants'
 import { getClientAdminBrandId } from '@/lib/organization'
-import { generateVariantBarcode } from '@/lib/inventory'
+import { generateVariantBarcode } from '@/lib/barcode'
 
 interface ProductFormProps {
   categories: {
