@@ -13,6 +13,7 @@ import {
   shouldApplyListSortOrder,
 } from '@/lib/products'
 import { getProductIdsMatchingVariantFilters } from '@/lib/product-variant-filters'
+import { getStorefrontBrandId } from '@/lib/organization-server'
 
 export async function GET(
   req: NextRequest
@@ -20,10 +21,23 @@ export async function GET(
   const supabase =
     await createClient()
 
-  const { data: allCategories } = await supabase
+  let storefrontBrandId: string | null = null
+  try {
+    storefrontBrandId = await getStorefrontBrandId()
+  } catch {
+    // Migration may not be applied yet.
+  }
+
+  let categoriesQuery = supabase
     .from('categories')
     .select('id, name, slug, parent_id')
     .eq('is_active', true)
+
+  if (storefrontBrandId) {
+    categoriesQuery = categoriesQuery.eq('brand_id', storefrontBrandId)
+  }
+
+  const { data: allCategories } = await categoriesQuery
 
   const searchParams =
     req.nextUrl.searchParams
@@ -124,6 +138,10 @@ export async function GET(
       'status',
       'active'
     )
+
+  if (storefrontBrandId) {
+    query = query.eq('brand_id', storefrontBrandId)
+  }
 
   //////////////////////////////////////////////////////
   // CATEGORY FILTER (multi-select, OR match)

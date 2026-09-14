@@ -26,6 +26,7 @@ import {
   detectPurchasePriceKind,
 } from '@/lib/purchase-price'
 import toast from 'react-hot-toast'
+import { getClientAdminBrandId } from '@/lib/organization'
 
 type ProductRecord = {
   id: string
@@ -39,12 +40,14 @@ type CategoryIdRecord = {
 async function getOrCreateCategory(
   supabase: ReturnType<typeof createClient>,
   slug: string,
-  parentId: string | null
+  parentId: string | null,
+  brandId: string
 ): Promise<CategoryIdRecord> {
   const { data: existingCategory, error: fetchError } = await supabase
     .from('categories')
     .select('id')
     .eq('slug', slug)
+    .eq('brand_id', brandId)
     .maybeSingle()
 
   if (fetchError) {
@@ -62,6 +65,7 @@ async function getOrCreateCategory(
       slug,
       parent_id: parentId,
       is_active: true,
+      brand_id: brandId,
     })
     .select('id')
     .single()
@@ -76,7 +80,8 @@ async function getOrCreateCategory(
 async function linkProductCategory(
   supabase: ReturnType<typeof createClient>,
   productId: string,
-  categorySlugPath?: string
+  categorySlugPath: string | undefined,
+  brandId: string
 ) {
   if (!categorySlugPath?.trim()) return
 
@@ -87,7 +92,7 @@ async function linkProductCategory(
 
   for (let index = 0; index < categorySlugs.length; index++) {
     const slug = categorySlugs[index]
-    const category = await getOrCreateCategory(supabase, slug, parentId)
+    const category = await getOrCreateCategory(supabase, slug, parentId, brandId)
 
     if (index === categorySlugs.length - 1) {
       await supabase.from('product_categories').upsert(
@@ -103,7 +108,11 @@ async function linkProductCategory(
   }
 }
 
-function buildProductInsert(row: BulkUploadRow, productSlug: string) {
+function buildProductInsert(
+  row: BulkUploadRow,
+  productSlug: string,
+  brandId: string
+) {
   const listSortOrder = parseOptionalNumber(row.list_sort_order)
   const comparePrice = parseOptionalNumber(row.compare_price)
   const categoryHint = row.category_slug || ''
@@ -118,6 +127,7 @@ function buildProductInsert(row: BulkUploadRow, productSlug: string) {
   return {
     name: row.name!,
     slug: productSlug,
+    brand_id: brandId,
     price: Number(row.price),
     compare_price: comparePrice != null && comparePrice > 0 ? comparePrice : null,
     cost_price: computePurchasePrice(comparePrice, purchaseKind),
@@ -162,15 +172,14 @@ export function ProductBulkUpload() {
       }
 
       const supabase = createClient()
+      const brandId = getClientAdminBrandId()
       const productCache: Record<string, ProductRecord> = {}
       let successCount = 0
       let errorCount = 0
 
       for (const row of rows) {
         try {
-          const productSlug =
-            row.slug?.trim() || (row.name ? slugifyProduct(row.name) : '')
-
+          const productSlug = slugifyProduct(row.slug || row.name || '')
           if (!productSlug) {
             errorCount++
             continue
@@ -179,18 +188,33 @@ export function ProductBulkUpload() {
           let product = productCache[productSlug]
 
           if (!product) {
+            const { data: existing } = await supabase
+              .from('products')
+              .select('id, slug')
+              .eq('slug', productSlug)
+              .eq('brand_id', brandId)
+              .maybeSingle()
+
+            if (existing) {
+              product = existing
+              productCache[productSlug] = product
+            }
+          }
+
+          if (!product) {
             if (!row.name?.trim() || !row.price?.trim()) {
               errorCount++
               continue
             }
 
-            const productData = buildProductInsert(row, productSlug)
+            const productData = buildProductInsert(row, productSlug, brandId)
 
             if (productData.list_sort_order != null) {
               const { data: duplicateSort } = await supabase
                 .from('products')
                 .select('id')
                 .eq('list_sort_order', productData.list_sort_order)
+                .eq('brand_id', brandId)
                 .maybeSingle()
 
               if (duplicateSort) {
@@ -216,15 +240,14 @@ export function ProductBulkUpload() {
 
             product = data
             productCache[productSlug] = product
-
-            try {
-              await linkProductCategory(supabase, product.id, row.category_slug)
-            } catch (categoryError) {
-              console.error(categoryError)
-              errorCount++
-              continue
-            }
           }
+
+          await linkProductCategory(
+            supabase,
+            product.id,
+            row.category_slug,
+            brandId
+          )
 
           {
             const size = normalizeVariantSize(row.size)

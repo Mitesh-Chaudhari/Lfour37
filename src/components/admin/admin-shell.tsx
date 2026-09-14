@@ -9,10 +9,22 @@ const COLLAPSED_KEY = 'admin_sidebar_collapsed'
 
 interface AdminShellProps {
   user: { full_name: string | null; email: string; role: string }
+  brands?: Array<{
+    id: string
+    name: string
+    slug: string
+    is_active: boolean
+  }>
+  selectedBrandId?: string
   children: React.ReactNode
 }
 
-export function AdminShell({ user, children }: AdminShellProps) {
+export function AdminShell({
+  user,
+  brands = [],
+  selectedBrandId = 'all',
+  children,
+}: AdminShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const [ready, setReady] = useState(false)
@@ -68,6 +80,8 @@ export function AdminShell({ user, children }: AdminShellProps) {
 
       <AdminSidebar
         user={user}
+        brands={brands}
+        selectedBrandId={selectedBrandId}
         mobileOpen={mobileOpen}
         collapsed={collapsed}
         onMobileClose={() => setMobileOpen(false)}

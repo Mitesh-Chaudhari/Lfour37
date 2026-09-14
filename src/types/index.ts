@@ -29,6 +29,7 @@ export interface User {
 
 export interface Category {
   id: string
+  brand_id?: string
   name: string
   slug: string
   description: string | null
@@ -52,6 +53,7 @@ export interface ProductImage {
 
 export interface Product {
   id: string
+  brand_id?: string
   name: string
   slug: string
   description: string | null
@@ -96,6 +98,7 @@ export interface ProductVariant {
   stock: number
   price_modifier: number
   sku: string | null
+  barcode?: string | null
   image_url: string | null
   is_active: boolean
   created_at: string
@@ -159,6 +162,10 @@ export interface Order {
   id: string
   order_number: string
   user_id: string
+  brand_id?: string
+  company_id?: string
+  location_id?: string | null
+  sales_channel?: 'online' | 'pos'
   status: OrderStatus
   subtotal: number
   discount_amount: number

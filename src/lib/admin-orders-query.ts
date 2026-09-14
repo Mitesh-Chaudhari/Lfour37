@@ -6,6 +6,7 @@ import {
   type AdminOrdersQuery,
 } from '@/lib/admin-orders'
 import logger from '@/lib/logger'
+import { getAdminBrandFilterId } from '@/lib/organization-server'
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>
 
@@ -260,8 +261,22 @@ export async function getAdminOrdersPage(query: AdminOrdersQuery): Promise<{
   const supabase = await createClient()
   const pageSize = ADMIN_ORDERS_PAGE_SIZE
 
+  let brandId: string | null = null
+  try {
+    brandId = await getAdminBrandFilterId()
+  } catch {
+    brandId = null
+  }
+
+  let totalOrdersQuery = supabase
+    .from('orders')
+    .select('id', { count: 'exact', head: true })
+  if (brandId) {
+    totalOrdersQuery = totalOrdersQuery.eq('brand_id', brandId)
+  }
+
   const [{ count: totalOrders }, { data: returnReasons }] = await Promise.all([
-    supabase.from('orders').select('id', { count: 'exact', head: true }),
+    totalOrdersQuery,
     supabase.from('return_reasons').select('id, label'),
   ])
 
@@ -274,11 +289,14 @@ export async function getAdminOrdersPage(query: AdminOrdersQuery): Promise<{
   const runPage = async (page: number) => {
     const from = (page - 1) * pageSize
     const to = from + pageSize - 1
-    const dbQuery = applyOrderFilters(
+    let dbQuery = applyOrderFilters(
       supabase.from('orders').select(ORDER_SELECT, { count: 'exact' }),
       query,
       filters
     )
+    if (brandId) {
+      dbQuery = dbQuery.eq('brand_id', brandId)
+    }
     return dbQuery.range(from, to)
   }
 

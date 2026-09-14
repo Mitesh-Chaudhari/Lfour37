@@ -1,6 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { AdminShell } from '@/components/admin/admin-shell'
+import {
+  getAdminSelectedBrandId,
+  listBrands,
+} from '@/lib/organization-server'
+import { LFOUR37_BRAND_ID } from '@/lib/organization'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,5 +31,22 @@ export default async function AdminLayout({
     redirect('/')
   }
 
-  return <AdminShell user={userData}>{children}</AdminShell>
+  let brands: Awaited<ReturnType<typeof listBrands>> = []
+  let selectedBrandId = LFOUR37_BRAND_ID
+  try {
+    brands = await listBrands()
+    selectedBrandId = await getAdminSelectedBrandId()
+  } catch {
+    // Migration 046 may not be applied yet — admin still works.
+  }
+
+  return (
+    <AdminShell
+      user={userData}
+      brands={brands}
+      selectedBrandId={selectedBrandId}
+    >
+      {children}
+    </AdminShell>
+  )
 }

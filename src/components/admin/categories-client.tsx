@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
+import { getClientAdminBrandId } from '@/lib/organization'
 
 const categorySchema = z.object({
   name: z.string().min(2).max(100),
@@ -124,6 +125,7 @@ export function CategoriesClient({
         description: data.description || null,
         seo_title: data.seo_title || null,
         seo_description: data.seo_description || null,
+        ...(editingId ? {} : { brand_id: getClientAdminBrandId() }),
       }
 
       if (editingId) {

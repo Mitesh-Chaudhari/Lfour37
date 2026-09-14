@@ -6,6 +6,7 @@ import {
   type AdminProduct,
   type AdminProductsQuery,
 } from '@/lib/admin-products'
+import { getAdminBrandFilterId } from '@/lib/organization-server'
 
 function escapeIlike(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
@@ -142,15 +143,28 @@ export async function getAdminProductsPage(query: AdminProductsQuery): Promise<{
   query: AdminProductsQuery
 }> {
   const supabase = await createClient()
+  let brandId: string | null = null
+  try {
+    brandId = await getAdminBrandFilterId()
+  } catch {
+    brandId = null
+  }
+
+  let totalProductsQuery = supabase
+    .from('products')
+    .select('id', { count: 'exact', head: true })
+  let categoriesQuery = supabase
+    .from('categories')
+    .select('id, name, slug, parent_id')
+    .order('sort_order', { ascending: true })
+
+  if (brandId) {
+    totalProductsQuery = totalProductsQuery.eq('brand_id', brandId)
+    categoriesQuery = categoriesQuery.eq('brand_id', brandId)
+  }
 
   const [{ count: totalProducts }, { data: categoriesData }] = await Promise.all(
-    [
-      supabase.from('products').select('id', { count: 'exact', head: true }),
-      supabase
-        .from('categories')
-        .select('id, name, slug, parent_id')
-        .order('sort_order', { ascending: true }),
-    ]
+    [totalProductsQuery, categoriesQuery]
   )
 
   const categories = (categoriesData || []) as AdminCategory[]
@@ -190,11 +204,14 @@ export async function getAdminProductsPage(query: AdminProductsQuery): Promise<{
   const runPage = async (page: number) => {
     const from = (page - 1) * pageSize
     const to = from + pageSize - 1
-    const dbQuery = applyProductFilters(
+    let dbQuery = applyProductFilters(
       supabase.from('products').select(productSelect, { count: 'exact' }),
       normalizedQuery,
       restrictedIds
     )
+    if (brandId) {
+      dbQuery = dbQuery.eq('brand_id', brandId)
+    }
     return dbQuery.range(from, to)
   }
 

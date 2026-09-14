@@ -20,15 +20,26 @@ import {
   Newspaper,
   PanelLeftClose,
   PanelLeftOpen,
+  Building2,
+  ScanBarcode,
+  PackagePlus,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { OptimizedImage } from '@/components/ui/optimized-image'
+import { BrandSwitcher } from '@/components/admin/brand-switcher'
 
 interface AdminSidebarProps {
   user: { full_name: string | null; email: string; role: string }
+  brands?: Array<{
+    id: string
+    name: string
+    slug: string
+    is_active: boolean
+  }>
+  selectedBrandId?: string
   mobileOpen?: boolean
   collapsed?: boolean
   onMobileClose?: () => void
@@ -45,6 +56,9 @@ const NAV_ITEMS: Array<{
   notificationKey?: NotificationKey
 }> = [
   { href: '/admin', icon: LayoutDashboard, label: 'Dashboard', exact: true },
+  { href: '/admin/organization', icon: Building2, label: 'Organization' },
+  { href: '/admin/pos', icon: ScanBarcode, label: 'POS' },
+  { href: '/admin/inventory/receive', icon: PackagePlus, label: 'Receive Stock' },
   { href: '/admin/products', icon: Package, label: 'Products' },
   { href: '/admin/categories', icon: Layers, label: 'Categories' },
   { href: '/admin/sizes', icon: Ruler, label: 'Product Sizes' },
@@ -107,6 +121,8 @@ function getSeenIds(key: string): string[] {
 
 export function AdminSidebar({
   user,
+  brands = [],
+  selectedBrandId = 'all',
   mobileOpen = false,
   collapsed = false,
   onMobileClose,
@@ -252,7 +268,7 @@ export function AdminSidebar({
           />
           {showLabels && (
             <div className="min-w-0 lg:block">
-              <p className="text-xs text-gray-400">Admin Panel</p>
+              <p className="text-xs text-gray-400">Yadevi Admin</p>
             </div>
           )}
         </Link>
@@ -273,6 +289,14 @@ export function AdminSidebar({
           </button>
         )}
       </div>
+
+      {brands.length > 0 && (
+        <BrandSwitcher
+          brands={brands}
+          selectedBrandId={selectedBrandId}
+          collapsed={collapsed}
+        />
+      )}
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-2 sm:p-3">
         {NAV_ITEMS.map(

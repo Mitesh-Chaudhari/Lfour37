@@ -2,6 +2,7 @@ import { unstable_cache } from 'next/cache'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createPublicClient } from '@/lib/supabase/server'
 import { withTimeout } from '@/lib/fetch-with-timeout'
+import { getStorefrontBrandId } from '@/lib/organization-server'
 
 /** Share of top-selling active products that receive the Best Seller badge. */
 const BEST_SELLER_TOP_PERCENT = 0.2
@@ -11,13 +12,22 @@ const BEST_SELLER_MIN_COUNT = 1
 async function fetchBestSellerProductIds(
   supabase: SupabaseClient
 ): Promise<Set<string>> {
-  const { data } = await supabase
+  let query = supabase
     .from('products')
     .select('id, total_sold')
     .eq('status', 'active')
     .gt('total_sold', 0)
     .order('total_sold', { ascending: false })
     .limit(BEST_SELLER_MAX_COUNT)
+
+  try {
+    const brandId = await getStorefrontBrandId()
+    query = query.eq('brand_id', brandId)
+  } catch {
+    // Brand columns may not exist yet.
+  }
+
+  const { data } = await query
 
   if (!data?.length) return new Set()
 

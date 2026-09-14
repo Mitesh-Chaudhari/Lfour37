@@ -29,6 +29,8 @@ import {
   normalizeVariantColorGroup,
   normalizeVariantSize,
 } from '@/lib/product-variants'
+import { getClientAdminBrandId } from '@/lib/organization'
+import { generateVariantBarcode } from '@/lib/inventory'
 
 interface ProductFormProps {
   categories: {
@@ -40,6 +42,7 @@ interface ProductFormProps {
   hsnMappings?: Record<string, string>
   initialData?: {
     id: string
+    brand_id?: string
     name: string
     slug: string
     description?: string
@@ -60,17 +63,17 @@ interface ProductFormProps {
     seo_title?: string
     seo_description?: string
     category_ids: string[]
-
-  variants?: {
-    id: string
-    size: string
-    color: string
-    color_group: string
-    color_hex: string
-    stock: number
-    price_modifier: number
-    image_url?: string | null
-  }[]
+    variants?: {
+      id: string
+      size: string
+      color: string
+      color_group: string
+      color_hex: string
+      stock: number
+      price_modifier: number
+      barcode?: string | null
+      image_url?: string | null
+    }[]
   }
   colorGroups?: string[]
   sizes?: string[]
@@ -83,6 +86,7 @@ interface VariantInput {
   color_hex: string
   stock: number
   price_modifier: number
+  barcode?: string
   file?: File | null
   image_url?: string | null
 }
@@ -267,6 +271,7 @@ export function ProductForm({
         stock: v.stock ?? 0,
         price_modifier:
           Number(v.price_modifier || 0),
+        barcode: v.barcode || '',
         image_url:
           v.image_url || null,
         file: null,
@@ -282,6 +287,7 @@ export function ProductForm({
         color_hex: '#000000',
         stock: 0,
         price_modifier: 0,
+        barcode: '',
       },
     ]
   });
@@ -297,6 +303,7 @@ export function ProductForm({
           stock: v.stock ?? 0,
           price_modifier:
             Number(v.price_modifier || 0),
+          barcode: v.barcode || '',
           image_url:
             v.image_url || null,
           file: null,
@@ -468,6 +475,7 @@ export function ProductForm({
         color_hex: '#000000',
         stock: 0,
         price_modifier: 0,
+        barcode: '',
       },
     ])
   }
@@ -576,10 +584,13 @@ export function ProductForm({
           : null
 
       if (listSortOrder != null) {
+        const brandIdForSort =
+          initialData?.brand_id || getClientAdminBrandId()
         let duplicateQuery = supabase
           .from('products')
           .select('id, name')
           .eq('list_sort_order', listSortOrder)
+          .eq('brand_id', brandIdForSort)
 
         if (initialData?.id) {
           duplicateQuery = duplicateQuery.neq('id', initialData.id)
@@ -594,6 +605,8 @@ export function ProductForm({
           return
         }
       }
+
+      const brandId = initialData?.brand_id || getClientAdminBrandId()
 
       const productData = {
         name: data.name,
@@ -629,6 +642,7 @@ export function ProductForm({
           .filter((item) => item.label && item.value),
         seo_title: data.seo_title || null,
         seo_description: data.seo_description || null,
+        brand_id: brandId,
       }
 
       let productId = initialData?.id
@@ -731,6 +745,15 @@ export function ProductForm({
                 variant.stock,
               price_modifier:
                 variant.price_modifier,
+              barcode:
+                variant.barcode?.trim() ||
+                generateVariantBarcode({
+                  brandSlug: 'lf',
+                  productSku: data.sku,
+                  size: variant.size,
+                  color: variant.color,
+                  variantId: variant.id || productId,
+                }),
               image_url:
                 imageUrl,
               is_active:
@@ -1088,6 +1111,7 @@ export function ProductForm({
                   Color Hex
                 </th>
                 <th className="text-left py-2 px-2 text-xs text-gray-500 font-medium">Stock</th>
+                <th className="text-left py-2 px-2 text-xs text-gray-500 font-medium">Barcode</th>
                 <th className="text-left py-2 px-2 text-xs text-gray-500 font-medium">Price Adj.</th>
                 <th />
               </tr>
@@ -1237,6 +1261,15 @@ export function ProductForm({
                       onChange={(e) => updateVariant(i, 'stock', Number(e.target.value))}
                       onWheel={(e) => e.currentTarget.blur()}
                       className="w-20 px-2 py-1 text-sm border border-gray-300 rounded"
+                    />
+                  </td>
+                  <td className="py-2 px-2">
+                    <input
+                      type="text"
+                      value={variant.barcode || ''}
+                      onChange={(e) => updateVariant(i, 'barcode', e.target.value)}
+                      className="w-36 px-2 py-1 font-mono text-sm border border-gray-300 rounded"
+                      placeholder="Auto on save"
                     />
                   </td>
                   <td className="py-2 px-2">

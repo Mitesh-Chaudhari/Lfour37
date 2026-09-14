@@ -28,6 +28,7 @@ import {
 } from '@/lib/product-variant-filters'
 import { MetaSearchTracker } from '@/components/meta-pixel/event-trackers'
 import { GaSearchTracker } from '@/components/google-analytics/event-trackers'
+import { getStorefrontBrandId } from '@/lib/organization-server'
 
 interface PageProps {
   searchParams: Promise<{
@@ -71,12 +72,20 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
 
 async function getAllCategories() {
   const supabase = await createClient()
-  const { data } = await supabase
+  let query = supabase
     .from('categories')
     .select('id, name, slug, parent_id')
     .eq('is_active', true)
     .order('sort_order')
 
+  try {
+    const brandId = await getStorefrontBrandId()
+    query = query.eq('brand_id', brandId)
+  } catch {
+    // Migration not applied yet.
+  }
+
+  const { data } = await query
   return data || []
 }
 
@@ -85,6 +94,13 @@ async function getProducts(
   allCategories: { id: string; name: string; slug: string; parent_id: string | null }[]
 ) {
   const supabase = await createClient()
+
+  let storefrontBrandId: string | null = null
+  try {
+    storefrontBrandId = await getStorefrontBrandId()
+  } catch {
+    storefrontBrandId = null
+  }
 
   const page = Number(searchParams.page) || 1
   const perPage = 16
@@ -113,6 +129,10 @@ async function getProducts(
       { count: 'exact' }
     )
     .eq('status', 'active')
+
+  if (storefrontBrandId) {
+    query = query.eq('brand_id', storefrontBrandId)
+  }
 
   ////////////////////////////////////////////////////////////////
   // ✅ MULTI CATEGORY FILTER (parent + children, OR match)

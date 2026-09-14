@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { CategoriesClient } from '@/components/admin/categories-client'
 import { getCategoryDescendantIds, type CategoryRef } from '@/lib/categories'
+import { getAdminBrandFilterId } from '@/lib/organization-server'
 
 async function getCategoryProductCounts(categories: CategoryRef[]) {
   const supabase = await createClient()
@@ -40,10 +41,23 @@ async function getCategoryProductCounts(categories: CategoryRef[]) {
 export default async function AdminCategoriesPage() {
   const supabase = await createClient()
 
-  const { data: categories } = await supabase
+  let brandId: string | null = null
+  try {
+    brandId = await getAdminBrandFilterId()
+  } catch {
+    brandId = null
+  }
+
+  let categoriesQuery = supabase
     .from('categories')
     .select('*')
     .order('sort_order', { ascending: true })
+
+  if (brandId) {
+    categoriesQuery = categoriesQuery.eq('brand_id', brandId)
+  }
+
+  const { data: categories } = await categoriesQuery
 
   const productCounts = await getCategoryProductCounts(categories || [])
 
