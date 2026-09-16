@@ -6,6 +6,7 @@ import {
   ADMIN_BRAND_ALL,
   ADMIN_BRAND_COOKIE,
   LFOUR37_BRAND_ID,
+  LFOUR37_ONLINE_LOCATION_ID,
   LFOUR37_STORE_JAMNAGAR_LOCATION_ID,
 } from '@/lib/organization'
 
@@ -118,18 +119,45 @@ export async function POST(request: NextRequest) {
 
   const items = sale.items || []
   try {
-    for (const item of items) {
-      await applyStockMovement({
-        variantId: item.variant_id,
-        delta: item.quantity,
-        movementType: 'adjustment',
-        locationId: sale.location_id,
-        referenceType: 'pos_sale_void',
-        referenceId: sale.id,
-        createdBy: admin.id,
-        notes: `Void ${sale.sale_number}`,
-      })
+    // Reverse exact ledger rows (store-only and/or shared online)
+    const { data: movements } = await db
+      .from('stock_movements')
+      .select('variant_id, location_id, quantity, product_id')
+      .eq('reference_type', 'pos_sale')
+      .eq('reference_id', sale.id)
 
+    if (movements && movements.length > 0) {
+      for (const mov of movements) {
+        const qty = Number(mov.quantity)
+        if (!qty) continue
+        await applyStockMovement({
+          variantId: mov.variant_id,
+          delta: -qty, // original qty is negative for sales; negate restores
+          movementType: 'adjustment',
+          locationId: mov.location_id,
+          referenceType: 'pos_sale_void',
+          referenceId: sale.id,
+          createdBy: admin.id,
+          notes: `Void ${sale.sale_number}`,
+        })
+      }
+    } else {
+      // Fallback for older sales with no ledger split
+      for (const item of items) {
+        await applyStockMovement({
+          variantId: item.variant_id,
+          delta: item.quantity,
+          movementType: 'adjustment',
+          locationId: LFOUR37_ONLINE_LOCATION_ID,
+          referenceType: 'pos_sale_void',
+          referenceId: sale.id,
+          createdBy: admin.id,
+          notes: `Void ${sale.sale_number}`,
+        })
+      }
+    }
+
+    for (const item of items) {
       const { data: productRow } = await db
         .from('products')
         .select('total_sold')

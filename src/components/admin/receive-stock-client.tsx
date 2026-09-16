@@ -178,8 +178,9 @@ export function ReceiveStockClient() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Receive stock (GRN)</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Goods land in <strong>Warehouse</strong>. Then use Stock Transfer to move
-          them to Online and/or Store.
+          Goods land in <strong>Warehouse</strong>. Then transfer:{' '}
+          <strong>Online</strong> for shared website+POS stock, or{' '}
+          <strong>Store</strong> for store-only stock (not on website).
         </p>
       </div>
 

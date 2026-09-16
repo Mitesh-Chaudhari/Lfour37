@@ -205,7 +205,7 @@ export function PosClient({
       if (!session) await ensureSession()
 
       const res = await fetch(
-        `/api/admin/pos?barcode=${encodeURIComponent(trimmed)}&location_id=${encodeURIComponent(locationId)}`
+        `/api/admin/pos?barcode=${encodeURIComponent(trimmed)}&mode=pos`
       )
       const data = await res.json()
       if (!res.ok) {

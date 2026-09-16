@@ -11,6 +11,7 @@ import {
   ADMIN_BRAND_ALL,
   ADMIN_BRAND_COOKIE,
   LFOUR37_BRAND_ID,
+  LFOUR37_ONLINE_LOCATION_ID,
   LFOUR37_STORE_JAMNAGAR_LOCATION_ID,
   YADEVI_COMPANY_ID,
 } from '@/lib/organization'
@@ -58,7 +59,10 @@ export async function POST(request: NextRequest) {
   const data = parsed.data
   const db = createAdminClient()
   const brandId = await resolveAdminBrandId()
+  // POS session is at the physical store (for sales reporting).
   const locationId = data.location_id || LFOUR37_STORE_JAMNAGAR_LOCATION_ID
+  const storeLocationId = LFOUR37_STORE_JAMNAGAR_LOCATION_ID
+  const onlineLocationId = LFOUR37_ONLINE_LOCATION_ID
 
   let session = data.session_id
     ? (
@@ -115,14 +119,20 @@ export async function POST(request: NextRequest) {
 
   const { data: levels } = await db
     .from('stock_levels')
-    .select('variant_id, quantity')
-    .eq('location_id', session.location_id)
+    .select('location_id, variant_id, quantity')
+    .in('location_id', [storeLocationId, onlineLocationId])
     .in('variant_id', variantIds)
 
-  // Prefer location stock; fall back to variant.stock until migration 048 is applied
-  const levelMap = new Map(
-    (levels || []).map((row) => [row.variant_id as string, Number(row.quantity)])
-  )
+  const storeMap = new Map<string, number>()
+  const onlineMap = new Map<string, number>()
+  for (const row of levels || []) {
+    const qty = Number(row.quantity)
+    if (row.location_id === storeLocationId) {
+      storeMap.set(row.variant_id as string, qty)
+    } else if (row.location_id === onlineLocationId) {
+      onlineMap.set(row.variant_id as string, qty)
+    }
+  }
 
   const lines = []
   for (const item of data.items) {
@@ -139,9 +149,13 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
-    const available = levelMap.has(variant.id)
-      ? levelMap.get(variant.id)!
+    const storeQty = storeMap.has(variant.id)
+      ? storeMap.get(variant.id)!
+      : 0
+    const onlineQty = onlineMap.has(variant.id)
+      ? onlineMap.get(variant.id)!
       : Number(variant.stock)
+    const available = storeQty + onlineQty
     if (available < item.quantity) {
       return NextResponse.json(
         {
@@ -150,6 +164,9 @@ export async function POST(request: NextRequest) {
         { status: 409 }
       )
     }
+    // Prefer store-only pool first, then shared online (website) pool
+    const fromStore = Math.min(storeQty, item.quantity)
+    const fromOnline = item.quantity - fromStore
     const unitPrice = Number(product.price) + Number(variant.price_modifier || 0)
     lines.push({
       product_id: product.id as string,
@@ -159,6 +176,8 @@ export async function POST(request: NextRequest) {
       variant_color: variant.color as string,
       barcode: (variant.barcode as string | null) || null,
       quantity: item.quantity,
+      from_store: fromStore,
+      from_online: fromOnline,
       unit_price: unitPrice,
       line_total: Number((unitPrice * item.quantity).toFixed(2)),
     })
@@ -234,7 +253,15 @@ export async function POST(request: NextRequest) {
   const { error: itemsError } = await db.from('pos_sale_items').insert(
     lines.map((line) => ({
       sale_id: sale.id,
-      ...line,
+      product_id: line.product_id,
+      variant_id: line.variant_id,
+      product_name: line.product_name,
+      variant_size: line.variant_size,
+      variant_color: line.variant_color,
+      barcode: line.barcode,
+      quantity: line.quantity,
+      unit_price: line.unit_price,
+      line_total: line.line_total,
     }))
   )
 
@@ -245,16 +272,30 @@ export async function POST(request: NextRequest) {
 
   try {
     for (const line of lines) {
-      await applyStockMovement({
-        variantId: line.variant_id,
-        delta: -line.quantity,
-        movementType: 'pos_sale',
-        locationId: session.location_id,
-        referenceType: 'pos_sale',
-        referenceId: sale.id,
-        createdBy: adminUser.id,
-        notes: sale.sale_number,
-      })
+      if (line.from_store > 0) {
+        await applyStockMovement({
+          variantId: line.variant_id,
+          delta: -line.from_store,
+          movementType: 'pos_sale',
+          locationId: storeLocationId,
+          referenceType: 'pos_sale',
+          referenceId: sale.id,
+          createdBy: adminUser.id,
+          notes: `${sale.sale_number} store-only`,
+        })
+      }
+      if (line.from_online > 0) {
+        await applyStockMovement({
+          variantId: line.variant_id,
+          delta: -line.from_online,
+          movementType: 'pos_sale',
+          locationId: onlineLocationId,
+          referenceType: 'pos_sale',
+          referenceId: sale.id,
+          createdBy: adminUser.id,
+          notes: `${sale.sale_number} shared-online`,
+        })
+      }
 
       const { data: productRow } = await db
         .from('products')

@@ -80,7 +80,8 @@ export async function getOpenPosSession(locationId: string) {
 export async function lookupVariantByBarcode(
   barcode: string,
   brandId: string,
-  locationId?: string
+  locationId?: string,
+  options?: { posCombined?: boolean }
 ) {
   const admin = createAdminClient()
   const code = barcode.trim()
@@ -108,7 +109,36 @@ export async function lookupVariantByBarcode(
   if (!product || product.status !== 'active') return null
 
   let stock = Number(data.stock)
-  if (locationId) {
+  let storeStock: number | undefined
+  let onlineStock: number | undefined
+
+  if (options?.posCombined) {
+    const {
+      LFOUR37_STORE_JAMNAGAR_LOCATION_ID,
+      LFOUR37_ONLINE_LOCATION_ID,
+    } = await import('@/lib/organization')
+    const { data: levels } = await admin
+      .from('stock_levels')
+      .select('location_id, quantity')
+      .eq('variant_id', data.id)
+      .in('location_id', [
+        LFOUR37_STORE_JAMNAGAR_LOCATION_ID,
+        LFOUR37_ONLINE_LOCATION_ID,
+      ])
+
+    storeStock = 0
+    onlineStock = 0
+    for (const row of levels || []) {
+      if (row.location_id === LFOUR37_STORE_JAMNAGAR_LOCATION_ID) {
+        storeStock = Number(row.quantity)
+      }
+      if (row.location_id === LFOUR37_ONLINE_LOCATION_ID) {
+        onlineStock = Number(row.quantity)
+      }
+    }
+    // POS can sell store-only + shared online stock
+    stock = storeStock + onlineStock
+  } else if (locationId) {
     const { data: level } = await admin
       .from('stock_levels')
       .select('quantity')
@@ -125,6 +155,8 @@ export async function lookupVariantByBarcode(
     size: data.size as string,
     color: data.color as string,
     stock,
+    store_stock: storeStock,
+    online_stock: onlineStock,
     barcode: data.barcode as string | null,
     sku: (data.sku as string | null) || (product.sku as string | null),
     unit_price: Number(product.price) + Number(data.price_modifier || 0),

@@ -11,6 +11,7 @@ import {
   ADMIN_BRAND_COOKIE,
   ADMIN_BRAND_ALL,
   LFOUR37_BRAND_ID,
+  LFOUR37_ONLINE_LOCATION_ID,
 } from '@/lib/organization'
 
 async function resolveAdminBrandId(): Promise<string> {
@@ -33,8 +34,27 @@ export async function GET(request: NextRequest) {
 
   try {
     const brandId = await resolveAdminBrandId()
+    const mode = request.nextUrl.searchParams.get('mode')
+    // POS: store-only + shared online. Other callers: single location (or default Online).
+    if (mode === 'pos') {
+      const item = await lookupVariantByBarcode(barcode, brandId, undefined, {
+        posCombined: true,
+      })
+      if (!item) {
+        return NextResponse.json({ error: 'No product found for barcode' }, { status: 404 })
+      }
+      if (item.stock <= 0) {
+        return NextResponse.json(
+          { error: 'Out of stock', item },
+          { status: 409 }
+        )
+      }
+      return NextResponse.json({ item })
+    }
+
     const locationId =
-      request.nextUrl.searchParams.get('location_id') || undefined
+      request.nextUrl.searchParams.get('location_id') ||
+      LFOUR37_ONLINE_LOCATION_ID
     const item = await lookupVariantByBarcode(barcode, brandId, locationId)
     if (!item) {
       return NextResponse.json({ error: 'No product found for barcode' }, { status: 404 })

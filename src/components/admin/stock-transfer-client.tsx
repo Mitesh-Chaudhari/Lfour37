@@ -129,7 +129,11 @@ export function StockTransferClient() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Stock transfer</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Move stock from Warehouse to Online (website), Store (POS), or both.
+          <strong>To Online</strong> = shared (website + POS). Selling in store from
+          this pool also reduces website stock.
+          <br />
+          <strong>To Store</strong> = store-only (cheaper / exclusive stock). POS can
+          sell it; website will not show it.
         </p>
       </div>
 
