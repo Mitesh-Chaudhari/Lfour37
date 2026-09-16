@@ -5,114 +5,65 @@ import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
-type Receipt = {
+type PoItem = {
   id: string
-  receipt_number: string
-  supplier_name: string | null
-  status: string
-  created_at: string
-  posted_at: string | null
-  po_id?: string | null
+  variant_id: string
+  quantity_ordered: number
+  quantity_received: number
+  unit_cost: number
+  product?: { name: string; sku: string | null } | null
+  variant?: { size: string; color: string; barcode: string | null } | null
 }
 
-type PoOption = {
+type PurchaseOrder = {
   id: string
   po_number: string
   supplier_name: string
   status: string
-  items: Array<{
-    variant_id: string
-    quantity_ordered: number
-    quantity_received: number
-    unit_cost: number
-    product?: { name: string } | null
-    variant?: { size: string; color: string; barcode: string | null } | null
-  }>
+  notes: string | null
+  created_at: string
+  items: PoItem[]
+  invoices?: Array<{ id: string; invoice_number: string; status: string; total: number }>
 }
 
 type Line = {
   barcode: string
-  variant_id?: string
-  product_name?: string
-  size?: string
-  color?: string
+  variant_id: string
+  product_name: string
+  size: string
+  color: string
   quantity: number
   unit_cost: string
 }
 
-export function ReceiveStockClient() {
+export function PurchaseOrdersClient() {
+  const [orders, setOrders] = useState<PurchaseOrder[]>([])
   const [supplier, setSupplier] = useState('')
   const [notes, setNotes] = useState('')
   const [barcode, setBarcode] = useState('')
   const [lines, setLines] = useState<Line[]>([])
-  const [receipts, setReceipts] = useState<Receipt[]>([])
-  const [openPos, setOpenPos] = useState<PoOption[]>([])
-  const [selectedPoId, setSelectedPoId] = useState('')
   const [pending, startTransition] = useTransition()
 
-  const loadReceipts = async () => {
-    const res = await fetch('/api/admin/inventory/receive')
-    const data = await res.json()
-    if (res.ok) setReceipts(data.receipts || [])
-  }
-
-  const loadPos = async () => {
+  const load = async () => {
     const res = await fetch('/api/admin/procurement/purchase-orders')
     const data = await res.json()
-    if (!res.ok) return
-    const list = (data.purchase_orders || []).filter((po: PoOption) =>
-      ['ordered', 'partial'].includes(po.status)
-    )
-    setOpenPos(list)
+    if (res.ok) setOrders(data.purchase_orders || [])
   }
 
   useEffect(() => {
-    void loadReceipts()
-    void loadPos()
+    void load()
   }, [])
-
-  const loadFromPo = (poId: string) => {
-    setSelectedPoId(poId)
-    const po = openPos.find((p) => p.id === poId)
-    if (!po) {
-      setLines([])
-      return
-    }
-    setSupplier(po.supplier_name)
-    setLines(
-      po.items
-        .map((item) => {
-          const remaining =
-            Number(item.quantity_ordered) - Number(item.quantity_received)
-          if (remaining <= 0) return null
-          return {
-            barcode: item.variant?.barcode || '',
-            variant_id: item.variant_id,
-            product_name: item.product?.name || 'Item',
-            size: item.variant?.size,
-            color: item.variant?.color,
-            quantity: remaining,
-            unit_cost: String(item.unit_cost ?? ''),
-          } satisfies Line
-        })
-        .filter(Boolean) as Line[]
-    )
-  }
 
   const addLine = async () => {
     const code = barcode.trim()
     if (!code) return
     const res = await fetch(`/api/admin/pos?barcode=${encodeURIComponent(code)}`)
     const data = await res.json()
-    if (!res.ok && res.status !== 409) {
+    if (!res.ok) {
       toast.error(data.error || 'Barcode not found')
       return
     }
     const item = data.item
-    if (!item) {
-      toast.error('Barcode not found')
-      return
-    }
     setLines((prev) => {
       const existing = prev.find((l) => l.variant_id === item.variant_id)
       if (existing) {
@@ -138,76 +89,79 @@ export function ReceiveStockClient() {
     setBarcode('')
   }
 
-  const postReceipt = () => {
+  const createDraft = () => {
+    if (!supplier.trim()) {
+      toast.error('Supplier name is required')
+      return
+    }
     if (lines.length === 0) {
       toast.error('Add at least one item')
       return
     }
     startTransition(async () => {
-      const res = await fetch('/api/admin/inventory/receive', {
+      const res = await fetch('/api/admin/procurement/purchase-orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          po_id: selectedPoId || null,
-          supplier_name: supplier || null,
+          supplier_name: supplier.trim(),
           notes: notes || null,
           items: lines.map((line) => ({
             variant_id: line.variant_id,
-            quantity: line.quantity,
-            unit_cost: line.unit_cost ? Number(line.unit_cost) : null,
+            quantity_ordered: line.quantity,
+            unit_cost: line.unit_cost ? Number(line.unit_cost) : 0,
           })),
         }),
       })
       const data = await res.json()
       if (!res.ok) {
-        toast.error(data.error || 'Receive failed')
+        toast.error(data.error || 'Failed to create PO')
         return
       }
-      toast.success(`Received ${data.receipt.receipt_number} into Warehouse`)
+      toast.success(`Draft ${data.purchase_order.po_number} created`)
       setLines([])
       setSupplier('')
       setNotes('')
-      setSelectedPoId('')
-      await loadReceipts()
-      await loadPos()
+      await load()
+    })
+  }
+
+  const confirmPo = (poId: string) => {
+    startTransition(async () => {
+      const res = await fetch('/api/admin/procurement/purchase-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'confirm', po_id: poId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'Confirm failed')
+        return
+      }
+      toast.success(
+        `PO confirmed · Invoice ${data.purchase_invoice?.invoice_number || ''} created`
+      )
+      await load()
     })
   }
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Receive stock (GRN)</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Purchase orders</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Goods land in <strong>Warehouse</strong>. Then use Stock Transfer to move
-          them to Online and/or Store.
+          Create a PO → confirm to auto-create the purchase invoice → receive on GRN
+          into Warehouse.
         </p>
       </div>
 
       <div className="space-y-4 rounded-xl border bg-white p-6">
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">
-            From purchase order (optional)
-          </label>
-          <select
-            className="w-full rounded-lg border px-3 py-2 text-sm"
-            value={selectedPoId}
-            onChange={(e) => loadFromPo(e.target.value)}
-          >
-            <option value="">Manual receive (no PO)</option>
-            {openPos.map((po) => (
-              <option key={po.id} value={po.id}>
-                {po.po_number} — {po.supplier_name} ({po.status})
-              </option>
-            ))}
-          </select>
-        </div>
-
+        <h2 className="text-lg font-semibold">New draft PO</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           <Input
             label="Supplier"
             value={supplier}
             onChange={(e) => setSupplier(e.target.value)}
-            placeholder="Optional"
+            placeholder="Supplier name"
           />
           <Input
             label="Notes"
@@ -307,7 +261,7 @@ export function ReceiveStockClient() {
               {lines.length === 0 && (
                 <tr>
                   <td colSpan={4} className="px-3 py-6 text-center text-gray-500">
-                    No lines yet
+                    Scan items to build the PO
                   </td>
                 </tr>
               )}
@@ -315,26 +269,55 @@ export function ReceiveStockClient() {
           </table>
         </div>
 
-        <Button type="button" onClick={postReceipt} loading={pending}>
-          Post GRN to Warehouse
+        <Button type="button" onClick={createDraft} loading={pending}>
+          Save draft PO
         </Button>
       </div>
 
       <div className="rounded-xl border bg-white p-6">
-        <h2 className="mb-3 text-lg font-semibold">Recent receipts</h2>
-        <ul className="space-y-2 text-sm">
-          {receipts.map((r) => (
-            <li key={r.id} className="flex justify-between border-b py-2 last:border-0">
-              <span className="font-mono">{r.receipt_number}</span>
-              <span className="text-gray-500">
-                {r.supplier_name || '—'} · {r.status}
-              </span>
-            </li>
-          ))}
-          {receipts.length === 0 && (
-            <li className="text-gray-500">No receipts yet</li>
+        <h2 className="mb-4 text-lg font-semibold">Purchase orders</h2>
+        <div className="space-y-4">
+          {orders.map((po) => {
+            const invoice = po.invoices?.[0]
+            return (
+              <div key={po.id} className="rounded-lg border p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="font-mono font-semibold">{po.po_number}</div>
+                    <div className="text-sm text-gray-600">
+                      {po.supplier_name} · {po.status}
+                      {invoice
+                        ? ` · Invoice ${invoice.invoice_number} (${invoice.status})`
+                        : ''}
+                    </div>
+                  </div>
+                  {po.status === 'draft' && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      loading={pending}
+                      onClick={() => confirmPo(po.id)}
+                    >
+                      Confirm & create invoice
+                    </Button>
+                  )}
+                </div>
+                <ul className="mt-3 space-y-1 text-sm text-gray-700">
+                  {(po.items || []).map((item) => (
+                    <li key={item.id}>
+                      {item.product?.name || 'Item'} · {item.variant?.size}/
+                      {item.variant?.color} — ordered {item.quantity_ordered}, received{' '}
+                      {item.quantity_received}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })}
+          {orders.length === 0 && (
+            <p className="text-sm text-gray-500">No purchase orders yet</p>
           )}
-        </ul>
+        </div>
       </div>
     </div>
   )

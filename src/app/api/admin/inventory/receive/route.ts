@@ -13,6 +13,8 @@ import {
 
 const receiveSchema = z.object({
   location_id: z.string().uuid().optional(),
+  po_id: z.string().uuid().optional().nullable(),
+  purchase_invoice_id: z.string().uuid().optional().nullable(),
   supplier_name: z.string().max(200).nullable().optional(),
   notes: z.string().max(1000).nullable().optional(),
   items: z
@@ -47,7 +49,41 @@ export async function POST(request: NextRequest) {
   const data = parsed.data
   const db = createAdminClient()
   const brandId = await resolveAdminBrandId()
+  // New receipts land in Warehouse; transfer to Online/Store separately
   const locationId = data.location_id || LFOUR37_WAREHOUSE_LOCATION_ID
+
+  let supplierName = data.supplier_name || null
+  let purchaseInvoiceId = data.purchase_invoice_id || null
+
+  if (data.po_id) {
+    const { data: po } = await db
+      .from('purchase_orders')
+      .select('id, brand_id, supplier_name, status')
+      .eq('id', data.po_id)
+      .maybeSingle()
+
+    if (!po || po.brand_id !== brandId) {
+      return NextResponse.json({ error: 'Purchase order not found' }, { status: 404 })
+    }
+    if (po.status === 'cancelled' || po.status === 'draft') {
+      return NextResponse.json(
+        { error: 'Confirm the PO before receiving against it' },
+        { status: 400 }
+      )
+    }
+    supplierName = supplierName || po.supplier_name
+
+    if (!purchaseInvoiceId) {
+      const { data: inv } = await db
+        .from('purchase_invoices')
+        .select('id')
+        .eq('po_id', data.po_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      purchaseInvoiceId = inv?.id || null
+    }
+  }
 
   const variantIds = data.items.map((i) => i.variant_id)
   const { data: variants } = await db
@@ -79,8 +115,10 @@ export async function POST(request: NextRequest) {
       company_id: YADEVI_COMPANY_ID,
       brand_id: brandId,
       location_id: locationId,
+      po_id: data.po_id || null,
+      purchase_invoice_id: purchaseInvoiceId,
       receipt_number: (receiptNumber as string) || `GRN-${Date.now()}`,
-      supplier_name: data.supplier_name || null,
+      supplier_name: supplierName,
       notes: data.notes || null,
       status: 'posted',
       created_by: adminUser.id,
@@ -143,6 +181,57 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  // Update PO received quantities + status
+  if (data.po_id) {
+    const { data: poItems } = await db
+      .from('purchase_order_items')
+      .select('id, variant_id, quantity_ordered, quantity_received')
+      .eq('po_id', data.po_id)
+
+    if (poItems) {
+      for (const item of data.items) {
+        const poItem = poItems.find((p) => p.variant_id === item.variant_id)
+        if (!poItem) continue
+        const nextReceived = Number(poItem.quantity_received) + item.quantity
+        await db
+          .from('purchase_order_items')
+          .update({ quantity_received: nextReceived })
+          .eq('id', poItem.id)
+      }
+
+      const { data: refreshed } = await db
+        .from('purchase_order_items')
+        .select('quantity_ordered, quantity_received')
+        .eq('po_id', data.po_id)
+
+      const allReceived =
+        refreshed?.every(
+          (row) => Number(row.quantity_received) >= Number(row.quantity_ordered)
+        ) ?? false
+      const anyReceived =
+        refreshed?.some((row) => Number(row.quantity_received) > 0) ?? false
+
+      await db
+        .from('purchase_orders')
+        .update({
+          status: allReceived ? 'received' : anyReceived ? 'partial' : 'ordered',
+        })
+        .eq('id', data.po_id)
+    }
+
+    if (purchaseInvoiceId) {
+      await db
+        .from('purchase_invoices')
+        .update({
+          status: 'posted',
+          posted_by: adminUser.id,
+          posted_at: new Date().toISOString(),
+        })
+        .eq('id', purchaseInvoiceId)
+        .eq('status', 'draft')
+    }
+  }
+
   return NextResponse.json({ success: true, receipt })
 }
 
@@ -157,7 +246,7 @@ export async function GET() {
   const { data, error } = await db
     .from('stock_receipts')
     .select(
-      'id, receipt_number, supplier_name, status, posted_at, created_at, location_id, notes'
+      'id, receipt_number, supplier_name, status, posted_at, created_at, location_id, po_id, notes'
     )
     .eq('brand_id', brandId)
     .order('created_at', { ascending: false })

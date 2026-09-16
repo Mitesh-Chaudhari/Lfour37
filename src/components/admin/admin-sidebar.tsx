@@ -27,6 +27,8 @@ import {
   Barcode,
   FileSpreadsheet,
   Store,
+  ClipboardList,
+  ArrowLeftRight,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -62,7 +64,17 @@ const NAV_ITEMS: Array<{
   { href: '/admin', icon: LayoutDashboard, label: 'Dashboard', exact: true },
   { href: '/admin/organization', icon: Building2, label: 'Organization' },
   { href: '/admin/pos', icon: ScanBarcode, label: 'POS' },
+  {
+    href: '/admin/procurement/purchase-orders',
+    icon: ClipboardList,
+    label: 'Purchase Orders',
+  },
   { href: '/admin/inventory/receive', icon: PackagePlus, label: 'Receive Stock' },
+  {
+    href: '/admin/inventory/transfers',
+    icon: ArrowLeftRight,
+    label: 'Stock Transfer',
+  },
   { href: '/admin/inventory/movements', icon: History, label: 'Stock Movements' },
   { href: '/admin/inventory/barcodes', icon: Barcode, label: 'Barcodes' },
   { href: '/admin/reports/channel-sales', icon: Store, label: 'Online vs Store' },

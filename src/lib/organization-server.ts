@@ -4,6 +4,7 @@ import {
   ADMIN_BRAND_ALL,
   ADMIN_BRAND_COOKIE,
   LFOUR37_BRAND_ID,
+  LFOUR37_ONLINE_LOCATION_ID,
   LFOUR37_WAREHOUSE_LOCATION_ID,
   YADEVI_COMPANY_ID,
   getStorefrontBrandIdFallback,
@@ -125,7 +126,7 @@ export async function getDefaultOnlineLocationId(
     .limit(1)
     .maybeSingle()
 
-  return data?.id || LFOUR37_WAREHOUSE_LOCATION_ID
+  return data?.id || LFOUR37_ONLINE_LOCATION_ID
 }
 
 /** Admin selected brand cookie — `all` means company-wide view. */

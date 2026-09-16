@@ -113,6 +113,17 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  const { data: levels } = await db
+    .from('stock_levels')
+    .select('variant_id, quantity')
+    .eq('location_id', session.location_id)
+    .in('variant_id', variantIds)
+
+  // Prefer location stock; fall back to variant.stock until migration 048 is applied
+  const levelMap = new Map(
+    (levels || []).map((row) => [row.variant_id as string, Number(row.quantity)])
+  )
+
   const lines = []
   for (const item of data.items) {
     const variant = variants.find((v) => v.id === item.variant_id)
@@ -128,7 +139,10 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
-    if (Number(variant.stock) < item.quantity) {
+    const available = levelMap.has(variant.id)
+      ? levelMap.get(variant.id)!
+      : Number(variant.stock)
+    if (available < item.quantity) {
       return NextResponse.json(
         {
           error: `Insufficient stock for ${product.name} (${variant.size}/${variant.color})`,

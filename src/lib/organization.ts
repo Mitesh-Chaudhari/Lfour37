@@ -10,6 +10,7 @@ export const LFOUR37_BRAND_ID = 'b0000000-0000-4000-8000-000000000001'
 export const TSHIRTKART_BRAND_ID = 'b0000000-0000-4000-8000-000000000002'
 export const LFOUR37_WAREHOUSE_LOCATION_ID = 'c0000000-0000-4000-8000-000000000001'
 export const LFOUR37_STORE_JAMNAGAR_LOCATION_ID = 'c0000000-0000-4000-8000-000000000002'
+export const LFOUR37_ONLINE_LOCATION_ID = 'c0000000-0000-4000-8000-000000000003'
 
 export const ADMIN_BRAND_COOKIE = 'admin_brand_id'
 export const ADMIN_BRAND_ALL = 'all'
@@ -26,7 +27,7 @@ export function getClientAdminBrandId(): string {
   return value
 }
 
-export type LocationType = 'warehouse' | 'store' | 'other'
+export type LocationType = 'warehouse' | 'store' | 'online' | 'other'
 export type SalesChannel = 'online' | 'pos'
 
 export interface Company {

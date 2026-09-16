@@ -33,7 +33,9 @@ export async function GET(request: NextRequest) {
 
   try {
     const brandId = await resolveAdminBrandId()
-    const item = await lookupVariantByBarcode(barcode, brandId)
+    const locationId =
+      request.nextUrl.searchParams.get('location_id') || undefined
+    const item = await lookupVariantByBarcode(barcode, brandId, locationId)
     if (!item) {
       return NextResponse.json({ error: 'No product found for barcode' }, { status: 404 })
     }
