@@ -8,6 +8,26 @@ import { Input } from '@/components/ui/input'
 import { createClient } from '@/lib/supabase/client'
 import { formatDate } from '@/lib/utils'
 import toast from 'react-hot-toast'
+import {
+  STAFF_ROLE_LABELS,
+  type StaffRole,
+} from '@/lib/admin-permissions'
+
+const ASSIGNABLE_ROLES: UserRole[] = [
+  'customer',
+  'sales',
+  'pos',
+  'warehouse',
+  'accountant',
+  'admin',
+  'super_admin',
+]
+
+function roleLabel(role: string) {
+  if (role in STAFF_ROLE_LABELS) return STAFF_ROLE_LABELS[role as StaffRole]
+  if (role === 'customer') return 'Customer'
+  return role.replace(/_/g, ' ')
+}
 
 export function UsersClient({ users: initialUsers }: { users: User[] }) {
   const [users, setUsers] = useState(initialUsers)
@@ -51,6 +71,8 @@ export function UsersClient({ users: initialUsers }: { users: User[] }) {
   const roleBadgeVariant = (role: UserRole) => {
     if (role === 'super_admin') return 'destructive'
     if (role === 'admin') return 'warning'
+    if (role === 'accountant') return 'success'
+    if (role === 'warehouse' || role === 'pos' || role === 'sales') return 'default'
     return 'secondary'
   }
 
@@ -72,6 +94,10 @@ export function UsersClient({ users: initialUsers }: { users: User[] }) {
         >
           <option value="all">All Roles</option>
           <option value="customer">Customer</option>
+          <option value="sales">Sales</option>
+          <option value="pos">POS / Store</option>
+          <option value="warehouse">Warehouse</option>
+          <option value="accountant">Accountant</option>
           <option value="admin">Admin</option>
           <option value="super_admin">Super Admin</option>
         </select>
@@ -105,7 +131,7 @@ export function UsersClient({ users: initialUsers }: { users: User[] }) {
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
                     <Badge variant={roleBadgeVariant(user.role)}>
-                      {user.role.replace('_', ' ')}
+                      {roleLabel(user.role)}
                     </Badge>
                   </div>
                 </td>
@@ -126,14 +152,14 @@ export function UsersClient({ users: initialUsers }: { users: User[] }) {
                         Role
                         <ChevronDown className="h-3 w-3" />
                       </button>
-                      <div className="absolute right-0 top-full mt-1 bg-white rounded-lg border border-gray-200 shadow-lg z-10 hidden group-hover:block min-w-[130px]">
-                        {(['customer', 'admin', 'super_admin'] as UserRole[]).map((role) => (
+                      <div className="absolute right-0 top-full mt-1 bg-white rounded-lg border border-gray-200 shadow-lg z-10 hidden group-hover:block min-w-[150px]">
+                        {ASSIGNABLE_ROLES.map((role) => (
                           <button
                             key={role}
                             onClick={() => updateRole(user.id, role)}
                             className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg ${user.role === role ? 'text-purple-600 font-medium' : 'text-gray-700'}`}
                           >
-                            {role.replace('_', ' ')}
+                            {roleLabel(role)}
                           </button>
                         ))}
                       </div>

@@ -1,9 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { Menu, PanelLeftClose, PanelLeftOpen, LayoutGrid } from 'lucide-react'
 import { AdminSidebar } from '@/components/admin/admin-sidebar'
 import { cn } from '@/lib/utils'
+import Link from 'next/link'
+import { STAFF_ROLE_LABELS, type StaffRole } from '@/lib/admin-permissions'
 
 const COLLAPSED_KEY = 'admin_sidebar_collapsed'
 
@@ -121,12 +123,24 @@ export function AdminShell({
 
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-gray-900">
-              LFOUR37 Admin
+              Yadevi Lifestyle
             </p>
-            <p className="truncate text-xs text-gray-500 lg:hidden">
-              {user.full_name || user.email}
+            <p className="truncate text-xs text-gray-500">
+              {user.role in STAFF_ROLE_LABELS
+                ? STAFF_ROLE_LABELS[user.role as StaffRole]
+                : user.role}{' '}
+              · {user.full_name || user.email}
             </p>
           </div>
+
+          <Link
+            href="/admin"
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            title="All apps"
+          >
+            <LayoutGrid className="h-4 w-4" />
+            <span className="hidden sm:inline">Apps</span>
+          </Link>
         </header>
 
         <main className="min-w-0 flex-1 overflow-x-hidden">

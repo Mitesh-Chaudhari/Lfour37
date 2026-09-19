@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
+  LayoutGrid,
   Package,
   ShoppingBag,
   Users,
@@ -36,6 +37,10 @@ import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { OptimizedImage } from '@/components/ui/optimized-image'
 import { BrandSwitcher } from '@/components/admin/brand-switcher'
+import {
+  hasPermission,
+  type Permission,
+} from '@/lib/admin-permissions'
 
 interface AdminSidebarProps {
   user: { full_name: string | null; email: string; role: string }
@@ -60,70 +65,85 @@ const NAV_ITEMS: Array<{
   label: string
   exact?: boolean
   notificationKey?: NotificationKey
+  permission: Permission
 }> = [
-  { href: '/admin', icon: LayoutDashboard, label: 'Dashboard', exact: true },
-  { href: '/admin/organization', icon: Building2, label: 'Organization' },
-  { href: '/admin/pos', icon: ScanBarcode, label: 'POS' },
+  { href: '/admin', icon: LayoutGrid, label: 'Apps', exact: true, permission: 'apps' },
+  {
+    href: '/admin/dashboards',
+    icon: LayoutDashboard,
+    label: 'Dashboards',
+    permission: 'dashboards',
+  },
+  { href: '/admin/organization', icon: Building2, label: 'Organization', permission: 'organization' },
+  { href: '/admin/pos', icon: ScanBarcode, label: 'POS', permission: 'pos' },
   {
     href: '/admin/procurement/purchase-orders',
     icon: ClipboardList,
     label: 'Purchase Orders',
+    permission: 'purchase_orders',
   },
-  { href: '/admin/inventory/receive', icon: PackagePlus, label: 'Receive Stock' },
+  { href: '/admin/inventory/receive', icon: PackagePlus, label: 'Receive Stock', permission: 'inventory' },
   {
     href: '/admin/inventory/transfers',
     icon: ArrowLeftRight,
     label: 'Stock Transfer',
+    permission: 'inventory',
   },
-  { href: '/admin/inventory/movements', icon: History, label: 'Stock Movements' },
-  { href: '/admin/inventory/barcodes', icon: Barcode, label: 'Barcodes' },
-  { href: '/admin/reports/channel-sales', icon: Store, label: 'Online vs Store' },
-  { href: '/admin/reports/gst', icon: FileSpreadsheet, label: 'GST Reports' },
-  { href: '/admin/products', icon: Package, label: 'Products' },
-  { href: '/admin/categories', icon: Layers, label: 'Categories' },
-  { href: '/admin/sizes', icon: Ruler, label: 'Product Sizes' },
-  { href: '/admin/size-guides', icon: Ruler, label: 'Size Guides' },
-  { href: '/admin/hsn-codes', icon: Hash, label: 'Manage HSN Code' },
+  { href: '/admin/inventory/movements', icon: History, label: 'Stock Movements', permission: 'inventory' },
+  { href: '/admin/inventory/barcodes', icon: Barcode, label: 'Barcodes', permission: 'inventory' },
+  { href: '/admin/reports/channel-sales', icon: Store, label: 'Online vs Store', permission: 'reports_channel' },
+  { href: '/admin/reports/gst', icon: FileSpreadsheet, label: 'GST Reports', permission: 'reports_gst' },
+  { href: '/admin/products', icon: Package, label: 'Products', permission: 'products' },
+  { href: '/admin/categories', icon: Layers, label: 'Categories', permission: 'catalog' },
+  { href: '/admin/sizes', icon: Ruler, label: 'Product Sizes', permission: 'catalog' },
+  { href: '/admin/size-guides', icon: Ruler, label: 'Size Guides', permission: 'catalog' },
+  { href: '/admin/hsn-codes', icon: Hash, label: 'Manage HSN Code', permission: 'catalog' },
   {
     href: '/admin/orders',
     icon: ShoppingBag,
     label: 'Orders',
     notificationKey: 'orders',
+    permission: 'orders',
   },
   {
     href: '/admin/order-cancel-requests',
     icon: SquareX,
     label: 'Cancel Requests',
     notificationKey: 'cancelRequests',
+    permission: 'returns',
   },
   {
     href: '/admin/returns',
     icon: Undo2,
     label: 'Returns',
     notificationKey: 'returns',
+    permission: 'returns',
   },
   {
     href: '/admin/cancel-reasons',
     icon: SquareX,
     label: 'Order Cancel Reasons Manage',
+    permission: 'returns',
   },
   {
     href: '/admin/return-reasons',
     icon: TicketSlash,
     label: 'Return Reasons',
+    permission: 'returns',
   },
   {
     href: '/admin/exchange-reasons',
     icon: TicketSlash,
     label: 'Exchange Reasons',
+    permission: 'returns',
   },
-  { href: '/admin/pages', icon: TicketSlash, label: 'Content Pages' },
-  { href: '/admin/blogs', icon: Newspaper, label: 'Blog' },
-  { href: '/admin/users', icon: Users, label: 'Users' },
-  { href: '/admin/hero-slides', icon: TicketSlash, label: 'Banners' },
-  { href: '/admin/promotions', icon: Tag, label: 'Promotions' },
-  { href: '/admin/analytics', icon: BarChart2, label: 'Analytics' },
-  { href: '/admin/reviews', icon: Star, label: 'Reviews' },
+  { href: '/admin/pages', icon: TicketSlash, label: 'Content Pages', permission: 'content' },
+  { href: '/admin/blogs', icon: Newspaper, label: 'Blog', permission: 'content' },
+  { href: '/admin/users', icon: Users, label: 'Users', permission: 'users' },
+  { href: '/admin/hero-slides', icon: TicketSlash, label: 'Banners', permission: 'content' },
+  { href: '/admin/promotions', icon: Tag, label: 'Promotions', permission: 'promotions' },
+  { href: '/admin/analytics', icon: BarChart2, label: 'Analytics', permission: 'analytics' },
+  { href: '/admin/reviews', icon: Star, label: 'Reviews', permission: 'reviews' },
 ]
 
 const SEEN_ORDERS_AT_KEY = 'admin_seen_orders_at'
@@ -252,6 +272,9 @@ export function AdminSidebar({
 
   const LOGO_IMAGE = ['/images/logo.png']
   const showLabels = !collapsed
+  const visibleNav = NAV_ITEMS.filter((item) =>
+    hasPermission(user.role, item.permission)
+  )
 
   return (
     <aside
@@ -275,7 +298,7 @@ export function AdminSidebar({
             collapsed ? 'justify-center' : 'gap-2'
           )}
           onClick={() => onMobileClose?.()}
-          title="Admin Dashboard"
+          title="Apps home"
         >
           <OptimizedImage
             src={LOGO_IMAGE[0]}
@@ -319,7 +342,7 @@ export function AdminSidebar({
       )}
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-2 sm:p-3">
-        {NAV_ITEMS.map(
+        {visibleNav.map(
           ({ href, icon: Icon, label, exact, notificationKey }) => {
             const isActive = exact
               ? pathname === href

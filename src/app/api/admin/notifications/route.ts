@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { isStaffRole, hasAnyPermission } from '@/lib/admin-permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,7 +27,11 @@ export async function GET(request: NextRequest) {
     .eq('id', user.id)
     .single()
 
-  if (!profile || !['admin', 'super_admin'].includes(profile.role)) {
+  if (
+    !profile ||
+    !isStaffRole(profile.role) ||
+    !hasAnyPermission(profile.role, ['orders', 'returns'])
+  ) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

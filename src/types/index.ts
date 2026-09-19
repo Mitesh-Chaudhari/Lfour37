@@ -1,4 +1,11 @@
-export type UserRole = 'customer' | 'admin' | 'super_admin'
+export type UserRole =
+  | 'customer'
+  | 'admin'
+  | 'super_admin'
+  | 'sales'
+  | 'pos'
+  | 'warehouse'
+  | 'accountant'
 export type OrderStatus = 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded' | 'return_requested' | 'return_initiated' | 'returned' | 'exchange_initiated' | 'exchanged'
 export type PaymentMethod = 'stripe' | 'crypto' | 'razorpay' | 'cod'
 export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'refunded'

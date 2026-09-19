@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import {
+  canAccessPath,
+  firstAllowedPath,
+  isStaffRole,
+} from '@/lib/admin-permissions'
 
 const protectedRoutes = ['/dashboard']
 const adminRoutes = ['/admin']
@@ -8,7 +13,6 @@ const authRoutes = ['/login', '/register', '/forgot-password']
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Create a response to modify cookies on
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -30,9 +34,10 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  // Redirect unauthenticated users from protected routes
   const isProtectedRoute = protectedRoutes.some((r) => pathname.startsWith(r))
   const isAdminRoute = adminRoutes.some((r) => pathname.startsWith(r))
   const isAuthRoute = authRoutes.some((r) => pathname.startsWith(r))
@@ -51,7 +56,6 @@ export async function proxy(request: NextRequest) {
     return response
   }
 
-  // Redirect authenticated users away from auth pages
   if (user && isAuthRoute) {
     const redirectTo = request.nextUrl.searchParams.get('redirectTo')
     const safePath =
@@ -65,7 +69,6 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Check admin role for admin routes
   if (user && isAdminRoute) {
     const { data: userData } = await supabase
       .from('users')
@@ -73,14 +76,20 @@ export async function proxy(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    if (!userData || !['admin', 'super_admin'].includes(userData.role) || userData.is_suspended) {
+    if (!userData || !isStaffRole(userData.role) || userData.is_suspended) {
       const url = request.nextUrl.clone()
       url.pathname = '/'
       return NextResponse.redirect(url)
     }
+
+    if (!canAccessPath(userData.role, pathname)) {
+      const url = request.nextUrl.clone()
+      url.pathname = firstAllowedPath(userData.role)
+      url.search = ''
+      return NextResponse.redirect(url)
+    }
   }
 
-  // Security headers for API routes
   if (pathname.startsWith('/api/')) {
     supabaseResponse.headers.set('X-Content-Type-Options', 'nosniff')
     supabaseResponse.headers.set('X-Frame-Options', 'DENY')

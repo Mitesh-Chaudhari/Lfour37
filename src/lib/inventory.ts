@@ -17,6 +17,7 @@ export { generateVariantBarcode } from '@/lib/barcode'
 
 export async function requireAdminUser() {
   const { createClient } = await import('@/lib/supabase/server')
+  const { isStaffRole } = await import('@/lib/admin-permissions')
   const supabase = await createClient()
   const {
     data: { user },
@@ -25,11 +26,15 @@ export async function requireAdminUser() {
 
   const { data: profile } = await supabase
     .from('users')
-    .select('id, role, full_name, email')
+    .select('id, role, full_name, email, is_suspended')
     .eq('id', user.id)
     .single()
 
-  if (!profile || !['admin', 'super_admin'].includes(profile.role)) {
+  if (
+    !profile ||
+    profile.is_suspended ||
+    !isStaffRole(profile.role)
+  ) {
     return null
   }
 

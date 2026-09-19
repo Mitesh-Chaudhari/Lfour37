@@ -87,14 +87,15 @@ export function resolveDatePreset(
     }
   }
 
-  // default 30d
-  const from = shiftBusinessDay(today, -29)
+  // default 30d — also accept 90d for Odoo-style range
+  const days = preset === '90d' ? 89 : 29
+  const from = shiftBusinessDay(today, -days)
   const prevTo = shiftBusinessDay(from, -1)
-  const prevFrom = shiftBusinessDay(prevTo, -29)
+  const prevFrom = shiftBusinessDay(prevTo, -days)
   return {
     range: { from, to: today },
     previous: { from: prevFrom, to: prevTo },
-    label: '30 Days',
+    label: preset === '90d' ? '90 Days' : '30 Days',
   }
 }
 

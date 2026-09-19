@@ -1,33 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import {
   buildAdminDashboard,
   resolveDatePreset,
 } from '@/lib/admin-dashboard'
-
-async function requireAdmin() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile || !['admin', 'super_admin'].includes(profile.role)) {
-    return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
-  }
-
-  return { supabase, user }
-}
+import { requirePermission } from '@/lib/admin-auth'
+import { createAdminClient } from '@/lib/supabase/server'
 
 export async function GET(req: NextRequest) {
-  const auth = await requireAdmin()
-  if ('error' in auth && auth.error) return auth.error
+  const staff = await requirePermission('dashboards')
+  if (!staff) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const { searchParams } = new URL(req.url)
   const preset = searchParams.get('preset') || '30d'
@@ -41,7 +24,8 @@ export async function GET(req: NextRequest) {
   )
 
   try {
-    const data = await buildAdminDashboard(auth.supabase!, range, previous)
+    const supabase = createAdminClient()
+    const data = await buildAdminDashboard(supabase, range, previous)
     return NextResponse.json({ ...data, preset, label })
   } catch (err) {
     console.error(err)

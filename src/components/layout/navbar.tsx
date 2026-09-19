@@ -372,7 +372,12 @@ export function Navbar() {
                           <Link href="/dashboard/profile" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setUserMenuOpen(false)}>
                             <Settings className="h-4 w-4" /> Profile Settings
                           </Link>
-                          {(user.role === 'admin' || user.role === 'super_admin') && (
+                          {(user.role === 'admin' ||
+                            user.role === 'super_admin' ||
+                            user.role === 'sales' ||
+                            user.role === 'pos' ||
+                            user.role === 'warehouse' ||
+                            user.role === 'accountant') && (
                             <Link href="/admin" className="flex items-center gap-2 px-4 py-2 text-sm text-purple-600 hover:bg-purple-50" onClick={() => setUserMenuOpen(false)}>
                               <Settings className="h-4 w-4" /> Admin Panel
                             </Link>

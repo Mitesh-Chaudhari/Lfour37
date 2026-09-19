@@ -6,6 +6,7 @@ import {
   listBrands,
 } from '@/lib/organization-server'
 import { LFOUR37_BRAND_ID } from '@/lib/organization'
+import { isStaffRole } from '@/lib/admin-permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,7 +28,7 @@ export default async function AdminLayout({
     .eq('id', user.id)
     .single()
 
-  if (!userData || !['admin', 'super_admin'].includes(userData.role)) {
+  if (!userData || !isStaffRole(userData.role)) {
     redirect('/')
   }
 
