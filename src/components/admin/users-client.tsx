@@ -103,7 +103,7 @@ export function UsersClient({ users: initialUsers }: { users: User[] }) {
         </select>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+      <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
@@ -143,26 +143,27 @@ export function UsersClient({ users: initialUsers }: { users: User[] }) {
                 <td className="px-4 py-3 text-xs text-gray-500">{formatDate(user.created_at)}</td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-2">
-                    <div className="relative group">
-                      <button
+                    <label className="sr-only" htmlFor={`role-${user.id}`}>
+                      Role
+                    </label>
+                    <div className="relative inline-flex items-center">
+                      <Shield className="pointer-events-none absolute left-2 h-3.5 w-3.5 text-gray-400" />
+                      <select
+                        id={`role-${user.id}`}
                         disabled={isLoading === user.id}
-                        className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+                        value={user.role}
+                        onChange={(e) =>
+                          updateRole(user.id, e.target.value as UserRole)
+                        }
+                        className="h-8 max-w-[160px] appearance-none rounded-lg border border-gray-200 bg-white py-1 pl-7 pr-7 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                       >
-                        <Shield className="h-3 w-3" />
-                        Role
-                        <ChevronDown className="h-3 w-3" />
-                      </button>
-                      <div className="absolute right-0 top-full mt-1 bg-white rounded-lg border border-gray-200 shadow-lg z-10 hidden group-hover:block min-w-[150px]">
                         {ASSIGNABLE_ROLES.map((role) => (
-                          <button
-                            key={role}
-                            onClick={() => updateRole(user.id, role)}
-                            className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg ${user.role === role ? 'text-purple-600 font-medium' : 'text-gray-700'}`}
-                          >
+                          <option key={role} value={role}>
                             {roleLabel(role)}
-                          </button>
+                          </option>
                         ))}
-                      </div>
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-2 h-3 w-3 text-gray-400" />
                     </div>
                     <button
                       onClick={() => toggleSuspend(user.id, user.is_suspended)}
