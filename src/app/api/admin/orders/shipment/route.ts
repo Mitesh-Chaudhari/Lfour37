@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import {
+  cancelDelhiveryShipmentForOrder,
   createDelhiveryShipmentForOrder,
   syncDelhiveryShipmentByOrderId,
 } from '@/lib/delhivery-shipping'
@@ -10,7 +11,7 @@ import { z } from 'zod'
 
 const schema = z.object({
   order_id: z.string().uuid(),
-  action: z.enum(['create', 'sync']).default('create'),
+  action: z.enum(['create', 'sync', 'cancel']).default('create'),
 })
 
 async function getOrderShipmentSnapshot(orderId: string) {
@@ -70,6 +71,32 @@ export async function POST(request: NextRequest) {
         shipment: snapshot.shipment,
         orderStatus: summary.orderStatus,
         carrierStatus: summary.carrierStatus,
+      })
+    }
+
+    if (parsed.data.action === 'cancel') {
+      const result = await cancelDelhiveryShipmentForOrder(parsed.data.order_id)
+      const snapshot = await getOrderShipmentSnapshot(parsed.data.order_id)
+
+      if (!result.ok && !result.skipped) {
+        return NextResponse.json(
+          {
+            error: result.error || 'Carrier cancellation failed',
+            carrier_cancel: result,
+            order: snapshot.order,
+            shipment: snapshot.shipment,
+          },
+          { status: 502 }
+        )
+      }
+
+      return NextResponse.json({
+        success: true,
+        carrier_cancel: result,
+        order: snapshot.order,
+        shipment: snapshot.shipment,
+        orderStatus: snapshot.order?.status,
+        carrierStatus: snapshot.shipment?.status,
       })
     }
 

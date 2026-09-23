@@ -7,6 +7,10 @@ import {
 import {
   notifyOrderCancelled,
 } from '@/lib/whatsapp/order-notifications'
+import {
+  cancelDelhiveryShipmentForOrder,
+  type DelhiveryCancelResult,
+} from '@/lib/delhivery-shipping'
 import logger from '@/lib/logger'
 import { OrderStatus } from '@/types'
 import { markCodCollectedOnDelivery } from '@/lib/cod-payment'
@@ -68,6 +72,20 @@ export async function PATCH(req: NextRequest) {
       await markCodCollectedOnDelivery(order_id, updatedOrder, supabase)
     }
 
+    // Admin status cancel previously only updated our DB — DTDC/Delhivery AWB
+    // stayed active (e.g. pickup_scheduled). Cancel carrier as best-effort.
+    let carrierCancel: DelhiveryCancelResult | null = null
+    if (status === 'cancelled') {
+      carrierCancel = await cancelDelhiveryShipmentForOrder(order_id)
+      if (!carrierCancel.ok && !carrierCancel.skipped) {
+        logger.warn('Admin cancel: order cancelled but carrier cancel failed', {
+          order_id,
+          awb: carrierCancel.awb,
+          error: carrierCancel.error,
+        })
+      }
+    }
+
     // Shipped/delivered emails are sent from Delhivery milestone sync only.
     try {
       const orderUser = Array.isArray(updatedOrder.user) ? updatedOrder.user[0] : updatedOrder.user
@@ -124,7 +142,11 @@ export async function PATCH(req: NextRequest) {
 
     logger.info('Order status updated', { order_id, status, updated_by: user.id })
 
-    return NextResponse.json({ success: true, order: updatedOrder })
+    return NextResponse.json({
+      success: true,
+      order: updatedOrder,
+      carrier_cancel: carrierCancel,
+    })
   } catch (error) {
     logger.error('Status update error', { error })
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

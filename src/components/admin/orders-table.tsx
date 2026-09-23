@@ -261,6 +261,26 @@ function canSyncDelhivery(order: AdminOrder): boolean {
   return Boolean(shipment?.awb || order.tracking_number)
 }
 
+/** Order cancelled in admin but courier AWB still looks active. */
+function needsCourierCancel(order: AdminOrder): boolean {
+  if (order.status !== 'cancelled') return false
+
+  const shipment = getDelhiveryShipment(order)
+  const awb = shipment?.awb || order.tracking_number
+  if (!awb) return false
+  if (shipment?.cancellation_requested_at) return false
+
+  const status = (shipment?.status || '').toLowerCase()
+  if (
+    status.includes('cancel') ||
+    (status.includes('delivered') && !status.includes('undelivered'))
+  ) {
+    return false
+  }
+
+  return true
+}
+
 function canProcessItemRefund(
   order: AdminOrder,
   item: AdminOrderItem
@@ -650,23 +670,67 @@ export function AdminOrdersTable({
         toast.error(data.error || 'Failed to update status')
         return false
       }
+
+      const carrierCancel = data.carrier_cancel as
+        | {
+            ok?: boolean
+            skipped?: boolean
+            awb?: string | null
+            error?: string
+          }
+        | null
+        | undefined
+
       setOrders(
-        orders.map((o) =>
-          o.id === orderId
-            ? {
-                ...o,
-                status,
-                cancel_reason:
-                  status === 'cancelled' ? cancelReason || null : null,
-                cancelled_at:
-                  status === 'cancelled'
-                    ? o.cancelled_at || new Date().toISOString()
-                    : o.cancelled_at,
-              }
-            : o
-        )
+        orders.map((o) => {
+          if (o.id !== orderId) return o
+
+          const existingShipment = getDelhiveryShipment(o)
+          const shouldMarkCarrierCancel =
+            status === 'cancelled' &&
+            carrierCancel?.ok &&
+            !carrierCancel.skipped &&
+            existingShipment
+
+          return {
+            ...o,
+            status,
+            cancel_reason:
+              status === 'cancelled' ? cancelReason || null : null,
+            cancelled_at:
+              status === 'cancelled'
+                ? o.cancelled_at || new Date().toISOString()
+                : o.cancelled_at,
+            delhivery_shipment: shouldMarkCarrierCancel
+              ? {
+                  ...existingShipment,
+                  status: 'Cancellation Requested',
+                  cancellation_requested_at: new Date().toISOString(),
+                  error_message: null,
+                }
+              : o.delhivery_shipment,
+          }
+        })
       )
-      toast.success('Order status updated')
+
+      if (
+        status === 'cancelled' &&
+        carrierCancel &&
+        !carrierCancel.ok &&
+        !carrierCancel.skipped
+      ) {
+        toast.error(
+          `Order cancelled in admin, but courier cancel failed: ${
+            carrierCancel.error || 'unknown error'
+          }. Use “Cancel on courier” to retry.`
+        )
+      } else {
+        toast.success(
+          status === 'cancelled' && carrierCancel?.ok && !carrierCancel.skipped
+            ? 'Order cancelled and courier cancellation requested'
+            : 'Order status updated'
+        )
+      }
       return true
     } catch {
       toast.error('Error updating order')
@@ -1037,6 +1101,69 @@ export function AdminOrdersTable({
       )
     } catch {
       toast.error('Error rejecting cancellation')
+    }
+  }
+
+  const cancelCourierShipment = async (order: AdminOrder) => {
+    const carrierLabel = getOrderCarrierLabel(order)
+    if (
+      !confirm(
+        `Cancel AWB on ${carrierLabel} for order ${order.order_number}?`
+      )
+    ) {
+      return
+    }
+
+    setUpdatingId(order.id)
+    try {
+      const res = await fetch('/api/admin/orders/shipment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: order.id, action: 'cancel' }),
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        toast.error(data.error || `${carrierLabel} cancel failed`)
+        return
+      }
+
+      const shipment = getDelhiveryShipment(order)
+      setOrders((current) =>
+        current.map((item) =>
+          item.id === order.id
+            ? {
+                ...item,
+                delhivery_shipment: {
+                  ...(shipment || {}),
+                  ...(data.shipment || {}),
+                  status:
+                    data.shipment?.status ||
+                    data.carrierStatus ||
+                    'Cancellation Requested',
+                  cancellation_requested_at:
+                    data.shipment?.cancellation_requested_at ||
+                    new Date().toISOString(),
+                  error_message: null,
+                },
+              }
+            : item
+        )
+      )
+
+      if (data.carrier_cancel?.skipped) {
+        toast.success(
+          data.carrier_cancel.reason === 'already_requested'
+            ? `${carrierLabel} cancel was already requested`
+            : `No active ${carrierLabel} AWB to cancel`
+        )
+      } else {
+        toast.success(`${carrierLabel} cancellation requested`)
+      }
+    } catch {
+      toast.error(`${getOrderCarrierLabel(order)} cancel failed`)
+    } finally {
+      setUpdatingId(null)
     }
   }
 
@@ -2038,6 +2165,19 @@ const markDelivered =
                           {order.tracking_number || getDelhiveryShipment(order)?.awb
                             ? 'Sync'
                             : 'Create Shipment'}
+                        </Button>
+                      )}
+
+                      {/* Retry courier cancel when admin cancelled but AWB still active */}
+                      {needsCourierCancel(order) && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-red-700 border-red-200"
+                          disabled={updatingId === order.id}
+                          onClick={() => cancelCourierShipment(order)}
+                        >
+                          Cancel on {getOrderCarrierLabel(order)}
                         </Button>
                       )}
 
