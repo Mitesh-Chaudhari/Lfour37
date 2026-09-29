@@ -31,6 +31,7 @@ import {
 import { hasSuccessfulWhatsAppTemplate } from '@/lib/whatsapp'
 import {
   formatItemLabel,
+  getReversePickupTemplateName,
   isReversePickupWhatsAppMilestone,
   isShipmentWhatsAppMilestone,
   SHIPMENT_MILESTONE_TEMPLATES,
@@ -292,6 +293,36 @@ async function notifyCustomerOfShipmentMilestone(
   }
 }
 
+async function claimReversePickupMilestone(
+  reversePickupId: string,
+  milestone: string,
+  expectedLastNotified: string | null | undefined
+): Promise<boolean> {
+  const supabase = createAdminClient()
+  let query = supabase
+    .from('delhivery_reverse_pickups')
+    .update({ last_notified_milestone: milestone })
+    .eq('id', reversePickupId)
+
+  if (expectedLastNotified == null || expectedLastNotified === '') {
+    query = query.is('last_notified_milestone', null)
+  } else {
+    query = query.eq('last_notified_milestone', expectedLastNotified)
+  }
+
+  const { data, error } = await query.select('id')
+  if (error) {
+    logger.warn('Failed to claim reverse pickup milestone', {
+      error,
+      reversePickupId,
+      milestone,
+    })
+    return false
+  }
+
+  return (data?.length ?? 0) > 0
+}
+
 async function notifyCustomerOfReversePickupMilestone(
   reversePickup: ReversePickupRow,
   {
@@ -305,6 +336,13 @@ async function notifyCustomerOfReversePickupMilestone(
   }
 ): Promise<void> {
   if (milestone === reversePickup.last_notified_milestone) return
+
+  const claimed = await claimReversePickupMilestone(
+    reversePickup.id,
+    milestone,
+    reversePickup.last_notified_milestone
+  )
+  if (!claimed) return
 
   const supabase = createAdminClient()
   const { data: order } = await supabase
@@ -347,25 +385,30 @@ async function notifyCustomerOfReversePickupMilestone(
     }
 
     if (order.shipping_address?.phone) {
-      await notifyReversePickupMilestone({
-        order: {
-          id: order.id,
-          order_number: order.order_number,
-          user_id: order.user_id,
-          shipping_address: order.shipping_address,
-        },
-        item,
+      const templateName = getReversePickupTemplateName(
         milestone,
-        trackingNumber,
-        pickupType: reversePickup.pickup_type,
-        carrier: rowCarrier(reversePickup.carrier),
-      })
+        reversePickup.pickup_type
+      )
+      const alreadySent = await hasSuccessfulWhatsAppTemplate(
+        order.id,
+        templateName
+      )
+      if (!alreadySent) {
+        await notifyReversePickupMilestone({
+          order: {
+            id: order.id,
+            order_number: order.order_number,
+            user_id: order.user_id,
+            shipping_address: order.shipping_address,
+          },
+          item,
+          milestone,
+          trackingNumber,
+          pickupType: reversePickup.pickup_type,
+          carrier: rowCarrier(reversePickup.carrier),
+        })
+      }
     }
-
-    await supabase
-      .from('delhivery_reverse_pickups')
-      .update({ last_notified_milestone: milestone })
-      .eq('id', reversePickup.id)
   } catch (error) {
     logger.warn('Reverse pickup status notification failed', {
       error,
