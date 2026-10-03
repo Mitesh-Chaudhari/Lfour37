@@ -3,6 +3,7 @@ import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { ensureDelhiveryShipmentForPaidOrder } from '@/lib/delhivery-shipping'
 import { sendOrderConfirmationEmail, sendNewOrderOwnerNotificationEmail } from '@/lib/email'
 import { notifyOrderConfirmation } from '@/lib/whatsapp/order-notifications'
+import { startCodDispatchConfirmation } from '@/lib/cod-dispatch-confirm'
 import { markAbandonedCartRecovered } from '@/lib/abandoned-cart'
 import { resolveDelhiveryPinLocation } from '@/lib/dtdc'
 import { initiateCodPrepaidOffer } from '@/lib/cod-prepaid-initiate'
@@ -200,6 +201,13 @@ export async function POST(request: NextRequest) {
     // 3) Fire COD → Prepaid conversion offer (fire-and-forget; non-blocking).
     initiateCodPrepaidOffer(order_id).catch((err) =>
       logger.error('COD prepaid offer initiation failed (non-fatal)', {
+        err,
+        orderId: order_id,
+      })
+    )
+
+    startCodDispatchConfirmation(order_id).catch((err) =>
+      logger.error('COD dispatch confirmation WhatsApp failed (non-fatal)', {
         err,
         orderId: order_id,
       })

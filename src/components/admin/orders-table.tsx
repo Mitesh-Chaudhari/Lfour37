@@ -1544,6 +1544,23 @@ const markDelivered =
                               ? 'advance paid'
                               : order.payment_status}
                           </Badge>
+                          {order.payment_method === 'cod' && order.cod_dispatch_status && (
+                            <p
+                              className={`mt-1 text-[11px] font-medium ${
+                                order.cod_dispatch_status === 'accepted'
+                                  ? 'text-green-700'
+                                  : order.cod_dispatch_status === 'declined'
+                                    ? 'text-red-600'
+                                    : 'text-amber-700'
+                              }`}
+                            >
+                              {order.cod_dispatch_status === 'accepted'
+                                ? 'Customer: Send parcel'
+                                : order.cod_dispatch_status === 'declined'
+                                  ? "Customer: Don't send"
+                                  : `Awaiting confirm (${order.cod_dispatch_sends || 0}/3)`}
+                            </p>
+                          )}
                           {isPartialCod && (
                             <p className="mt-1 text-[11px] text-gray-500 max-w-[200px]">
                               {advancePaid ? (

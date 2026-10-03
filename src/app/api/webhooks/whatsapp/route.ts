@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import {
+  recordCodDispatchReply,
+  recordCodDispatchReplyByPhone,
+} from '@/lib/cod-dispatch-confirm'
 import logger from '@/lib/logger'
 
 /**
@@ -43,10 +47,51 @@ export async function POST(req: NextRequest) {
 
     const admin = createAdminClient()
 
-    const buttonId =
+    const buttonPayload =
+      body?.button?.payload ||
+      body?.messages?.[0]?.button?.payload ||
       body?.button_reply?.id ||
       body?.messages?.[0]?.interactive?.button_reply?.id ||
       body?.interactive?.button_reply?.id
+
+    const buttonText = String(
+      body?.button?.text ||
+        body?.messages?.[0]?.button?.text ||
+        body?.button_reply?.title ||
+        body?.messages?.[0]?.interactive?.button_reply?.title ||
+        ''
+    ).toLowerCase()
+
+    const fromPhone =
+      body?.phone ||
+      body?.from ||
+      body?.messages?.[0]?.from ||
+      null
+
+    if (typeof buttonPayload === 'string' && buttonPayload.startsWith('cod_yes:')) {
+      const orderId = buttonPayload.slice('cod_yes:'.length)
+      if (orderId) await recordCodDispatchReply(orderId, 'accepted')
+    } else if (
+      typeof buttonPayload === 'string' &&
+      buttonPayload.startsWith('cod_no:')
+    ) {
+      const orderId = buttonPayload.slice('cod_no:'.length)
+      if (orderId) await recordCodDispatchReply(orderId, 'declined')
+    } else if (buttonText.includes('yes') && buttonText.includes('send')) {
+      if (typeof fromPhone === 'string') {
+        await recordCodDispatchReplyByPhone(fromPhone, 'accepted')
+      }
+    } else if (
+      buttonText.includes("don't send") ||
+      buttonText.includes('dont send') ||
+      (buttonText.includes('no') && buttonText.includes('send'))
+    ) {
+      if (typeof fromPhone === 'string') {
+        await recordCodDispatchReplyByPhone(fromPhone, 'declined')
+      }
+    }
+
+    const buttonId = buttonPayload
 
     if (typeof buttonId === 'string' && buttonId.startsWith('keep_cod:')) {
       const orderId = buttonId.replace('keep_cod:', '')

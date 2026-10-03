@@ -196,6 +196,8 @@ export interface Order {
   updated_at: string
   cod_advance_amount?: number | null
   cod_collect_amount?: number | null
+  cod_dispatch_status?: 'pending' | 'accepted' | 'declined' | null
+  cod_dispatch_sends?: number | null
   items?: OrderItem[]
   payment?: Payment
   user?: User

@@ -26,6 +26,12 @@ export const VEBLIKA_TEMPLATE_CONFIG = {
   cod_prepaid_reminder_1: { language: 'en', includeUrlButton: true },
   cod_prepaid_reminder_2: { language: 'en', includeUrlButton: true },
   cod_prepaid_confirmed: { language: 'en' },
+  /**
+   * Approved in Meta/Veblika with two quick replies:
+   * "YES - Send Parcel" and "NO - Don't Send".
+   * Body: {{1}} name, {{2}} order number, {{3}} items, {{4}} COD amount.
+   */
+  cod_dispatch_confirm: { language: 'en' },
 } as const
 
 export type VeblikaTemplateName = keyof typeof VEBLIKA_TEMPLATE_CONFIG

@@ -48,6 +48,8 @@ interface SendTemplateProps {
   urlButtonParam?: string
   /** Public HTTPS image for Meta IMAGE header templates (Veblika headerParams). */
   headerImageUrl?: string
+  /** Payloads for template quick-reply buttons, in button index order. */
+  quickReplyPayloads?: string[]
 }
 
 async function logWhatsAppMessage(entry: {
@@ -202,6 +204,7 @@ export async function sendWhatsAppTemplate({
   language,
   urlButtonParam,
   headerImageUrl,
+  quickReplyPayloads,
 }: SendTemplateProps) {
   if (!isWhatsAppConfigured()) {
     logger.warn('WhatsApp template skipped because env is not configured', {
@@ -240,7 +243,14 @@ export async function sendWhatsAppTemplate({
     ]
   }
 
-  if (templateName === 'phone_otp_verify' && bodyParams[0]) {
+  if (quickReplyPayloads?.length) {
+    payload.buttons = quickReplyPayloads.map((payloadText, index) => ({
+      type: 'button',
+      sub_type: 'quick_reply',
+      index: String(index),
+      parameters: [{ type: 'payload', payload: payloadText }],
+    }))
+  } else if (templateName === 'phone_otp_verify' && bodyParams[0]) {
     payload.buttons = [
       {
         type: 'button',
