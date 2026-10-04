@@ -172,10 +172,12 @@ export default function PageEditor({ page }: PageEditorProps) {
             <label className="text-sm font-medium text-gray-700 block mb-1.5">Excerpt</label>
             <textarea
               value={excerpt}
-              onChange={(e) => setExcerpt(e.target.value)}
+              onChange={(e) => setExcerpt(e.target.value.slice(0, 500))}
               rows={3}
+              maxLength={500}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
+            <p className="text-xs text-gray-500 mt-1">{excerpt.length}/500</p>
           </div>
           <label className="flex items-center gap-2 cursor-pointer">
             <input

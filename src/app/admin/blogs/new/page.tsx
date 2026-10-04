@@ -95,11 +95,15 @@ export default function NewBlogPostPage() {
           <label className="text-sm font-medium text-gray-700 block mb-1.5">Excerpt</label>
           <textarea
             value={excerpt}
-            onChange={(e) => setExcerpt(e.target.value)}
+            onChange={(e) => setExcerpt(e.target.value.slice(0, 500))}
             rows={3}
+            maxLength={500}
             placeholder="Short summary shown on the blog listing page"
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
           />
+          <p className="text-xs text-gray-500 mt-1">
+            {excerpt.length}/500 — short summary for the blog listing. Write the full article in the editor after creating the post.
+          </p>
         </div>
 
         <Button onClick={handleCreate} loading={loading}>

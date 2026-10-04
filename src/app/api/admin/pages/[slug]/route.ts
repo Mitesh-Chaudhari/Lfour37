@@ -27,7 +27,17 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const parsed = updatePageSchema.safeParse(await request.json())
 
     if (!parsed.success) {
-      return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
+      const excerptTooLong = parsed.error.issues.some(
+        (issue) => issue.path[0] === 'excerpt' && issue.code === 'too_big'
+      )
+      return NextResponse.json(
+        {
+          error: excerptTooLong
+            ? 'Excerpt must be 500 characters or fewer.'
+            : parsed.error.issues[0]?.message || 'Invalid request',
+        },
+        { status: 400 }
+      )
     }
 
     const updates: Record<string, unknown> = {
