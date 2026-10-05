@@ -27,14 +27,6 @@ function firstName(fullName: string | null | undefined): string {
   return name || 'there'
 }
 
-export function codDispatchYesPayload(orderId: string): string {
-  return `cod_yes:${orderId}`
-}
-
-export function codDispatchNoPayload(orderId: string): string {
-  return `cod_no:${orderId}`
-}
-
 async function sendCodDispatchConfirm({
   phone,
   userId,
@@ -64,10 +56,6 @@ async function sendCodDispatchConfirm({
       sanitizeWhatsAppParam(orderNumber),
       sanitizeWhatsAppParam(formatOrderItemsSummary(items)),
       sanitizeWhatsAppParam(formatInr(codAmount)),
-    ],
-    quickReplyPayloads: [
-      codDispatchYesPayload(orderId),
-      codDispatchNoPayload(orderId),
     ],
   })
 }
