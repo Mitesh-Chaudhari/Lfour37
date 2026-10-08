@@ -35,6 +35,94 @@ function isWebhookAuthorized(req: NextRequest): boolean {
   return false
 }
 
+type CodReplyDecision = 'accepted' | 'declined'
+
+function classifyCodReplyText(value: string): CodReplyDecision | null {
+  const text = value.toLowerCase()
+  if (text.includes("don't send") || text.includes('dont send')) return 'declined'
+  if (text.includes('no') && text.includes('send')) return 'declined'
+  if (text.includes('yes') && text.includes('send')) return 'accepted'
+  return null
+}
+
+function collectMessages(body: unknown): Array<Record<string, unknown>> {
+  const found: Array<Record<string, unknown>> = []
+  const visit = (value: unknown) => {
+    if (!value || typeof value !== 'object') return
+    if (Array.isArray(value)) {
+      value.forEach(visit)
+      return
+    }
+    const record = value as Record<string, unknown>
+    if (record.button || record.button_reply || record.interactive || record.text) {
+      found.push(record)
+    }
+    if (Array.isArray(record.messages)) record.messages.forEach(visit)
+    if (Array.isArray(record.entry)) record.entry.forEach(visit)
+    if (Array.isArray(record.changes)) record.changes.forEach(visit)
+    if (record.value && typeof record.value === 'object') visit(record.value)
+  }
+  visit(body)
+  return found
+}
+
+function readPhone(body: Record<string, unknown>, message?: Record<string, unknown>): string | null {
+  const candidates = [
+    message?.from,
+    body.phone,
+    body.from,
+    body.sender,
+    body.wa_id,
+  ]
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) return candidate
+  }
+  return null
+}
+
+async function recordInboundCodReply(body: Record<string, unknown>) {
+  const messages = collectMessages(body)
+  const sources = messages.length ? messages : [body]
+
+  for (const message of sources) {
+    const button = message.button as { payload?: unknown; text?: unknown } | undefined
+    const buttonReply = (message.button_reply ||
+      (message.interactive as { button_reply?: { id?: unknown; title?: unknown } } | undefined)
+        ?.button_reply) as { id?: unknown; title?: unknown } | undefined
+    const textBody = (message.text as { body?: unknown } | undefined)?.body
+    const payload = [button?.payload, buttonReply?.id].find(
+      (value) => typeof value === 'string'
+    ) as string | undefined
+    const label = [button?.text, buttonReply?.title, textBody, message.message, message.body]
+      .find((value) => typeof value === 'string') as string | undefined
+
+    if (payload?.startsWith('cod_yes:')) {
+      const orderId = payload.slice('cod_yes:'.length)
+      if (orderId) await recordCodDispatchReply(orderId, 'accepted')
+      return payload
+    }
+    if (payload?.startsWith('cod_no:')) {
+      const orderId = payload.slice('cod_no:'.length)
+      if (orderId) await recordCodDispatchReply(orderId, 'declined')
+      return payload
+    }
+
+    const decision =
+      (payload ? classifyCodReplyText(payload) : null) ||
+      (label ? classifyCodReplyText(label) : null)
+    if (!decision) {
+      if (payload?.startsWith('keep_cod:')) return payload
+      continue
+    }
+
+    const phone = readPhone(body, message)
+    if (phone) await recordCodDispatchReplyByPhone(phone, decision)
+    return payload || label || null
+  }
+
+  return null
+}
+
 export async function POST(req: NextRequest) {
   try {
     if (!isWebhookAuthorized(req)) {
@@ -46,52 +134,7 @@ export async function POST(req: NextRequest) {
     logger.info('WhatsApp webhook received', { body })
 
     const admin = createAdminClient()
-
-    const buttonPayload =
-      body?.button?.payload ||
-      body?.messages?.[0]?.button?.payload ||
-      body?.button_reply?.id ||
-      body?.messages?.[0]?.interactive?.button_reply?.id ||
-      body?.interactive?.button_reply?.id
-
-    const buttonText = String(
-      body?.button?.text ||
-        body?.messages?.[0]?.button?.text ||
-        body?.button_reply?.title ||
-        body?.messages?.[0]?.interactive?.button_reply?.title ||
-        ''
-    ).toLowerCase()
-
-    const fromPhone =
-      body?.phone ||
-      body?.from ||
-      body?.messages?.[0]?.from ||
-      null
-
-    if (typeof buttonPayload === 'string' && buttonPayload.startsWith('cod_yes:')) {
-      const orderId = buttonPayload.slice('cod_yes:'.length)
-      if (orderId) await recordCodDispatchReply(orderId, 'accepted')
-    } else if (
-      typeof buttonPayload === 'string' &&
-      buttonPayload.startsWith('cod_no:')
-    ) {
-      const orderId = buttonPayload.slice('cod_no:'.length)
-      if (orderId) await recordCodDispatchReply(orderId, 'declined')
-    } else if (buttonText.includes('yes') && buttonText.includes('send')) {
-      if (typeof fromPhone === 'string') {
-        await recordCodDispatchReplyByPhone(fromPhone, 'accepted')
-      }
-    } else if (
-      buttonText.includes("don't send") ||
-      buttonText.includes('dont send') ||
-      (buttonText.includes('no') && buttonText.includes('send'))
-    ) {
-      if (typeof fromPhone === 'string') {
-        await recordCodDispatchReplyByPhone(fromPhone, 'declined')
-      }
-    }
-
-    const buttonId = buttonPayload
+    const buttonId = await recordInboundCodReply(body)
 
     if (typeof buttonId === 'string' && buttonId.startsWith('keep_cod:')) {
       const orderId = buttonId.replace('keep_cod:', '')

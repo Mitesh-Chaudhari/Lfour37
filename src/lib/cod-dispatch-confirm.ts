@@ -176,6 +176,25 @@ export async function sendDueCodDispatchReminders(limit = 50): Promise<number> {
 
     if (!claimed) continue
 
+    const { data: stillPending } = await admin
+      .from('orders')
+      .select('id')
+      .eq('id', order.id)
+      .eq('cod_dispatch_status', 'pending')
+      .maybeSingle()
+
+    if (!stillPending) {
+      await admin
+        .from('orders')
+        .update({
+          cod_dispatch_sends: sends,
+          cod_dispatch_last_sent_at: lastSent,
+        })
+        .eq('id', order.id)
+        .eq('cod_dispatch_sends', sends + 1)
+      continue
+    }
+
     const sent = await sendCodDispatchConfirm({
       phone,
       userId: order.user_id,
