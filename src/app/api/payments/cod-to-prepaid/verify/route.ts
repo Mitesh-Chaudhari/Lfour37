@@ -18,6 +18,7 @@ import crypto from 'crypto'
 import { createAdminClient } from '@/lib/supabase/server'
 import { verifyCodPrepaidToken } from '@/lib/cod-prepaid-token'
 import { updateShipmentToPrepaid } from '@/lib/delhivery'
+import { queueErpNextOrderSync } from '@/lib/erpnext/sync-order'
 import { notifyCodPrepaidConfirmed } from '@/lib/whatsapp/cod-prepaid'
 import { fetchRazorpayPayment } from '@/lib/razorpay'
 import logger from '@/lib/logger'
@@ -211,6 +212,8 @@ export async function POST(request: NextRequest) {
     }
 
     logger.info('COD prepaid conversion successful', { orderId, discountedTotal })
+
+    await queueErpNextOrderSync(orderId)
 
     return NextResponse.json({ success: true, discounted_total: discountedTotal })
   } catch (error) {

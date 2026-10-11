@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { requireAdminUser } from '@/lib/admin-auth'
 import { areAllOrderItemsCancelled } from '@/lib/order-status'
 import logger from '@/lib/logger'
+import { queueErpNextOrderSync } from '@/lib/erpnext/sync-order'
 
 export async function POST(req: NextRequest) {
   const adminUser = await requireAdminUser()
@@ -72,6 +73,8 @@ export async function POST(req: NextRequest) {
       })
     }
   }
+
+  await queueErpNextOrderSync(item.order_id)
 
   return NextResponse.json({
     success: true,

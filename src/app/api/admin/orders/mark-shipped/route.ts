@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireAdminUser } from '@/lib/admin-auth'
+import { queueErpNextOrderSync } from '@/lib/erpnext/sync-order'
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,6 +29,8 @@ export async function POST(req: NextRequest) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    await queueErpNextOrderSync(orderId)
 
     return NextResponse.json({ success: true })
   } catch (err: unknown) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { ensureDelhiveryShipmentForPaidOrder } from '@/lib/delhivery-shipping'
+import { queueErpNextOrderSync } from '@/lib/erpnext/sync-order'
 import { sendOrderConfirmationEmail, sendNewOrderOwnerNotificationEmail } from '@/lib/email'
 import { notifyOrderConfirmation } from '@/lib/whatsapp/order-notifications'
 import { markAbandonedCartRecovered } from '@/lib/abandoned-cart'
@@ -138,6 +139,7 @@ export async function POST(request: NextRequest) {
 
     if (order.payment_status === 'completed') {
       const shipment = await ensureDelhiveryShipmentForPaidOrder(order_id)
+      await queueErpNextOrderSync(order_id)
       return NextResponse.json({ success: true, shipment })
     }
 
@@ -146,6 +148,7 @@ export async function POST(request: NextRequest) {
       (order.status === 'processing' || order.status === 'paid')
     ) {
       const shipment = await ensureDelhiveryShipmentForPaidOrder(order_id)
+      await queueErpNextOrderSync(order_id)
       return NextResponse.json({ success: true, shipment })
     }
 
@@ -308,6 +311,8 @@ export async function POST(request: NextRequest) {
     ])
 
     const shipment = await ensureDelhiveryShipmentForPaidOrder(order_id)
+
+    await queueErpNextOrderSync(order_id)
 
     return NextResponse.json({ success: true, shipment })
   } catch (error) {

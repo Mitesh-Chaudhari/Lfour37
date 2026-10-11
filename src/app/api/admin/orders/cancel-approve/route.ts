@@ -9,6 +9,7 @@ import {
 import { notifyOrderCancelled } from '@/lib/whatsapp/order-notifications'
 import logger from '@/lib/logger'
 import { areAllOrderItemsCancelled } from '@/lib/order-status'
+import { queueErpNextOrderSync } from '@/lib/erpnext/sync-order'
 
 export async function POST(req: NextRequest) {
   try {
@@ -128,6 +129,7 @@ export async function POST(req: NextRequest) {
           refundError,
           item_id,
         })
+        await queueErpNextOrderSync(item.order_id)
         return NextResponse.json({
           success: true,
           cancelled: true,
@@ -193,6 +195,8 @@ export async function POST(req: NextRequest) {
         )
       }
     }
+
+    await queueErpNextOrderSync(item.order_id)
 
     return NextResponse.json({
       success: true,

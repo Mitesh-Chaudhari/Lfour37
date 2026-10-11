@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireAdminUser } from '@/lib/admin-auth'
 import { markCodCollectedOnDelivery } from '@/lib/cod-payment'
+import { queueErpNextOrderSync } from '@/lib/erpnext/sync-order'
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
     }
 
     await markCodCollectedOnDelivery(orderId, updatedOrder, supabase)
+    await queueErpNextOrderSync(orderId)
 
     return NextResponse.json({ success: true })
   } catch (err: unknown) {

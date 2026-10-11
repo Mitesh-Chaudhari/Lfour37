@@ -7,6 +7,7 @@ import { startCodDispatchConfirmation } from '@/lib/cod-dispatch-confirm'
 import { markAbandonedCartRecovered } from '@/lib/abandoned-cart'
 import { resolveDelhiveryPinLocation } from '@/lib/dtdc'
 import { initiateCodPrepaidOffer } from '@/lib/cod-prepaid-initiate'
+import { queueErpNextOrderSync } from '@/lib/erpnext/sync-order'
 import logger from '@/lib/logger'
 import { z } from 'zod'
 
@@ -95,6 +96,7 @@ export async function POST(request: NextRequest) {
     // Already confirmed — only ensure shipment, do not re-send confirmation.
     if (order.status === 'processing' || order.status === 'paid') {
       const shipment = await ensureDelhiveryShipmentForPaidOrder(order_id)
+      await queueErpNextOrderSync(order_id)
       return NextResponse.json({ success: true, shipment })
     }
 
@@ -212,6 +214,8 @@ export async function POST(request: NextRequest) {
         orderId: order_id,
       })
     )
+
+    await queueErpNextOrderSync(order_id)
 
     return NextResponse.json({ success: true, shipment })
   } catch (error) {

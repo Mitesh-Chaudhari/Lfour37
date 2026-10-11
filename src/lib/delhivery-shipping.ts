@@ -38,6 +38,7 @@ import {
 } from '@/lib/whatsapp/templates'
 import logger from '@/lib/logger'
 import { markCodCollectedOnDelivery } from '@/lib/cod-payment'
+import { queueErpNextOrderSync } from '@/lib/erpnext/sync-order'
 import {
   resolveShipmentCarrier,
   type ShipmentCarrier,
@@ -808,6 +809,13 @@ export async function syncDelhiveryShipment(
 
       if (mappedOrderStatus === 'delivered') {
         await markCodCollectedOnDelivery(order.id, order, supabase)
+      }
+      if (
+        mappedOrderStatus === 'shipped' ||
+        mappedOrderStatus === 'delivered' ||
+        mappedOrderStatus === 'cancelled'
+      ) {
+        await queueErpNextOrderSync(order.id)
       }
     } else if (tracking.awb && !order.tracking_number) {
       await supabase

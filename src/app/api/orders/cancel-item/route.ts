@@ -8,6 +8,7 @@ import {
   sendOrderCancelledOwnerNotificationEmail,
 } from '@/lib/email'
 import logger from '@/lib/logger'
+import { queueErpNextOrderSync } from '@/lib/erpnext/sync-order'
 import {
   areAllOrderItemsCancelled,
   canCancelOrderItem,
@@ -220,6 +221,8 @@ export async function POST(req: NextRequest) {
   }).catch((err) =>
     logger.error('Cancel WhatsApp failed', { err, orderId: item.order_id })
   )
+
+  await queueErpNextOrderSync(item.order_id)
 
   return NextResponse.json({
     success: true,
