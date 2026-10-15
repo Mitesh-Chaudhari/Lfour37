@@ -283,6 +283,38 @@ export async function POST(request: NextRequest) {
           createdBy: adminUser.id,
           notes: `${sale.sale_number} store-only`,
         })
+
+        // The piece left the shop, so the website must show one less as well.
+        if (!onlineMap.has(line.variant_id)) {
+          const variant = variants.find((row) => row.id === line.variant_id)
+          const websiteQty = Number(variant?.stock || 0)
+          if (websiteQty > 0) {
+            await db.from('stock_levels').upsert(
+              {
+                location_id: onlineLocationId,
+                variant_id: line.variant_id,
+                quantity: websiteQty,
+              },
+              { onConflict: 'location_id,variant_id' }
+            )
+            onlineMap.set(line.variant_id, websiteQty)
+          }
+        }
+        const onlineHave = Math.max(0, onlineMap.get(line.variant_id) || 0)
+        const websiteDrop = Math.min(line.from_store, onlineHave)
+        if (websiteDrop > 0) {
+          await applyStockMovement({
+            variantId: line.variant_id,
+            delta: -websiteDrop,
+            movementType: 'pos_sale',
+            locationId: onlineLocationId,
+            referenceType: 'pos_sale',
+            referenceId: sale.id,
+            createdBy: adminUser.id,
+            notes: `${sale.sale_number} website reduced for store sale`,
+          })
+          onlineMap.set(line.variant_id, onlineHave - websiteDrop)
+        }
       }
       if (line.from_online > 0) {
         await applyStockMovement({
@@ -295,6 +327,10 @@ export async function POST(request: NextRequest) {
           createdBy: adminUser.id,
           notes: `${sale.sale_number} shared-online`,
         })
+        onlineMap.set(
+          line.variant_id,
+          Math.max(0, (onlineMap.get(line.variant_id) || 0) - line.from_online)
+        )
       }
 
       const { data: productRow } = await db
