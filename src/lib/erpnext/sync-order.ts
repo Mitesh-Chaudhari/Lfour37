@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { createAdminClient } from "@/lib/supabase/server"
 import logger from "@/lib/logger"
 import {
+  erpCall,
   erpCancel,
   erpDelete,
   erpGet,
@@ -12,6 +13,10 @@ import {
   erpUpdate,
   isErpNextConfigured,
 } from "@/lib/erpnext/client"
+import {
+  isDelhiveryRtoDelivered,
+  isDelhiveryRtoStatus,
+} from "@/lib/delhivery-status"
 
 const COMPANY = "Yadevi Lifestyle Private Limited"
 const WAREHOUSE = "Online - S"
@@ -20,6 +25,11 @@ const CUSTOMER_GROUP = "Website"
 const TERRITORY = "India"
 const RECEIVABLE = "Debtors - S"
 const COST_CENTER = "Main - S"
+const COMPANY_GSTIN = "24AACCY1267A1ZR"
+const INVOICE_SERIES = "WEB-INV-.YY.-.#####"
+const CREDIT_NOTE_SERIES = "WEB-CN-.YY.-.#####"
+const TAX_IN_STATE = "LFOUR37 GST In-State 5% - S"
+const TAX_OUT_STATE = "LFOUR37 GST Out-State 5% - S"
 
 const CONFIRMED_STATUSES = new Set([
   "processing",
@@ -100,6 +110,8 @@ type WebsiteOrder = {
   total: number | null
   created_at: string
   user_id: string
+  notes?: string | null
+  cancel_reason?: string | null
   shipping_address: ShippingAddress | null
   items: OrderItemRow[]
   user?: { email?: string | null; full_name?: string | null } | Array<{
@@ -160,9 +172,8 @@ function activeItems(order: WebsiteOrder): OrderItemRow[] {
   return (order.items || []).filter((item) => item.status !== "cancelled" && item.variant_id)
 }
 
-function shouldInvoice(order: WebsiteOrder): boolean {
-  if (order.payment_status === "completed") return true
-  return Boolean(order.payment_method && order.payment_method !== "cod")
+function shouldReceivePayment(order: WebsiteOrder): boolean {
+  return order.payment_status === "completed"
 }
 
 function shouldDeliver(order: WebsiteOrder): boolean {
@@ -217,12 +228,17 @@ function includeTaxesInRate(doc: Record<string, unknown>): Record<string, unknow
   }
 }
 
-async function findOpen(doctype: string, orderId: string): Promise<string | null> {
+async function findOpen(
+  doctype: string,
+  orderId: string,
+  extra: unknown[][] = []
+): Promise<string | null> {
   const rows = await erpGetList(
     doctype,
     [
       ["custom_supabase_order_id", "=", orderId],
       ["docstatus", "!=", 2],
+      ...extra,
     ],
     ["name", "docstatus"]
   )
@@ -275,6 +291,16 @@ async function saveLink(
   patch: Record<string, string | null>
 ): Promise<void> {
   const { error } = await admin.from("orders").update(patch).eq("id", orderId)
+  if (
+    error &&
+    "erpnext_credit_note" in patch &&
+    /erpnext_credit_note/i.test(error.message || "")
+  ) {
+    const rest = { ...patch }
+    delete rest.erpnext_credit_note
+    const retry = await admin.from("orders").update(rest).eq("id", orderId)
+    if (!retry.error) return
+  }
   if (error) {
     logger.error("Could not store ERPNext ids on the order", { error, orderId })
   }
@@ -414,14 +440,107 @@ async function salesOrderMatches(name: string, lines: ResolvedLine[]): Promise<b
   return lines.every((line) => current.get(line.itemCode) === line.qty)
 }
 
+type GstCharge = {
+  template: string
+  taxes: Record<string, unknown>[]
+}
+
+function taxTemplateFor(supply: string | null): string {
+  if (!supply || supply.startsWith("24-")) return TAX_IN_STATE
+  return TAX_OUT_STATE
+}
+
+function cleanTaxRow(row: unknown): Record<string, unknown> | null {
+  if (!row || typeof row !== "object") return null
+  const tax = { ...(row as Record<string, unknown>) }
+  for (const key of ["name", "idx", "parent", "parentfield", "parenttype", "docstatus"]) {
+    delete tax[key]
+  }
+  tax.included_in_print_rate = 1
+  return tax
+}
+
+async function loadGst(supply: string | null): Promise<GstCharge> {
+  const template = taxTemplateFor(supply)
+  const message = await erpCall(
+    "erpnext.controllers.accounts_controller.get_taxes_and_charges",
+    {
+      master_doctype: "Sales Taxes and Charges Template",
+      master_name: template,
+    }
+  )
+  const taxes = (Array.isArray(message) ? message : [])
+    .map(cleanTaxRow)
+    .filter((row): row is Record<string, unknown> => Boolean(row))
+  if (taxes.length === 0) {
+    throw new Error(`GST template ${template} has no tax rows`)
+  }
+  return { template, taxes }
+}
+
+type RtoState = { rto: boolean; delivered: boolean }
+
+async function loadRto(admin: SupabaseClient, order: WebsiteOrder): Promise<RtoState> {
+  const { data } = await admin
+    .from("delhivery_shipments")
+    .select("status, status_type, instructions, status_code")
+    .eq("order_id", order.id)
+    .order("last_synced_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const shipment = data as {
+    status?: string | null
+    status_type?: string | null
+    instructions?: string | null
+    status_code?: string | null
+  } | null
+
+  if (
+    shipment &&
+    isDelhiveryRtoStatus(
+      shipment.status || "",
+      shipment.status_type,
+      shipment.instructions,
+      shipment.status_code
+    )
+  ) {
+    const delivered =
+      isDelhiveryRtoDelivered(
+        shipment.status || "",
+        shipment.status_type,
+        shipment.instructions,
+        shipment.status_code
+      ) ||
+      order.status === "cancelled" ||
+      order.status === "refunded"
+    return { rto: true, delivered }
+  }
+
+  const text = `${order.notes || ""} ${order.cancel_reason || ""}`.toLowerCase()
+  if (text.includes("rto") || text.includes("return to origin")) {
+    return {
+      rto: true,
+      delivered:
+        order.status === "cancelled" ||
+        order.status === "refunded" ||
+        text.includes("rto delivered"),
+    }
+  }
+
+  return { rto: false, delivered: false }
+}
+
 async function ensureSalesOrder(
   order: WebsiteOrder,
   customer: string,
-  lines: ResolvedLine[]
+  lines: ResolvedLine[],
+  gst: GstCharge,
+  rto: boolean
 ): Promise<string> {
   const existing = await findOpen("Sales Order", order.id)
   if (existing) {
-    if (await salesOrderMatches(existing, lines)) {
+    if (rto || (await salesOrderMatches(existing, lines))) {
       await submitDocument("Sales Order", existing)
       return existing
     }
@@ -456,6 +575,9 @@ async function ensureSalesOrder(
     po_no: (order.order_number || order.id).slice(0, 140),
     custom_supabase_order_id: order.id,
     gst_category: "Unregistered",
+    company_gstin: COMPANY_GSTIN,
+    taxes_and_charges: gst.template,
+    taxes: gst.taxes,
     ...(supply ? { place_of_supply: supply } : {}),
     ...(addressName
       ? { customer_address: addressName, shipping_address_name: addressName }
@@ -488,7 +610,7 @@ async function ensureMappedDoc(
   orderId: string,
   extra?: Record<string, unknown>
 ): Promise<string> {
-  const existing = await findOpen(doctype, orderId)
+  const existing = await findOpen(doctype, orderId, [["is_return", "=", 0]])
   if (existing) {
     await submitDocument(doctype, existing)
     return existing
@@ -514,7 +636,7 @@ async function ensurePayment(
   customer: string,
   salesInvoice: string
 ): Promise<string> {
-  const existing = await findOpen("Payment Entry", order.id)
+  const existing = await findOpen("Payment Entry", order.id, [["payment_type", "=", "Receive"]])
   if (existing) {
     await submitDocument("Payment Entry", existing)
     return existing
@@ -557,6 +679,105 @@ async function ensurePayment(
   return name
 }
 
+async function ensureCreditNote(order: WebsiteOrder, salesInvoice: string): Promise<string> {
+  const existing = await findOpen("Sales Invoice", order.id, [["is_return", "=", 1]])
+  if (existing) {
+    await submitDocument("Sales Invoice", existing)
+    return existing
+  }
+
+  const mapped = stripNewDoc(
+    await erpMethod(
+      "erpnext.accounts.doctype.sales_invoice.sales_invoice.make_sales_return",
+      { source_name: salesInvoice }
+    )
+  )
+  const created = await erpInsert("Sales Invoice", {
+    ...mapped,
+    naming_series: CREDIT_NOTE_SERIES,
+    custom_supabase_order_id: order.id,
+    is_return: 1,
+    return_against: salesInvoice,
+    update_stock: 0,
+  })
+  const name = String(created.name)
+  await submitDocument("Sales Invoice", name)
+  return name
+}
+
+async function ensureRefund(
+  order: WebsiteOrder,
+  customer: string,
+  creditNote: string
+): Promise<string | null> {
+  const existing = await findOpen("Payment Entry", order.id, [["payment_type", "=", "Pay"]])
+  if (existing) {
+    await submitDocument("Payment Entry", existing)
+    return existing
+  }
+
+  const note = await erpGet("Sales Invoice", creditNote)
+  const outstanding = Number(note.outstanding_amount || 0)
+  if (outstanding >= -0.01) return null
+
+  const amount = Math.abs(outstanding)
+  const account = paymentAccount(order.payment_method)
+  const created = await erpInsert("Payment Entry", {
+    doctype: "Payment Entry",
+    payment_type: "Pay",
+    party_type: "Customer",
+    party: customer,
+    company: COMPANY,
+    mode_of_payment: account.mode,
+    paid_from: account.account,
+    paid_to: RECEIVABLE,
+    paid_amount: amount,
+    received_amount: amount,
+    target_exchange_rate: 1,
+    source_exchange_rate: 1,
+    reference_no: `RFD-${order.order_number || order.id}`.slice(0, 140),
+    reference_date: istDate(new Date().toISOString()),
+    custom_supabase_order_id: order.id,
+    references: [
+      {
+        reference_doctype: "Sales Invoice",
+        reference_name: creditNote,
+        allocated_amount: -amount,
+      },
+    ],
+  })
+  const name = String(created.name)
+  await submitDocument("Payment Entry", name)
+  return name
+}
+
+async function ensureReturnDelivery(orderId: string): Promise<string | null> {
+  const original = await findOpen("Delivery Note", orderId, [["is_return", "=", 0]])
+  if (!original) return null
+
+  const existing = await findOpen("Delivery Note", orderId, [["is_return", "=", 1]])
+  if (existing) {
+    await submitDocument("Delivery Note", existing)
+    return existing
+  }
+
+  const mapped = stripNewDoc(
+    await erpMethod(
+      "erpnext.stock.doctype.delivery_note.delivery_note.make_sales_return",
+      { source_name: original }
+    )
+  )
+  const created = await erpInsert("Delivery Note", {
+    ...mapped,
+    custom_supabase_order_id: orderId,
+    is_return: 1,
+    return_against: original,
+  })
+  const name = String(created.name)
+  await submitDocument("Delivery Note", name)
+  return name
+}
+
 export async function syncWebsiteOrderToErpNext(orderId: string): Promise<ErpNextSyncResult> {
   if (!isErpNextConfigured()) {
     return { ok: false, skipped: true, error: "ERPNext is not configured" }
@@ -571,7 +792,8 @@ export async function syncWebsiteOrderToErpNext(orderId: string): Promise<ErpNex
       return { ok: true, skipped: true }
     }
 
-    if (order.status === "cancelled" || order.status === "refunded") {
+    const rto = await loadRto(admin, order)
+    if ((order.status === "cancelled" || order.status === "refunded") && !rto.rto) {
       await cancelErpDocuments(order.id)
       await saveLink(admin, order.id, {
         erpnext_sync_error: null,
@@ -581,7 +803,7 @@ export async function syncWebsiteOrderToErpNext(orderId: string): Promise<ErpNex
     }
 
     const items = activeItems(order)
-    if (items.length === 0) {
+    if (items.length === 0 && !rto.rto) {
       await cancelErpDocuments(order.id)
       await saveLink(admin, order.id, {
         erpnext_sync_error: null,
@@ -591,15 +813,18 @@ export async function syncWebsiteOrderToErpNext(orderId: string): Promise<ErpNex
     }
 
     const lines = await resolveLines(items)
+    const supply = placeOfSupply(order.shipping_address?.state)
+    const gst = await loadGst(supply)
     const customer = await ensureCustomer(order)
-    const salesOrder = await ensureSalesOrder(order, customer, lines)
+    const salesOrder = await ensureSalesOrder(order, customer, lines, gst, rto.rto)
 
     let deliveryNote: string | null = null
     let salesInvoice: string | null = null
     let paymentEntry: string | null = null
+    let creditNote: string | null = null
     let syncError: string | null = null
 
-    if (shouldDeliver(order)) {
+    if (!rto.rto && shouldDeliver(order)) {
       try {
         deliveryNote = await ensureMappedDoc(
           "Delivery Note",
@@ -610,21 +835,63 @@ export async function syncWebsiteOrderToErpNext(orderId: string): Promise<ErpNex
       } catch (error) {
         syncError = error instanceof Error ? error.message : "Delivery Note failed"
       }
+    } else if (rto.rto) {
+      deliveryNote = await findOpen("Delivery Note", order.id, [["is_return", "=", 0]])
+      if (!deliveryNote && shouldDeliver(order)) {
+        try {
+          deliveryNote = await ensureMappedDoc(
+            "Delivery Note",
+            "erpnext.selling.doctype.sales_order.sales_order.make_delivery_note",
+            salesOrder,
+            order.id
+          )
+        } catch (error) {
+          syncError = error instanceof Error ? error.message : "Delivery Note failed"
+        }
+      }
     }
 
-    if (shouldInvoice(order)) {
-      try {
-        salesInvoice = await ensureMappedDoc(
-          "Sales Invoice",
-          "erpnext.selling.doctype.sales_order.sales_order.make_sales_invoice",
-          salesOrder,
-          order.id,
-          { update_stock: 0 }
-        )
+    try {
+      salesInvoice = await ensureMappedDoc(
+        "Sales Invoice",
+        "erpnext.selling.doctype.sales_order.sales_order.make_sales_invoice",
+        salesOrder,
+        order.id,
+        {
+          update_stock: 0,
+          naming_series: INVOICE_SERIES,
+          company_gstin: COMPANY_GSTIN,
+          taxes_and_charges: gst.template,
+          taxes: gst.taxes,
+          ...(supply ? { place_of_supply: supply } : {}),
+        }
+      )
+      if (shouldReceivePayment(order)) {
         paymentEntry = await ensurePayment(order, customer, salesInvoice)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Invoice or payment failed"
+      syncError = syncError ? `${syncError}; ${message}` : message
+    }
+
+    if (rto.rto && salesInvoice) {
+      try {
+        creditNote = await ensureCreditNote(order, salesInvoice)
+        if (paymentEntry || (await findOpen("Payment Entry", order.id, [["payment_type", "=", "Receive"]]))) {
+          await ensureRefund(order, customer, creditNote)
+        }
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Invoice or payment failed"
+        const message = error instanceof Error ? error.message : "Credit note failed"
         syncError = syncError ? `${syncError}; ${message}` : message
+      }
+
+      if (rto.delivered) {
+        try {
+          await ensureReturnDelivery(order.id)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Return delivery failed"
+          syncError = syncError ? `${syncError}; ${message}` : message
+        }
       }
     }
 
@@ -634,6 +901,7 @@ export async function syncWebsiteOrderToErpNext(orderId: string): Promise<ErpNex
       erpnext_delivery_note: deliveryNote,
       erpnext_sales_invoice: salesInvoice,
       erpnext_payment_entry: paymentEntry,
+      erpnext_credit_note: creditNote,
       erpnext_sync_error: syncError,
       erpnext_synced_at: new Date().toISOString(),
     })
@@ -669,7 +937,7 @@ export async function syncRecentOrdersToErpNext(limit = 20): Promise<{
   const { data, error } = await admin
     .from("orders")
     .select(
-      "id, status, payment_status, erpnext_sales_order, erpnext_delivery_note, erpnext_payment_entry, erpnext_sync_error"
+      "id, status, payment_status, erpnext_sales_order, erpnext_sales_invoice, erpnext_delivery_note, erpnext_payment_entry, erpnext_sync_error"
     )
     .in("status", [...CONFIRMED_STATUSES])
     .order("created_at", { ascending: false })
@@ -680,6 +948,13 @@ export async function syncRecentOrdersToErpNext(limit = 20): Promise<{
   const pending = (data || [])
     .filter((order) => {
       if (!order.erpnext_sales_order || order.erpnext_sync_error) return true
+      if (
+        !order.erpnext_sales_invoice &&
+        order.status !== "cancelled" &&
+        order.status !== "refunded"
+      ) {
+        return true
+      }
       if (
         (order.status === "shipped" || order.status === "delivered") &&
         !order.erpnext_delivery_note

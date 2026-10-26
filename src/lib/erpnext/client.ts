@@ -151,15 +151,19 @@ export async function erpCancel(doctype: string, name: string): Promise<void> {
   })
 }
 
-export async function erpMethod(
-  method: string,
-  args: Record<string, unknown>
-): Promise<Record<string, unknown>> {
+export async function erpCall(method: string, args: Record<string, unknown>): Promise<unknown> {
   const body = await erpFetch(`/api/method/${method}`, {
     method: "POST",
     body: JSON.stringify(args),
   })
-  const message = body.message
+  return body.message
+}
+
+export async function erpMethod(
+  method: string,
+  args: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const message = await erpCall(method, args)
   if (!message || typeof message !== "object" || Array.isArray(message)) {
     throw new ErpNextError(`ERPNext method ${method} did not return a document`)
   }

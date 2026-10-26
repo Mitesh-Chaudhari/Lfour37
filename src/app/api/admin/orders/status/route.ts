@@ -14,6 +14,7 @@ import {
 import logger from '@/lib/logger'
 import { OrderStatus } from '@/types'
 import { markCodCollectedOnDelivery } from '@/lib/cod-payment'
+import { queueErpNextOrderSync } from '@/lib/erpnext/sync-order'
 
 export async function PATCH(req: NextRequest) {
   try {
@@ -138,6 +139,10 @@ export async function PATCH(req: NextRequest) {
       }
     } catch (whatsappError) {
       logger.warn('Failed to send status WhatsApp', { whatsappError, order_id })
+    }
+
+    if (['processing', 'paid', 'shipped', 'delivered', 'cancelled', 'refunded'].includes(status)) {
+      await queueErpNextOrderSync(order_id)
     }
 
     logger.info('Order status updated', { order_id, status, updated_by: user.id })
