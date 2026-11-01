@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/server'
 import { requireAdminUser } from '@/lib/inventory'
-import { generateVariantBarcode } from '@/lib/barcode'
 import {
   ADMIN_BRAND_ALL,
   ADMIN_BRAND_COOKIE,
@@ -68,46 +67,7 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json().catch(() => null)
   const action = body?.action as string | undefined
-  const brandId = await resolveAdminBrandId()
   const db = createAdminClient()
-
-  if (action === 'bulk_generate_missing') {
-    const { data, error } = await db
-      .from('product_variants')
-      .select(
-        `
-        id, size, color, barcode,
-        product:products!inner(id, sku, brand_id)
-      `
-      )
-      .eq('product.brand_id', brandId)
-      .eq('is_active', true)
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-
-    let updated = 0
-    for (const row of data || []) {
-      if (row.barcode) continue
-      const product = Array.isArray(row.product) ? row.product[0] : row.product
-      const barcode = generateVariantBarcode({
-        brandSlug: 'lf',
-        productSku: product?.sku || null,
-        size: row.size,
-        color: row.color,
-        variantId: row.id,
-      })
-      const { error: updError } = await db
-        .from('product_variants')
-        .update({ barcode })
-        .eq('id', row.id)
-        .is('barcode', null)
-      if (!updError) updated += 1
-    }
-
-    return NextResponse.json({ success: true, updated })
-  }
 
   if (action === 'set_barcode') {
     const variantId = body?.variant_id as string | undefined

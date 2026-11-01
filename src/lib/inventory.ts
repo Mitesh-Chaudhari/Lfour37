@@ -13,8 +13,6 @@ export type StockMovementType =
 
 export type PosPaymentMethod = 'cash' | 'upi' | 'card' | 'mixed'
 
-export { generateVariantBarcode } from '@/lib/barcode'
-
 export async function requireAdminUser() {
   const { createClient } = await import('@/lib/supabase/server')
   const { isStaffRole } = await import('@/lib/admin-permissions')

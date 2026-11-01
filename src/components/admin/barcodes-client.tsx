@@ -56,23 +56,6 @@ export function BarcodesClient() {
 
   const selectedRows = filtered.filter((v) => selected[v.id] && v.barcode)
 
-  const bulkGenerate = () => {
-    startTransition(async () => {
-      const res = await fetch('/api/admin/inventory/barcodes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'bulk_generate_missing' }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        toast.error(data.error || 'Generate failed')
-        return
-      }
-      toast.success(`Generated barcodes for ${data.updated} variants`)
-      load()
-    })
-  }
-
   const printSelected = () => {
     if (selectedRows.length === 0) {
       toast.error('Select variants that already have barcodes')
@@ -124,8 +107,8 @@ export function BarcodesClient() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Barcodes</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Assign barcodes to size/color variants, bulk-fill missing ones, then
-          print simple labels for the store scanner.
+          Enter barcodes manually for size/color variants, then print labels
+          for the store scanner.
         </p>
       </div>
 
@@ -150,9 +133,6 @@ export function BarcodesClient() {
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" loading={pending} onClick={load}>
             Refresh
-          </Button>
-          <Button type="button" variant="outline" loading={pending} onClick={bulkGenerate}>
-            Generate missing
           </Button>
           <Button type="button" onClick={printSelected}>
             Print selected ({selectedRows.length})

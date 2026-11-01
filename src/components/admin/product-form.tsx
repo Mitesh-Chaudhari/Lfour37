@@ -30,7 +30,6 @@ import {
   normalizeVariantSize,
 } from '@/lib/product-variants'
 import { getClientAdminBrandId } from '@/lib/organization'
-import { generateVariantBarcode } from '@/lib/barcode'
 
 interface ProductFormProps {
   categories: {
@@ -745,15 +744,7 @@ export function ProductForm({
                 variant.stock,
               price_modifier:
                 variant.price_modifier,
-              barcode:
-                variant.barcode?.trim() ||
-                generateVariantBarcode({
-                  brandSlug: 'lf',
-                  productSku: data.sku,
-                  size: variant.size,
-                  color: variant.color,
-                  variantId: variant.id || productId,
-                }),
+              barcode: variant.barcode?.trim() || null,
               image_url:
                 imageUrl,
               is_active:
