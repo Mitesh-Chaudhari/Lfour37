@@ -128,7 +128,11 @@ export type OdooInvoice = {
   amountTotal: number
   amountResidual: number
   paymentState: string
+  partnerId: number | null
   partnerName: string | null
+  partnerState: string | null
+  gstTreatment: string | null
+  placeOfSupply: string | null
   lines: OdooInvoiceLine[]
   payments: OdooPaymentInfo[]
 }
@@ -211,6 +215,8 @@ export async function fetchPostedInvoicesAfter(
           "payment_state",
           "partner_id",
           "invoice_line_ids",
+          "l10n_in_gst_treatment",
+          "l10n_in_state_id",
         ],
         limit,
         order: "id asc",
@@ -219,6 +225,34 @@ export async function fetchPostedInvoicesAfter(
   )
 
   if (moves.length === 0) return []
+
+  const partnerIds = [
+    ...new Set(
+      moves
+        .map((move) => many2oneId(move.partner_id))
+        .filter((id): id is number => Boolean(id))
+    ),
+  ]
+  const partnerById = new Map<
+    number,
+    { name: string; state: string | null }
+  >()
+  if (partnerIds.length) {
+    const partners = asRecords(
+      await odooExecuteKw(
+        "res.partner",
+        "search_read",
+        [[["id", "in", partnerIds]]],
+        { fields: ["id", "name", "state_id"] }
+      )
+    )
+    for (const partner of partners) {
+      partnerById.set(num(partner.id), {
+        name: str(partner.name),
+        state: many2oneName(partner.state_id),
+      })
+    }
+  }
 
   const lineIds = [
     ...new Set(
@@ -309,6 +343,8 @@ export async function fetchPostedInvoicesAfter(
 
   return moves.map((move) => {
     const id = num(move.id)
+    const partnerId = many2oneId(move.partner_id)
+    const partner = partnerId ? partnerById.get(partnerId) : null
     return {
       id,
       name: str(move.name),
@@ -318,7 +354,11 @@ export async function fetchPostedInvoicesAfter(
       amountTotal: num(move.amount_total),
       amountResidual: num(move.amount_residual),
       paymentState: str(move.payment_state) || "not_paid",
-      partnerName: many2oneName(move.partner_id),
+      partnerId,
+      partnerName: partner?.name || many2oneName(move.partner_id),
+      partnerState: partner?.state || null,
+      gstTreatment: str(move.l10n_in_gst_treatment) || null,
+      placeOfSupply: many2oneName(move.l10n_in_state_id),
       lines: linesByMove.get(id) || [],
       payments: paymentsByMove.get(id) || [],
     }

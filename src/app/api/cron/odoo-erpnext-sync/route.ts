@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { isCronRequestAuthorized } from "@/lib/cron-auth"
-import { syncOdooInvoicesToPos } from "@/lib/odoo/sync-invoice-to-pos"
+import { syncOdooInvoicesToErpNext } from "@/lib/odoo/sync-invoice-to-erpnext"
 import logger from "@/lib/logger"
 
 export const dynamic = "force-dynamic"
@@ -21,13 +21,13 @@ export async function GET(request: NextRequest) {
       Number(request.nextUrl.searchParams.get("limit") || 20),
       50
     )
-    const result = await syncOdooInvoicesToPos(limit)
-    logger.info("Odoo POS sync cron finished", result)
+    const result = await syncOdooInvoicesToErpNext(limit)
+    logger.info("Odoo→ERPNext sync cron finished", result)
     return NextResponse.json({ success: true, ...result })
   } catch (error) {
-    logger.error("Odoo POS sync cron failed", { error })
+    logger.error("Odoo→ERPNext sync cron failed", { error })
     const message =
-      error instanceof Error ? error.message : "Odoo POS sync failed"
+      error instanceof Error ? error.message : "Odoo→ERPNext sync failed"
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
