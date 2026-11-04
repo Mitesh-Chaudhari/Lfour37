@@ -499,7 +499,16 @@ async function createErpInvoice(invoice: OdooInvoice): Promise<string> {
   const gst = await loadGstTaxes(supply)
   const customer = await ensureCustomer(invoice)
 
-  const items = []
+  const items: Array<{
+    item_code: string
+    qty: number
+    rate: number
+    price_list_rate: number
+    discount_percentage: number
+    warehouse: string
+    cost_center: string
+    allow_zero_valuation_rate: number
+  }> = []
   for (const line of invoice.lines) {
     const itemCode = await resolveItemCode(
       line.productId,
