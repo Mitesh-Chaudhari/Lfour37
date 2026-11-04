@@ -23,6 +23,10 @@
     {
       "path": "/api/cron/erpnext-sync",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/odoo-pos-sync",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
