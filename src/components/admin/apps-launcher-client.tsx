@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import {
+  LayoutGrid,
   ShoppingBag,
   Package,
   Building2,
@@ -54,7 +55,7 @@ export function AppsLauncherClient({
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
           {apps.map((app) => {
-            const Icon = ICONS[app.id] || LayoutDashboard
+            const Icon = ICONS[app.id] || LayoutGrid
             return (
               <Link
                 key={app.id}
