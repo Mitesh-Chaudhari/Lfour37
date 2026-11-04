@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import logger from "@/lib/logger"
 import {
   erpCall,
+  erpFetch,
   erpGet,
   erpGetList,
   erpInsert,
@@ -12,7 +13,9 @@ import {
 import {
   fetchMaxPostedInvoiceId,
   fetchPostedInvoicesAfter,
+  fetchPostedInvoicesByIds,
   isOdooConfigured,
+  listPostedInvoiceRefs,
   type OdooInvoice,
   type OdooPaymentInfo,
 } from "@/lib/odoo/client"
@@ -220,8 +223,19 @@ async function ensureCursor(): Promise<number> {
   return maxId
 }
 
-async function findExistingInvoice(moveId: number): Promise<string | null> {
-  const rows = await erpGetList(
+function pickExistingName(
+  rows: Array<Record<string, unknown>>
+): string | null {
+  const submitted = rows.find((row) => Number(row.docstatus) === 1)
+  const name = (submitted || rows[0])?.name
+  return typeof name === "string" ? name : null
+}
+
+async function findExistingInvoice(
+  moveId: number,
+  invoiceName?: string | null
+): Promise<string | null> {
+  const byMove = await erpGetList(
     "Sales Invoice",
     [
       ["custom_odoo_move_id", "=", String(moveId)],
@@ -229,9 +243,81 @@ async function findExistingInvoice(moveId: number): Promise<string | null> {
     ],
     ["name", "docstatus"]
   )
-  const submitted = rows.find((row) => Number(row.docstatus) === 1)
-  const name = (submitted || rows[0])?.name
-  return typeof name === "string" ? name : null
+  const fromMove = pickExistingName(byMove)
+  if (fromMove) return fromMove
+
+  if (invoiceName) {
+    const byCustomName = await erpGetList(
+      "Sales Invoice",
+      [
+        ["custom_odoo_invoice_name", "=", invoiceName],
+        ["docstatus", "!=", 2],
+      ],
+      ["name", "docstatus"]
+    )
+    const fromCustom = pickExistingName(byCustomName)
+    if (fromCustom) return fromCustom
+
+    const byPo = await erpGetList(
+      "Sales Invoice",
+      [
+        ["po_no", "=", invoiceName],
+        ["docstatus", "!=", 2],
+      ],
+      ["name", "docstatus"]
+    )
+    const fromPo = pickExistingName(byPo)
+    if (fromPo) return fromPo
+  }
+
+  return null
+}
+
+async function listErpOdooLinks(): Promise<{
+  moveIds: Set<string>
+  invoiceNames: Set<string>
+}> {
+  const moveIds = new Set<string>()
+  const invoiceNames = new Set<string>()
+  let start = 0
+  const page = 500
+
+  for (;;) {
+    const params = new URLSearchParams({
+      fields: JSON.stringify([
+        "name",
+        "docstatus",
+        "custom_odoo_move_id",
+        "custom_odoo_invoice_name",
+        "po_no",
+      ]),
+      filters: JSON.stringify([["docstatus", "!=", 2]]),
+      limit_start: String(start),
+      limit_page_length: String(page),
+      order_by: "creation asc",
+    })
+    const body = await erpFetch(
+      `/api/resource/${encodeURIComponent("Sales Invoice")}?${params}`
+    )
+    const rows = Array.isArray(body.data)
+      ? (body.data as Array<Record<string, unknown>>)
+      : []
+    if (!rows.length) break
+
+    for (const row of rows) {
+      const moveId = String(row.custom_odoo_move_id || "").trim()
+      if (moveId) moveIds.add(moveId)
+      const customName = String(row.custom_odoo_invoice_name || "").trim()
+      if (customName) invoiceNames.add(customName)
+      const poNo = String(row.po_no || "").trim()
+      if (poNo) invoiceNames.add(poNo)
+    }
+
+    start += rows.length
+    if (rows.length < page) break
+  }
+
+  return { moveIds, invoiceNames }
 }
 
 async function ensureCustomer(invoice: OdooInvoice): Promise<string> {
@@ -288,22 +374,42 @@ async function resolveItemCode(
   }
 
   if (barcode?.trim()) {
-    const byBarcode = await erpGetList(
-      "Item",
-      [["barcode", "=", barcode.trim()]],
-      ["name"]
-    )
-    if (typeof byBarcode[0]?.name === "string" && byBarcode[0].name) {
-      return String(byBarcode[0].name)
+    try {
+      const barcodeRows = await erpGetList(
+        "Item Barcode",
+        [["barcode", "=", barcode.trim()]],
+        ["parent"]
+      )
+      if (typeof barcodeRows[0]?.parent === "string" && barcodeRows[0].parent) {
+        return String(barcodeRows[0].parent)
+      }
+    } catch {
+      // website-sync role may lack Item Barcode read; continue with Odoo id
     }
+  }
 
-    const barcodeRows = await erpGetList(
-      "Item Barcode",
-      [["barcode", "=", barcode.trim()]],
-      ["parent"]
-    )
-    if (typeof barcodeRows[0]?.parent === "string" && barcodeRows[0].parent) {
-      return String(barcodeRows[0].parent)
+  if (productId) {
+    const code = `ODOO-V-${productId}`
+    try {
+      const created = await erpInsert("Item", {
+        doctype: "Item",
+        item_code: code,
+        item_name: (label || code).slice(0, 140),
+        item_group: "Products",
+        stock_uom: "Nos",
+        is_stock_item: 1,
+        include_item_in_manufacturing: 0,
+        valuation_rate: 1,
+        gst_hsn_code: "61091000",
+        custom_odoo_product_id: String(productId),
+      })
+      return String(created.name || code)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (/exists|duplicate/i.test(message)) return code
+      throw new Error(
+        `No ERPNext item for Odoo product ${productId} (${label}): ${message}`
+      )
     }
   }
 
@@ -425,13 +531,16 @@ async function createErpInvoice(invoice: OdooInvoice): Promise<string> {
     throw new Error("Invoice has no sellable product lines")
   }
 
+  const postingDate = invoice.date || new Date().toISOString().slice(0, 10)
+
   const created = await erpInsert("Sales Invoice", {
     doctype: "Sales Invoice",
     naming_series: INVOICE_SERIES,
     customer,
     company: COMPANY,
-    posting_date: invoice.date,
-    due_date: invoice.date,
+    posting_date: postingDate,
+    due_date: postingDate,
+    set_posting_time: 1,
     currency: "INR",
     selling_price_list: PRICE_LIST,
     set_warehouse: WAREHOUSE,
@@ -451,8 +560,14 @@ async function createErpInvoice(invoice: OdooInvoice): Promise<string> {
 
   // Re-apply discount fields if hooks cleared them, then submit.
   let doc = await erpGet("Sales Invoice", name)
+  const effectivePosting = String(doc.posting_date || postingDate).slice(0, 10)
+  const patch: Record<string, unknown> = {
+    due_date: effectivePosting,
+    taxes: gst.taxes,
+    taxes_and_charges: gst.template,
+  }
   if (Array.isArray(doc.items)) {
-    const patchedItems = (doc.items as Array<Record<string, unknown>>).map(
+    patch.items = (doc.items as Array<Record<string, unknown>>).map(
       (row, index) => {
         const source = items[index]
         if (!source) return row
@@ -464,12 +579,8 @@ async function createErpInvoice(invoice: OdooInvoice): Promise<string> {
         }
       }
     )
-    doc = await erpUpdate("Sales Invoice", name, {
-      items: patchedItems,
-      taxes: gst.taxes,
-      taxes_and_charges: gst.template,
-    })
   }
+  doc = await erpUpdate("Sales Invoice", name, patch)
 
   await submitDocument("Sales Invoice", name)
   await ensurePayment(invoice, customer, name, invoice.payments)
@@ -515,7 +626,7 @@ export async function syncOdooInvoicesToErpNext(
 
   for (const invoice of invoices) {
     try {
-      const existing = await findExistingInvoice(invoice.id)
+      const existing = await findExistingInvoice(invoice.id, invoice.name)
       if (existing) {
         await setCursor(invoice.id)
         result.skipped += 1
@@ -541,6 +652,126 @@ export async function syncOdooInvoicesToErpNext(
       })
       break
     }
+  }
+
+  return result
+}
+
+/**
+ * One-shot backfill: create ERPNext invoices for posted Odoo invoices that are
+ * not already linked (by move id, custom invoice name, or po_no). Does not
+ * change the cron watermark except to raise it to the latest Odoo id when done.
+ */
+export async function backfillMissingOdooInvoicesToErpNext(): Promise<
+  OdooErpNextSyncResult & {
+    missing: number
+    missingAmountTotal: number
+    createdAmountTotal: number
+  }
+> {
+  if (!isOdooConfigured() || !isErpNextConfigured()) {
+    return {
+      checked: 0,
+      created: 0,
+      skipped: 0,
+      failed: 0,
+      missing: 0,
+      missingAmountTotal: 0,
+      createdAmountTotal: 0,
+      errors: [
+        {
+          invoice: "-",
+          error: !isOdooConfigured()
+            ? "Odoo is not configured"
+            : "ERPNext is not configured",
+        },
+      ],
+    }
+  }
+
+  const refs = await listPostedInvoiceRefs()
+  const links = await listErpOdooLinks()
+  const missingRefs = refs.filter((ref) => {
+    if (links.moveIds.has(String(ref.id))) return false
+    if (links.invoiceNames.has(ref.name)) return false
+    return true
+  })
+
+  const result = {
+    checked: refs.length,
+    created: 0,
+    skipped: refs.length - missingRefs.length,
+    failed: 0,
+    missing: missingRefs.length,
+    missingAmountTotal: Number(
+      missingRefs.reduce((sum, ref) => sum + ref.amountTotal, 0).toFixed(2)
+    ),
+    createdAmountTotal: 0,
+    errors: [] as Array<{ invoice: string; error: string }>,
+  }
+
+  logger.info("Odoo→ERPNext backfill starting", {
+    odooPosted: refs.length,
+    alreadyLinked: result.skipped,
+    missing: result.missing,
+    missingAmountTotal: result.missingAmountTotal,
+  })
+
+  const batchSize = 10
+  for (let i = 0; i < missingRefs.length; i += batchSize) {
+    const chunk = missingRefs.slice(i, i + batchSize)
+    const invoices = await fetchPostedInvoicesByIds(chunk.map((ref) => ref.id))
+    const byId = new Map(invoices.map((invoice) => [invoice.id, invoice]))
+
+    for (const ref of chunk) {
+      const invoice = byId.get(ref.id)
+      if (!invoice) {
+        result.failed += 1
+        result.errors.push({
+          invoice: ref.name,
+          error: "Could not load posted invoice from Odoo",
+        })
+        continue
+      }
+
+      try {
+        // Re-check immediately before insert to avoid duplicates under concurrency.
+        const existing = await findExistingInvoice(invoice.id, invoice.name)
+        if (existing) {
+          result.skipped += 1
+          result.missing -= 1
+          continue
+        }
+
+        const name = await createErpInvoice(invoice)
+        result.created += 1
+        result.createdAmountTotal = Number(
+          (result.createdAmountTotal + invoice.amountTotal).toFixed(2)
+        )
+        logger.info("Odoo invoice backfilled to ERPNext", {
+          moveId: invoice.id,
+          odoo: invoice.name,
+          erpnext: name,
+          amountTotal: invoice.amountTotal,
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Backfill failed"
+        result.failed += 1
+        result.errors.push({ invoice: invoice.name, error: message })
+        logger.error("Odoo→ERPNext backfill failed for invoice", {
+          moveId: invoice.id,
+          name: invoice.name,
+          error: message,
+        })
+      }
+    }
+  }
+
+  // Keep cron watermark at/above latest Odoo id so historical gap work is not re-queued.
+  const maxId = await fetchMaxPostedInvoiceId()
+  const current = await getCursor()
+  if (current == null || current < maxId) {
+    await setCursor(maxId)
   }
 
   return result

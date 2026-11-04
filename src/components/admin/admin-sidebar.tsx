@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  LayoutDashboard,
   LayoutGrid,
   Package,
   ShoppingBag,
@@ -22,14 +21,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Building2,
-  ScanBarcode,
-  PackagePlus,
-  History,
   Barcode,
-  FileSpreadsheet,
-  Store,
-  ClipboardList,
-  ArrowLeftRight,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -68,31 +60,9 @@ const NAV_ITEMS: Array<{
   permission: Permission
 }> = [
   { href: '/admin', icon: LayoutGrid, label: 'Apps', exact: true, permission: 'apps' },
-  {
-    href: '/admin/dashboards',
-    icon: LayoutDashboard,
-    label: 'Dashboards',
-    permission: 'dashboards',
-  },
   { href: '/admin/organization', icon: Building2, label: 'Organization', permission: 'organization' },
-  { href: '/admin/pos', icon: ScanBarcode, label: 'POS', permission: 'pos' },
-  {
-    href: '/admin/procurement/purchase-orders',
-    icon: ClipboardList,
-    label: 'Purchase Orders',
-    permission: 'purchase_orders',
-  },
-  { href: '/admin/inventory/receive', icon: PackagePlus, label: 'Receive Stock', permission: 'inventory' },
-  {
-    href: '/admin/inventory/transfers',
-    icon: ArrowLeftRight,
-    label: 'Stock Transfer',
-    permission: 'inventory',
-  },
-  { href: '/admin/inventory/movements', icon: History, label: 'Stock Movements', permission: 'inventory' },
-  { href: '/admin/inventory/barcodes', icon: Barcode, label: 'Barcodes', permission: 'inventory' },
-  { href: '/admin/reports/channel-sales', icon: Store, label: 'Online vs Store', permission: 'reports_channel' },
-  { href: '/admin/reports/gst', icon: FileSpreadsheet, label: 'GST Reports', permission: 'reports_gst' },
+  // Barcodes stay for website catalogue; stock/POS/GST live in ERPNext.
+  { href: '/admin/inventory/barcodes', icon: Barcode, label: 'Barcodes', permission: 'products' },
   { href: '/admin/products', icon: Package, label: 'Products', permission: 'products' },
   { href: '/admin/categories', icon: Layers, label: 'Categories', permission: 'catalog' },
   { href: '/admin/sizes', icon: Ruler, label: 'Product Sizes', permission: 'catalog' },

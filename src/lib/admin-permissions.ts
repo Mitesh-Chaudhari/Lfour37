@@ -1,6 +1,10 @@
 /**
  * Yadevi admin RBAC — roles, permissions, path guards.
  * Phase 1: UI + route + API gates. Super admin / admin keep full access.
+ *
+ * Store / ERP ops live in ERPNext now. Permissions listed in
+ * ERPNEXT_REPLACED_PERMISSIONS are hidden from the website admin UI and
+ * blocked on direct URL access.
  */
 
 export const STAFF_ROLES = [
@@ -32,6 +36,18 @@ export type Permission =
   | 'promotions'
   | 'analytics'
   | 'reviews'
+
+/** Modules moved to ERPNext — hidden in this admin app. */
+export const ERPNEXT_REPLACED_PERMISSIONS: Permission[] = [
+  'pos',
+  'purchase_orders',
+  'inventory',
+  'reports_channel',
+  'reports_gst',
+  'dashboards',
+]
+
+const ERPNEXT_REPLACED_SET = new Set<Permission>(ERPNEXT_REPLACED_PERMISSIONS)
 
 /** Human labels for Users screen */
 export const STAFF_ROLE_LABELS: Record<StaffRole, string> = {
@@ -100,14 +116,31 @@ export function isStaffRole(role: string | null | undefined): role is StaffRole 
 
 export function getPermissionsForRole(role: string | null | undefined): Permission[] {
   if (!isStaffRole(role)) return []
-  return ROLE_PERMISSIONS[role]
+  return ROLE_PERMISSIONS[role].filter((p) => !ERPNEXT_REPLACED_SET.has(p))
 }
 
 export function hasPermission(
   role: string | null | undefined,
   permission: Permission
 ): boolean {
+  if (ERPNEXT_REPLACED_SET.has(permission)) return false
   return getPermissionsForRole(role).includes(permission)
+}
+
+/** True when a path belongs to an ERPNext-replaced module. */
+export function isErpNextReplacedPath(pathname: string): boolean {
+  const path = pathname.split('?')[0].replace(/\/$/, '') || '/admin'
+  if (path === '/admin/dashboards' || path.startsWith('/admin/dashboards/')) {
+    return true
+  }
+  if (path === '/admin/pos' || path.startsWith('/admin/pos/')) return true
+  if (path.startsWith('/admin/procurement')) return true
+  if (path.startsWith('/admin/reports/gst')) return true
+  if (path.startsWith('/admin/reports/channel-sales')) return true
+  // Stock ops moved to ERPNext; barcode page stays (website catalogue).
+  if (path.startsWith('/admin/inventory/barcodes')) return false
+  if (path.startsWith('/admin/inventory')) return true
+  return false
 }
 
 export function hasAnyPermission(
@@ -117,11 +150,13 @@ export function hasAnyPermission(
   return permissions.some((p) => hasPermission(role, p))
 }
 
-/** Map admin URL prefixes → required permission */
+/** Map admin URL prefixes → required permission (longer prefixes first). */
 const PATH_PERMISSIONS: Array<{ prefix: string; permission: Permission }> = [
   { prefix: '/admin/organization', permission: 'organization' },
   { prefix: '/admin/pos', permission: 'pos' },
   { prefix: '/admin/procurement', permission: 'purchase_orders' },
+  // Barcodes kept for website catalogue; other inventory → ERPNext.
+  { prefix: '/admin/inventory/barcodes', permission: 'products' },
   { prefix: '/admin/inventory', permission: 'inventory' },
   { prefix: '/admin/reports/channel-sales', permission: 'reports_channel' },
   { prefix: '/admin/reports/gst', permission: 'reports_gst' },
@@ -158,10 +193,7 @@ export function canAccessPath(
   const path = pathname.split('?')[0].replace(/\/$/, '') || '/admin'
   if (path === '/admin' || path === '/admin/apps') return true
 
-  // Exact dashboards home
-  if (path === '/admin/dashboards' || path.startsWith('/admin/dashboards/')) {
-    return hasPermission(role, 'dashboards')
-  }
+  if (isErpNextReplacedPath(path)) return false
 
   for (const { prefix, permission } of PATH_PERMISSIONS) {
     if (path === prefix || path.startsWith(prefix + '/')) {
@@ -175,11 +207,9 @@ export function canAccessPath(
 
 export function firstAllowedPath(role: string | null | undefined): string {
   if (hasPermission(role, 'apps')) return '/admin'
-  if (hasPermission(role, 'dashboards')) return '/admin/dashboards'
-  if (hasPermission(role, 'pos')) return '/admin/pos'
   if (hasPermission(role, 'orders')) return '/admin/orders'
-  if (hasPermission(role, 'inventory')) return '/admin/inventory/receive'
-  if (hasPermission(role, 'reports_gst')) return '/admin/reports/gst'
+  if (hasPermission(role, 'products')) return '/admin/products'
+  if (hasPermission(role, 'analytics')) return '/admin/analytics'
   return '/admin'
 }
 
@@ -192,24 +222,8 @@ export type AdminApp = {
   color: string
 }
 
-/** Odoo-style app launcher entries (existing modules only in Phase 1) */
+/** App launcher entries for the website admin (ERP ops live in ERPNext). */
 export const ADMIN_APPS: AdminApp[] = [
-  {
-    id: 'dashboards',
-    name: 'Dashboards',
-    description: 'Sales, POS & Finance KPIs',
-    href: '/admin/dashboards',
-    permission: 'dashboards',
-    color: 'bg-violet-500',
-  },
-  {
-    id: 'pos',
-    name: 'Point of Sale',
-    description: 'Barcode checkout at store',
-    href: '/admin/pos',
-    permission: 'pos',
-    color: 'bg-amber-500',
-  },
   {
     id: 'orders',
     name: 'Orders',
@@ -225,38 +239,6 @@ export const ADMIN_APPS: AdminApp[] = [
     href: '/admin/products',
     permission: 'products',
     color: 'bg-emerald-500',
-  },
-  {
-    id: 'purchase',
-    name: 'Purchase',
-    description: 'Purchase orders & suppliers',
-    href: '/admin/procurement/purchase-orders',
-    permission: 'purchase_orders',
-    color: 'bg-teal-600',
-  },
-  {
-    id: 'inventory',
-    name: 'Inventory',
-    description: 'Receive, transfer, movements',
-    href: '/admin/inventory/receive',
-    permission: 'inventory',
-    color: 'bg-orange-500',
-  },
-  {
-    id: 'gst',
-    name: 'GST / Finance',
-    description: 'GST working reports',
-    href: '/admin/reports/gst',
-    permission: 'reports_gst',
-    color: 'bg-rose-500',
-  },
-  {
-    id: 'channel',
-    name: 'Online vs Store',
-    description: 'Channel sales comparison',
-    href: '/admin/reports/channel-sales',
-    permission: 'reports_channel',
-    color: 'bg-indigo-500',
   },
   {
     id: 'organization',
@@ -293,5 +275,9 @@ export const ADMIN_APPS: AdminApp[] = [
 ]
 
 export function appsForRole(role: string | null | undefined): AdminApp[] {
-  return ADMIN_APPS.filter((app) => hasPermission(role, app.permission))
+  return ADMIN_APPS.filter(
+    (app) =>
+      !ERPNEXT_REPLACED_SET.has(app.permission) &&
+      hasPermission(role, app.permission)
+  )
 }

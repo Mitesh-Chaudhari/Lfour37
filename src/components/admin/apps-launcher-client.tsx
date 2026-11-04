@@ -2,14 +2,8 @@
 
 import Link from 'next/link'
 import {
-  LayoutDashboard,
-  ScanBarcode,
   ShoppingBag,
   Package,
-  ClipboardList,
-  PackagePlus,
-  FileSpreadsheet,
-  Store,
   Building2,
   Users,
   Tag,
@@ -19,14 +13,8 @@ import {
 import { appsForRole, STAFF_ROLE_LABELS, type StaffRole } from '@/lib/admin-permissions'
 
 const ICONS: Record<string, LucideIcon> = {
-  dashboards: LayoutDashboard,
-  pos: ScanBarcode,
   orders: ShoppingBag,
   products: Package,
-  purchase: ClipboardList,
-  inventory: PackagePlus,
-  gst: FileSpreadsheet,
-  channel: Store,
   organization: Building2,
   users: Users,
   promotions: Tag,

@@ -187,43 +187,64 @@ export async function fetchMaxPostedInvoiceId(): Promise<number> {
   return rows[0] ? num(rows[0].id) : 0
 }
 
-export async function fetchPostedInvoicesAfter(
-  afterMoveId: number,
-  limit = 20
-): Promise<OdooInvoice[]> {
-  const moves = asRecords(
-    await odooExecuteKw(
-      "account.move",
-      "search_read",
-      [
-        [
-          ["move_type", "=", "out_invoice"],
-          ["state", "=", "posted"],
-          ["id", ">", afterMoveId],
-        ],
-      ],
-      {
-        fields: [
-          "id",
-          "name",
-          "invoice_date",
-          "date",
-          "amount_untaxed",
-          "amount_tax",
-          "amount_total",
-          "amount_residual",
-          "payment_state",
-          "partner_id",
-          "invoice_line_ids",
-          "l10n_in_gst_treatment",
-          "l10n_in_state_id",
-        ],
-        limit,
-        order: "id asc",
-      }
-    )
-  )
+const INVOICE_FIELDS = [
+  "id",
+  "name",
+  "invoice_date",
+  "date",
+  "amount_untaxed",
+  "amount_tax",
+  "amount_total",
+  "amount_residual",
+  "payment_state",
+  "partner_id",
+  "invoice_line_ids",
+  "l10n_in_gst_treatment",
+  "l10n_in_state_id",
+]
 
+export async function listPostedInvoiceRefs(): Promise<
+  Array<{ id: number; name: string; amountTotal: number }>
+> {
+  const refs: Array<{ id: number; name: string; amountTotal: number }> = []
+  let offset = 0
+  const page = 200
+  for (;;) {
+    const rows = asRecords(
+      await odooExecuteKw(
+        "account.move",
+        "search_read",
+        [
+          [
+            ["move_type", "=", "out_invoice"],
+            ["state", "=", "posted"],
+          ],
+        ],
+        {
+          fields: ["id", "name", "amount_total"],
+          limit: page,
+          offset,
+          order: "id asc",
+        }
+      )
+    )
+    if (!rows.length) break
+    for (const row of rows) {
+      refs.push({
+        id: num(row.id),
+        name: str(row.name),
+        amountTotal: num(row.amount_total),
+      })
+    }
+    offset += rows.length
+    if (rows.length < page) break
+  }
+  return refs
+}
+
+async function hydrateInvoices(
+  moves: Array<Record<string, unknown>>
+): Promise<OdooInvoice[]> {
   if (moves.length === 0) return []
 
   const partnerIds = [
@@ -317,7 +338,9 @@ export async function fetchPostedInvoicesAfter(
 
   const linesByMove = new Map<number, OdooInvoiceLine[]>()
   for (const line of rawLines) {
-    if (str(line.display_type)) continue
+    // Odoo 19 uses display_type="product" for sellable lines; older DBs use false/empty.
+    const displayType = str(line.display_type)
+    if (displayType && displayType !== "product") continue
     const productId = many2oneId(line.product_id)
     if (!productId) continue
     const qty = num(line.quantity)
@@ -363,6 +386,56 @@ export async function fetchPostedInvoicesAfter(
       payments: paymentsByMove.get(id) || [],
     }
   })
+}
+
+export async function fetchPostedInvoicesAfter(
+  afterMoveId: number,
+  limit = 20
+): Promise<OdooInvoice[]> {
+  const moves = asRecords(
+    await odooExecuteKw(
+      "account.move",
+      "search_read",
+      [
+        [
+          ["move_type", "=", "out_invoice"],
+          ["state", "=", "posted"],
+          ["id", ">", afterMoveId],
+        ],
+      ],
+      {
+        fields: INVOICE_FIELDS,
+        limit,
+        order: "id asc",
+      }
+    )
+  )
+  return hydrateInvoices(moves)
+}
+
+export async function fetchPostedInvoicesByIds(
+  ids: number[]
+): Promise<OdooInvoice[]> {
+  if (ids.length === 0) return []
+  const moves = asRecords(
+    await odooExecuteKw(
+      "account.move",
+      "search_read",
+      [
+        [
+          ["move_type", "=", "out_invoice"],
+          ["state", "=", "posted"],
+          ["id", "in", ids],
+        ],
+      ],
+      {
+        fields: INVOICE_FIELDS,
+        limit: ids.length,
+        order: "id asc",
+      }
+    )
+  )
+  return hydrateInvoices(moves)
 }
 
 async function fetchPaymentsForMoves(
