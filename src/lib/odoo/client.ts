@@ -488,7 +488,7 @@ async function fetchPaymentsForMoves(
         "account.move.line",
         "search_read",
         [[["id", "in", amlIds]]],
-        { fields: ["id", "move_id", "payment_id"] }
+        { fields: ["id", "move_id", "payment_id", "date", "journal_id"] }
       )
     )
 
@@ -501,39 +501,115 @@ async function fetchPaymentsForMoves(
       ),
     ]
 
-    const payments = paymentIds.length
+    // Counterpart moves (payment journals) often hold payment_id / journal.
+    const counterpartMoveIds = [
+      ...new Set(
+        amls
+          .map((row) => many2oneId(row.move_id))
+          .filter(
+            (id): id is number => Boolean(id) && !moveIds.includes(id as number)
+          )
+      ),
+    ]
+    const counterpartMoves = counterpartMoveIds.length
+      ? asRecords(
+          await odooExecuteKw(
+            "account.move",
+            "search_read",
+            [[["id", "in", counterpartMoveIds]]],
+            { fields: ["id", "journal_id", "date", "ref"] }
+          )
+        )
+      : []
+    const counterpartById = new Map(
+      counterpartMoves.map((row) => [num(row.id), row])
+    )
+
+    // account.payment linked from payment move lines
+    const counterpartAmls = counterpartMoveIds.length
+      ? asRecords(
+          await odooExecuteKw(
+            "account.move.line",
+            "search_read",
+            [
+              [
+                ["move_id", "in", counterpartMoveIds],
+                ["payment_id", "!=", false],
+              ],
+            ],
+            { fields: ["id", "move_id", "payment_id"], limit: 500 }
+          )
+        )
+      : []
+    for (const row of counterpartAmls) {
+      const paymentId = many2oneId(row.payment_id)
+      if (paymentId) paymentIds.push(paymentId)
+    }
+    const uniquePaymentIds = [...new Set(paymentIds)]
+
+    const payments = uniquePaymentIds.length
       ? asRecords(
           await odooExecuteKw(
             "account.payment",
             "search_read",
-            [[["id", "in", paymentIds]]],
-            { fields: ["id", "journal_id", "amount", "date"] }
+            [[["id", "in", uniquePaymentIds]]],
+            { fields: ["id", "journal_id", "amount", "date", "move_id"] }
           )
         )
       : []
     const paymentById = new Map(payments.map((row) => [num(row.id), row]))
+    const paymentByMoveId = new Map<number, (typeof payments)[number]>()
+    for (const payment of payments) {
+      const moveId = many2oneId(payment.move_id)
+      if (moveId) paymentByMoveId.set(moveId, payment)
+    }
 
     for (const partial of partials) {
       const debitAml = amlById.get(many2oneId(partial.debit_move_id) || -1)
       const creditAml = amlById.get(many2oneId(partial.credit_move_id) || -1)
-      const candidates = [debitAml, creditAml].filter(Boolean)
-      for (const aml of candidates) {
-        if (!aml) continue
-        const moveId = many2oneId(aml.move_id)
-        if (!moveId || !moveIds.includes(moveId)) continue
-        const paymentId = many2oneId(aml.payment_id)
-        const payment = paymentId ? paymentById.get(paymentId) : null
-        const journalName = payment
-          ? many2oneName(payment.journal_id) || "Unknown"
-          : "Unknown"
-        const list = result.get(moveId) || []
-        list.push({
-          journalName,
-          amount: num(partial.amount || payment?.amount),
-          paymentDate: payment ? str(payment.date).slice(0, 10) : null,
-        })
-        result.set(moveId, list)
-      }
+      if (!debitAml && !creditAml) continue
+
+      const invoiceAml = [debitAml, creditAml].find((aml) => {
+        const moveId = aml ? many2oneId(aml.move_id) : null
+        return Boolean(moveId && moveIds.includes(moveId))
+      })
+      if (!invoiceAml) continue
+      const invoiceMoveId = many2oneId(invoiceAml.move_id)
+      if (!invoiceMoveId) continue
+
+      const otherAml = invoiceAml === debitAml ? creditAml : debitAml
+      const otherMoveId = otherAml ? many2oneId(otherAml.move_id) : null
+      const paymentId =
+        many2oneId(invoiceAml.payment_id) ||
+        many2oneId(otherAml?.payment_id) ||
+        null
+      const payment =
+        (paymentId ? paymentById.get(paymentId) : null) ||
+        (otherMoveId ? paymentByMoveId.get(otherMoveId) : null) ||
+        null
+      const counterpart = otherMoveId
+        ? counterpartById.get(otherMoveId)
+        : null
+
+      const journalName =
+        (payment ? many2oneName(payment.journal_id) : "") ||
+        (counterpart ? many2oneName(counterpart.journal_id) : "") ||
+        (otherAml ? many2oneName(otherAml.journal_id) : "") ||
+        "Unknown"
+
+      const paymentDate =
+        (payment ? str(payment.date).slice(0, 10) : "") ||
+        (counterpart ? str(counterpart.date).slice(0, 10) : "") ||
+        (otherAml ? str(otherAml.date).slice(0, 10) : "") ||
+        null
+
+      const list = result.get(invoiceMoveId) || []
+      list.push({
+        journalName,
+        amount: num(partial.amount || payment?.amount),
+        paymentDate: paymentDate || null,
+      })
+      result.set(invoiceMoveId, list)
     }
   } catch {
     // Payments are best-effort; unpaid invoices still sync as cash-pending-style sales.

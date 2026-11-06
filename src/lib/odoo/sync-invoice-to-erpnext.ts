@@ -80,6 +80,7 @@ export type OdooErpNextSyncResult = {
   checked: number
   created: number
   skipped: number
+  paymentsUpdated: number
   failed: number
   errors: Array<{ invoice: string; error: string }>
 }
@@ -351,6 +352,29 @@ async function ensureCustomer(invoice: OdooInvoice): Promise<string> {
   return String(created.name)
 }
 
+async function ensureGstHsn(hsn: string): Promise<void> {
+  const code = hsn.trim()
+  if (!code) return
+  try {
+    const existing = await erpGetList(
+      "GST HSN Code",
+      [["hsn_code", "=", code]],
+      ["name"]
+    )
+    if (existing.length > 0) return
+    await erpInsert("GST HSN Code", {
+      doctype: "GST HSN Code",
+      hsn_code: code,
+      description: `Auto ${code}`,
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (!/exists|duplicate/i.test(message)) {
+      logger.warn("Could not ensure GST HSN Code", { hsn: code, error: message })
+    }
+  }
+}
+
 async function resolveItemCode(
   productId: number | null,
   barcode: string | null,
@@ -390,7 +414,9 @@ async function resolveItemCode(
 
   if (productId) {
     const code = `ODOO-V-${productId}`
+    const hsn = "61091000"
     try {
+      await ensureGstHsn(hsn)
       const created = await erpInsert("Item", {
         doctype: "Item",
         item_code: code,
@@ -400,13 +426,18 @@ async function resolveItemCode(
         is_stock_item: 1,
         include_item_in_manufacturing: 0,
         valuation_rate: 1,
-        gst_hsn_code: "61091000",
+        gst_hsn_code: hsn,
         custom_odoo_product_id: String(productId),
       })
       return String(created.name || code)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (/exists|duplicate/i.test(message)) return code
+      // Item may have been created concurrently; re-check before failing hard.
+      const retry = await erpGetList("Item", [["name", "=", code]], ["name"])
+      if (typeof retry[0]?.name === "string" && retry[0].name) {
+        return String(retry[0].name)
+      }
       throw new Error(
         `No ERPNext item for Odoo product ${productId} (${label}): ${message}`
       )
@@ -430,20 +461,34 @@ async function submitDocument(
   return erpSubmit(doc)
 }
 
+function odooLooksPaid(invoice: OdooInvoice): boolean {
+  const state = (invoice.paymentState || "").toLowerCase()
+  if (state === "paid" || state === "in_payment") return true
+  if (Number(invoice.amountResidual) <= 0.05 && state !== "not_paid") {
+    return true
+  }
+  return Number(invoice.amountResidual) <= 0.05 && invoice.payments.length > 0
+}
+
 async function ensurePayment(
   invoice: OdooInvoice,
   customer: string,
   salesInvoice: string,
   payments: OdooPaymentInfo[]
-): Promise<void> {
+): Promise<boolean> {
   const doc = await erpGet("Sales Invoice", salesInvoice)
   let outstanding = Number(doc.outstanding_amount || 0)
-  if (outstanding <= 0.05) return
+  if (outstanding <= 0.05) return false
+
+  // Credit-note / reversed clear residual without a customer receipt — skip.
+  if ((invoice.paymentState || "").toLowerCase() === "reversed") {
+    return false
+  }
 
   const entries =
     payments.length > 0
       ? payments
-      : invoice.paymentState === "paid" || invoice.paymentState === "in_payment"
+      : odooLooksPaid(invoice)
         ? [
             {
               journalName: "Cash",
@@ -453,8 +498,9 @@ async function ensurePayment(
           ]
         : []
 
-  if (entries.length === 0) return
+  if (entries.length === 0) return false
 
+  let updated = false
   for (const payment of entries) {
     if (outstanding <= 0.05) break
     const amount = Math.min(Number(payment.amount) || outstanding, outstanding)
@@ -484,10 +530,12 @@ async function ensurePayment(
       ],
     })
     await submitDocument("Payment Entry", String(created.name))
+    updated = true
     outstanding = Number(
       ((await erpGet("Sales Invoice", salesInvoice)).outstanding_amount || 0)
     )
   }
+  return updated
 }
 
 async function createErpInvoice(invoice: OdooInvoice): Promise<string> {
@@ -592,7 +640,18 @@ async function createErpInvoice(invoice: OdooInvoice): Promise<string> {
   doc = await erpUpdate("Sales Invoice", name, patch)
 
   await submitDocument("Sales Invoice", name)
-  await ensurePayment(invoice, customer, name, invoice.payments)
+  try {
+    await ensurePayment(invoice, customer, name, invoice.payments)
+  } catch (error) {
+    // Invoice is already submitted; payment catch-up on later crons will retry.
+    const message = error instanceof Error ? error.message : String(error)
+    logger.error("Odoo→ERPNext payment create failed after invoice submit", {
+      moveId: invoice.id,
+      odoo: invoice.name,
+      erpnext: name,
+      error: message,
+    })
+  }
   return name
 }
 
@@ -604,6 +663,7 @@ export async function syncOdooInvoicesToErpNext(
       checked: 0,
       created: 0,
       skipped: 0,
+      paymentsUpdated: 0,
       failed: 0,
       errors: [{ invoice: "-", error: "Odoo is not configured" }],
     }
@@ -613,6 +673,7 @@ export async function syncOdooInvoicesToErpNext(
       checked: 0,
       created: 0,
       skipped: 0,
+      paymentsUpdated: 0,
       failed: 0,
       errors: [{ invoice: "-", error: "ERPNext is not configured" }],
     }
@@ -622,6 +683,7 @@ export async function syncOdooInvoicesToErpNext(
     checked: 0,
     created: 0,
     skipped: 0,
+    paymentsUpdated: 0,
     failed: 0,
     errors: [],
   }
@@ -637,6 +699,37 @@ export async function syncOdooInvoicesToErpNext(
     try {
       const existing = await findExistingInvoice(invoice.id, invoice.name)
       if (existing) {
+        try {
+          const customer = String(
+            (await erpGet("Sales Invoice", existing)).customer || ""
+          )
+          if (
+            customer &&
+            (await ensurePayment(
+              invoice,
+              customer,
+              existing,
+              invoice.payments
+            ))
+          ) {
+            result.paymentsUpdated += 1
+          }
+        } catch (paymentError) {
+          const message =
+            paymentError instanceof Error
+              ? paymentError.message
+              : "Payment retry failed"
+          result.errors.push({
+            invoice: invoice.name,
+            error: `payment: ${message}`,
+          })
+          logger.error("Odoo→ERPNext payment retry failed", {
+            moveId: invoice.id,
+            name: invoice.name,
+            erpnext: existing,
+            error: message,
+          })
+        }
         await setCursor(invoice.id)
         result.skipped += 1
         continue
@@ -663,7 +756,91 @@ export async function syncOdooInvoicesToErpNext(
     }
   }
 
+  // Catch up payments on older invoices that were created before Odoo payment
+  // existed, or where Payment Entry create failed once.
+  const paymentCatchup = await syncOutstandingOdooPayments(
+    Math.min(Math.max(limit, 1), 50)
+  )
+  result.paymentsUpdated += paymentCatchup.paymentsUpdated
+  result.failed += paymentCatchup.failed
+  result.errors.push(...paymentCatchup.errors)
+
   return result
+}
+
+/**
+ * Retry Payment Entries for submitted Odoo-linked invoices that still have
+ * outstanding amount while Odoo shows them paid / reconciled.
+ */
+export async function syncOutstandingOdooPayments(
+  limit = 50
+): Promise<Pick<OdooErpNextSyncResult, "paymentsUpdated" | "failed" | "errors" | "checked">> {
+  const empty = {
+    checked: 0,
+    paymentsUpdated: 0,
+    failed: 0,
+    errors: [] as Array<{ invoice: string; error: string }>,
+  }
+  if (!isOdooConfigured() || !isErpNextConfigured()) return empty
+
+  const unpaid = await erpGetList(
+    "Sales Invoice",
+    [
+      ["custom_odoo_move_id", "!=", ""],
+      ["docstatus", "=", 1],
+      ["is_return", "=", 0],
+      ["outstanding_amount", ">", 0.5],
+    ],
+    ["name", "customer", "custom_odoo_move_id", "outstanding_amount"]
+  )
+
+  const rows = unpaid
+    .map((row) => ({
+      name: String(row.name || ""),
+      customer: String(row.customer || ""),
+      moveId: Number(row.custom_odoo_move_id),
+    }))
+    .filter((row) => row.name && row.customer && Number.isFinite(row.moveId))
+    .slice(0, Math.min(Math.max(limit, 1), 100))
+
+  empty.checked = rows.length
+  if (rows.length === 0) return empty
+
+  const invoices = await fetchPostedInvoicesByIds(rows.map((row) => row.moveId))
+  const byMoveId = new Map(invoices.map((inv) => [inv.id, inv]))
+
+  for (const row of rows) {
+    const invoice = byMoveId.get(row.moveId)
+    if (!invoice) continue
+    if (!odooLooksPaid(invoice) && invoice.payments.length === 0) continue
+    if ((invoice.paymentState || "").toLowerCase() === "reversed") continue
+
+    try {
+      if (
+        await ensurePayment(invoice, row.customer, row.name, invoice.payments)
+      ) {
+        empty.paymentsUpdated += 1
+        logger.info("Odoo payment backfilled on ERPNext invoice", {
+          moveId: invoice.id,
+          odoo: invoice.name,
+          erpnext: row.name,
+        })
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Payment sync failed"
+      empty.failed += 1
+      empty.errors.push({ invoice: invoice.name, error: `payment: ${message}` })
+      logger.error("Odoo→ERPNext outstanding payment sync failed", {
+        moveId: invoice.id,
+        name: invoice.name,
+        erpnext: row.name,
+        error: message,
+      })
+    }
+  }
+
+  return empty
 }
 
 /**
@@ -683,6 +860,7 @@ export async function backfillMissingOdooInvoicesToErpNext(): Promise<
       checked: 0,
       created: 0,
       skipped: 0,
+      paymentsUpdated: 0,
       failed: 0,
       missing: 0,
       missingAmountTotal: 0,
@@ -710,6 +888,7 @@ export async function backfillMissingOdooInvoicesToErpNext(): Promise<
     checked: refs.length,
     created: 0,
     skipped: refs.length - missingRefs.length,
+    paymentsUpdated: 0,
     failed: 0,
     missing: missingRefs.length,
     missingAmountTotal: Number(
