@@ -1260,7 +1260,7 @@ export function ProductForm({
                       value={variant.barcode || ''}
                       onChange={(e) => updateVariant(i, 'barcode', e.target.value)}
                       className="w-36 px-2 py-1 font-mono text-sm border border-gray-300 rounded"
-                      placeholder="Auto on save"
+                      placeholder="Enter manually"
                     />
                   </td>
                   <td className="py-2 px-2">

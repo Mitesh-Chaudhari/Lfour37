@@ -617,3 +617,72 @@ async function fetchPaymentsForMoves(
 
   return result
 }
+
+export type OdooProduct = {
+  id: number
+  displayName: string
+  defaultCode: string | null
+  barcode: string | null
+  active: boolean
+  templateName: string | null
+  createDate: string | null
+}
+
+/** Highest product.product id (for first-run item sync watermark). */
+export async function fetchMaxProductId(): Promise<number> {
+  const rows = asRecords(
+    await odooExecuteKw(
+      "product.product",
+      "search_read",
+      [[["active", "in", [true, false]]]],
+      {
+        fields: ["id"],
+        limit: 1,
+        order: "id desc",
+      }
+    )
+  )
+  return rows[0] ? num(rows[0].id) : 0
+}
+
+/** Active (and optionally archived) products with id greater than afterProductId. */
+export async function fetchProductsAfter(
+  afterProductId: number,
+  limit = 50
+): Promise<OdooProduct[]> {
+  const rows = asRecords(
+    await odooExecuteKw(
+      "product.product",
+      "search_read",
+      [
+        [
+          ["id", ">", afterProductId],
+          ["active", "=", true],
+        ],
+      ],
+      {
+        fields: [
+          "id",
+          "display_name",
+          "default_code",
+          "barcode",
+          "active",
+          "product_tmpl_id",
+          "create_date",
+        ],
+        limit: Math.min(Math.max(limit, 1), 100),
+        order: "id asc",
+      }
+    )
+  )
+
+  return rows.map((row) => ({
+    id: num(row.id),
+    displayName: str(row.display_name) || `Odoo product ${num(row.id)}`,
+    defaultCode: str(row.default_code).trim() || null,
+    barcode: str(row.barcode).trim() || null,
+    active: Boolean(row.active),
+    templateName: many2oneName(row.product_tmpl_id),
+    createDate: str(row.create_date) || null,
+  }))
+}

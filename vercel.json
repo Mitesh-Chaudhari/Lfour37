@@ -27,6 +27,10 @@
     {
       "path": "/api/cron/odoo-erpnext-sync",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/odoo-erpnext-products",
+      "schedule": "*/10 * * * *"
     }
   ]
 }
