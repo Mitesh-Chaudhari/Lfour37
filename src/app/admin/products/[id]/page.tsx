@@ -4,6 +4,10 @@ import { ProductForm } from '@/components/admin/product-form'
 import { getUniqueColorGroups } from '@/lib/product-colors'
 
 import { mappingsArrayToRecord } from '@/lib/hsn'
+import {
+  getAdminPairingOptions,
+  getCuratedPairingIds,
+} from '@/lib/product-pairings'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -45,6 +49,26 @@ export default async function AdminProductEditPage({ params }: Props) {
 
   if (!product) notFound()
 
+  const [paired_product_ids, pairingOptionsRaw] = await Promise.all([
+    getCuratedPairingIds(supabase, id),
+    getAdminPairingOptions(supabase, {
+      brandId: product.brand_id,
+      excludeProductId: id,
+    }),
+  ])
+
+  // Ensure already-paired products appear in the picker even if filtered out.
+  const optionIds = new Set(pairingOptionsRaw.map((p) => p.id))
+  const missingPairedIds = paired_product_ids.filter((pid) => !optionIds.has(pid))
+  let pairingOptions = pairingOptionsRaw
+  if (missingPairedIds.length) {
+    const { data: missing } = await supabase
+      .from('products')
+      .select('id, name, slug, images, price, status')
+      .in('id', missingPairedIds)
+    pairingOptions = [...(missing || []), ...pairingOptionsRaw]
+  }
+
   const productWithCategories = {
     ...product,
 
@@ -53,6 +77,7 @@ export default async function AdminProductEditPage({ params }: Props) {
     ),
 
     variants: product.variants || [],
+    paired_product_ids,
   }
 
   return (
@@ -67,6 +92,7 @@ export default async function AdminProductEditPage({ params }: Props) {
         hsnMappings={hsnMappings}
         colorGroups={colorGroups}
         sizes={(sizes || []).map((size) => size.name)}
+        pairingOptions={pairingOptions}
       />
     </div>
   )

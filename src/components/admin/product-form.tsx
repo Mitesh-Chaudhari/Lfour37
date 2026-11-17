@@ -30,6 +30,12 @@ import {
   normalizeVariantSize,
 } from '@/lib/product-variants'
 import { getClientAdminBrandId } from '@/lib/organization'
+import {
+  PAIRING_LIMIT,
+  saveProductPairings,
+  type AdminPairingProduct,
+} from '@/lib/product-pairings'
+import { DEFAULT_PRODUCT_IMAGE } from '@/lib/images'
 
 interface ProductFormProps {
   categories: {
@@ -39,6 +45,7 @@ interface ProductFormProps {
     parent_id?: string | null
   }[]
   hsnMappings?: Record<string, string>
+  pairingOptions?: AdminPairingProduct[]
   initialData?: {
     id: string
     brand_id?: string
@@ -62,6 +69,7 @@ interface ProductFormProps {
     seo_title?: string
     seo_description?: string
     category_ids: string[]
+    paired_product_ids?: string[]
     variants?: {
       id: string
       size: string
@@ -226,6 +234,7 @@ const CategoryNode = ({
 export function ProductForm({
   categories,
   hsnMappings = {},
+  pairingOptions = [],
   initialData,
   colorGroups = [],
   sizes = [],
@@ -246,6 +255,11 @@ export function ProductForm({
   const [keyHighlights, setKeyHighlights] = useState<ProductKeyHighlight[]>(() =>
     buildKeyHighlightsForForm(initialData?.key_highlights)
   )
+  const [pairedProductIds, setPairedProductIds] = useState<string[]>(
+    () => (initialData?.paired_product_ids || []).slice(0, PAIRING_LIMIT)
+  )
+  const [pairSearch, setPairSearch] = useState('')
+  const [pairDragIndex, setPairDragIndex] = useState<number | null>(null)
   const [availableColorGroups, setAvailableColorGroups] =
   useState<string[]>([
     ...new Set([
@@ -753,6 +767,8 @@ export function ProductForm({
           )
       }
 
+      await saveProductPairings(supabase, productId, pairedProductIds)
+
       toast.success(isEditing ? 'Product updated!' : 'Product created!')
       router.push('/admin/products')
     } catch (err) {
@@ -1014,6 +1030,138 @@ export function ProductForm({
         <p className="text-xs text-gray-500">
           Drag photos to change order. First image is Main. Supports JPG, PNG, WebP. Max 10MB each.
         </p>
+      </div>
+
+      {/* Complete the look */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold">Complete the look</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            Pick up to {PAIRING_LIMIT} pairing products (e.g. pants for a shirt).
+            If none are set, the storefront auto-suggests complementary pieces.
+          </p>
+        </div>
+
+        {pairedProductIds.length > 0 && (
+          <ul className="space-y-2">
+            {pairedProductIds.map((id, index) => {
+              const option = pairingOptions.find((p) => p.id === id)
+              const thumb =
+                option?.images?.[0]?.url || DEFAULT_PRODUCT_IMAGE
+              return (
+                <li
+                  key={id}
+                  draggable
+                  onDragStart={() => setPairDragIndex(index)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => {
+                    if (pairDragIndex === null || pairDragIndex === index) return
+                    setPairedProductIds((prev) => {
+                      const next = [...prev]
+                      const [moved] = next.splice(pairDragIndex, 1)
+                      next.splice(index, 0, moved)
+                      return next
+                    })
+                    setPairDragIndex(null)
+                  }}
+                  className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"
+                >
+                  <GripVertical className="h-4 w-4 shrink-0 text-gray-400 cursor-grab" />
+                  <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-white">
+                    <OptimizedImage
+                      src={thumb}
+                      alt={option?.name || 'Pair product'}
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-gray-900">
+                      {option?.name || id}
+                    </p>
+                    {option && (
+                      <p className="text-xs text-gray-500">
+                        ₹{Number(option.price).toLocaleString('en-IN')}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="rounded p-1 text-gray-400 hover:bg-white hover:text-red-500"
+                    onClick={() =>
+                      setPairedProductIds((prev) =>
+                        prev.filter((pairedId) => pairedId !== id)
+                      )
+                    }
+                    aria-label="Remove pair"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+
+        {pairedProductIds.length < PAIRING_LIMIT && (
+          <div className="space-y-2">
+            <Input
+              label="Search products to pair"
+              value={pairSearch}
+              onChange={(e) => setPairSearch(e.target.value)}
+              placeholder="Type product name…"
+            />
+            <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
+              {pairingOptions
+                .filter((option) => {
+                  if (pairedProductIds.includes(option.id)) return false
+                  if (initialData?.id && option.id === initialData.id) return false
+                  if (!pairSearch.trim()) return true
+                  return option.name
+                    .toLowerCase()
+                    .includes(pairSearch.trim().toLowerCase())
+                })
+                .slice(0, 20)
+                .map((option) => {
+                  const thumb =
+                    option.images?.[0]?.url || DEFAULT_PRODUCT_IMAGE
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-purple-50"
+                      onClick={() => {
+                        setPairedProductIds((prev) =>
+                          prev.length >= PAIRING_LIMIT
+                            ? prev
+                            : [...prev, option.id]
+                        )
+                        setPairSearch('')
+                      }}
+                    >
+                      <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded bg-gray-100">
+                        <OptimizedImage
+                          src={thumb}
+                          alt={option.name}
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                      <span className="min-w-0 flex-1 truncate text-sm text-gray-800">
+                        {option.name}
+                      </span>
+                      <Plus className="h-4 w-4 shrink-0 text-purple-600" />
+                    </button>
+                  )
+                })}
+              {pairingOptions.length === 0 && (
+                <p className="px-3 py-4 text-sm text-gray-500">
+                  No other products available to pair yet.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Categories */}

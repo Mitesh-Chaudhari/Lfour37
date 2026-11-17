@@ -6,6 +6,7 @@ import { ProductInfo } from '@/components/product/product-info'
 import { ProductReviews } from '@/components/product/product-reviews'
 import { ProductSection } from '@/components/home/product-section'
 import { RecentlyViewedSection } from '@/components/product/recently-viewed-section'
+import { CompleteTheLookSection } from '@/components/product/complete-the-look-section'
 import { SizeGuideList } from '@/components/size-guide/size-guide-section'
 import { getSizeGuidesForCategories } from '@/lib/size-guides'
 import {
@@ -20,6 +21,7 @@ import {
   getRelatedProducts,
   relatedProductsViewAllHref,
 } from '@/lib/related-products'
+import { getCompleteTheLookProducts } from '@/lib/product-pairings'
 import { MetaViewContentTracker } from '@/components/meta-pixel/event-trackers'
 import { GaViewItemTracker } from '@/components/google-analytics/event-trackers'
 import type { Metadata } from 'next'
@@ -127,19 +129,30 @@ export default async function ProductDetailPage({ params }: PageProps) {
       getBestSellerProductIds(),
     ])
 
-  const relatedProductsRaw = await getRelatedProducts({
-    supabase,
-    productId: product.id,
-    productName: product.name,
-    productPrice: product.price,
-    productCategoryIds: categoryIds,
-    allCategories,
-  })
-
   const resolvedDeepestCategoryId = getDeepestCategoryId(categoryIds, allCategories)
   const categoryBreadcrumb = resolvedDeepestCategoryId
     ? getCategoryPath(resolvedDeepestCategoryId, allCategories)
     : []
+  const categoryNames = categoryBreadcrumb.map((category) => category.name)
+
+  const [relatedProductsRaw, completeTheLook] = await Promise.all([
+    getRelatedProducts({
+      supabase,
+      productId: product.id,
+      productName: product.name,
+      productPrice: product.price,
+      productCategoryIds: categoryIds,
+      allCategories,
+    }),
+    getCompleteTheLookProducts({
+      supabase,
+      productId: product.id,
+      productName: product.name,
+      productPrice: product.price,
+      productCategoryNames: categoryNames,
+      brandId: product.brand_id,
+    }),
+  ])
 
   const enrichedProduct = enrichProductsWithCategoryDisplay(
     [product],
@@ -148,6 +161,10 @@ export default async function ProductDetailPage({ params }: PageProps) {
 
   const relatedProducts = enrichProductsWithBestSeller(
     relatedProductsRaw,
+    bestSellerIds
+  )
+  const completeTheLookProducts = enrichProductsWithBestSeller(
+    completeTheLook.products,
     bestSellerIds
   )
 
@@ -232,6 +249,11 @@ export default async function ProductDetailPage({ params }: PageProps) {
           <ProductGallery images={product.images} productName={product.name} />
           <ProductInfo product={enrichedProduct} sizeOrder={sizeOrder} sizeGuides={sizeGuides} />
         </div>
+
+        <CompleteTheLookSection
+          products={completeTheLookProducts}
+          subtitle={completeTheLook.subtitle}
+        />
 
         {sizeGuides.length > 0 && (
           <section className="mb-16">

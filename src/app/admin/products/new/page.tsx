@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { ProductForm } from '@/components/admin/product-form'
 import { getUniqueColorGroups } from '@/lib/product-colors'
+import { getAdminPairingOptions } from '@/lib/product-pairings'
+import { LFOUR37_BRAND_ID } from '@/lib/organization'
 
 async function getCategories() {
   const supabase = await createClient()
@@ -33,12 +35,15 @@ async function getHsnMappings() {
 }
 
 export default async function NewProductPage() {
-  const [categories, sizes, uniqueColorGroups, hsnMappings] = await Promise.all([
-    getCategories(),
-    getSizes(),
-    getUniqueColorGroups(),
-    getHsnMappings(),
-  ])
+  const supabase = await createClient()
+  const [categories, sizes, uniqueColorGroups, hsnMappings, pairingOptions] =
+    await Promise.all([
+      getCategories(),
+      getSizes(),
+      getUniqueColorGroups(),
+      getHsnMappings(),
+      getAdminPairingOptions(supabase, { brandId: LFOUR37_BRAND_ID }),
+    ])
   return (
     <div className="">
       <h1 className="text-3xl font-bold text-gray-900 mb-8">Add New Product</h1>
@@ -47,6 +52,7 @@ export default async function NewProductPage() {
         hsnMappings={hsnMappings}
         colorGroups={uniqueColorGroups}
         sizes={sizes}
+        pairingOptions={pairingOptions}
       />
     </div>
   )
